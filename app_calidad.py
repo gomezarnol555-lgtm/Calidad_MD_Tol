@@ -15,7 +15,7 @@ from uuid import uuid4
 # =========================================================
 
 APP_NAME = "Calidad | PNC y ME"
-DB_PATH = "calidad_pnc_me.db"
+DB_PATH = "calidad_pnc_me.db.v2"
 UPLOAD_DIR = Path("evidencias_calidad")
 SESSION_TIMEOUT_MINUTES = 30
 
