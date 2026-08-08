@@ -155,7 +155,7 @@ def login():
 
 def topbar(user):
     initials="".join([x[0] for x in user["nombre"].split()[:2]]).upper() or "AC"
-    st.markdown(f'<div class="topbar"><div class="topbar-user"><span>🔔</span><span>{user["nombre"].upper()}</span><span class="avatar">{initials}</span></div></div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="topbar"><div class="topbar-title">☰ Menú principal visible en la página</div><div class="topbar-user"><span>🔔</span><span>{user["nombre"].upper()}</span><span class="avatar">{initials}</span></div></div>', unsafe_allow_html=True)
 
 def sidebar_menu(compact=False):
     logo_text="" if compact else "CALIDAD MD"
@@ -250,21 +250,63 @@ def page_auditoria():
 
 def main():
     init_db()
-    if FORCE_RESET_ADMIN: reset_admin()
-    user=login()
+    if FORCE_RESET_ADMIN:
+        reset_admin()
+    user = login()
+
     with st.sidebar:
-        compact=st.toggle("Acortar menú",value=False)
-    styles(compact); topbar(user)
+        compact = st.toggle("Acortar menú", value=False)
+
+    styles(compact)
+    topbar(user)
+
+    options = [
+        ("Inicio", "🏠 Inicio"),
+        ("Nuevo registro", "📝 Nuevo registro"),
+        ("Consulta y descarga", "📊 Consulta y descarga"),
+    ]
+    if is_dev():
+        options += [
+            ("Catálogos", "🧩 Catálogos"),
+            ("Usuarios", "👤 Usuarios"),
+            ("Auditoría", "🧾 Auditoría"),
+        ]
+
+    # Menú visible dentro de la página para evitar que Streamlit o el navegador oculten la barra lateral.
+    st.markdown("<div class='main-menu-wrap'><div class='main-menu-title'>☰ Menú principal</div>", unsafe_allow_html=True)
+    labels = [label for _, label in options]
+    selected_label = st.selectbox(
+        "Pestañas principales",
+        labels,
+        key="menu_principal_en_pagina",
+        label_visibility="collapsed",
+    )
+    st.markdown("<div class='main-menu-sub'>Selecciona una pestaña para navegar. Este menú siempre aparece aunque la barra lateral esté oculta.</div></div>", unsafe_allow_html=True)
+    page = dict((label, page) for page, label in options)[selected_label]
+
+    # Menú lateral opcional, si la barra lateral está visible.
     with st.sidebar:
-        page=sidebar_menu(compact)
+        sidebar_page = sidebar_menu(compact)
+        if sidebar_page != page:
+            st.caption("También puedes navegar desde este menú lateral.")
         st.divider()
         if st.button("Salir" if compact else "Cerrar sesión"):
-            audit(user["usuario"],"LOGOUT","Cierre de sesión"); st.session_state.auth=None; st.rerun()
-    if page=="Inicio": page_inicio()
-    elif page=="Nuevo registro": page_registro()
-    elif page=="Consulta y descarga": page_consulta()
-    elif page=="Catálogos": page_catalogos()
-    elif page=="Usuarios": page_usuarios()
-    elif page=="Auditoría": page_auditoria()
+            audit(user["usuario"], "LOGOUT", "Cierre de sesión")
+            st.session_state.auth = None
+            st.rerun()
 
-if __name__=="__main__": main()
+    if page == "Inicio":
+        page_inicio()
+    elif page == "Nuevo registro":
+        page_registro()
+    elif page == "Consulta y descarga":
+        page_consulta()
+    elif page == "Catálogos":
+        page_catalogos()
+    elif page == "Usuarios":
+        page_usuarios()
+    elif page == "Auditoría":
+        page_auditoria()
+
+if __name__ == "__main__":
+    main()
