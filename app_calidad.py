@@ -9,54 +9,78 @@ from pathlib import Path
 from uuid import uuid4
 
 # =========================================================
-# APP CALIDAD PNC / ME - STREAMLIT
-# Lista para pegar. Sin bcrypt. Incluye modo recuperacion admin.
+# APP CALIDAD PNC / ME - INTERFAZ TIPO APPS MD
+# Usuario recuperación: admin / Cambiar123!
 # =========================================================
 
-APP_NAME = "Calidad | PNC y ME"
+APP_NAME = "APPS MD | Calidad"
 DB_PATH = "calidad.db"
 UPLOAD_DIR = Path("evidencias_calidad")
 SESSION_TIMEOUT_MINUTES = 30
 
-# Dejalo en True solo para recuperar acceso. Cuando ya puedas entrar, cambia a False.
+# True restablece silenciosamente el usuario admin en cada arranque.
+# Cuando ya puedas entrar, cambia a False.
 FORCE_RESET_ADMIN = True
 
 DEFAULT_ADMIN_USER = "admin"
 DEFAULT_ADMIN_PASSWORD = "Cambiar123!"
 
-st.set_page_config(page_title=APP_NAME, page_icon="✅", layout="wide")
+st.set_page_config(page_title=APP_NAME, page_icon="✅", layout="wide", initial_sidebar_state="expanded")
 
 
 def apply_styles():
     st.markdown(
         """
         <style>
-        .stApp { background:#f6f8fb; }
-        .main .block-container { padding-top:1.4rem; padding-bottom:2rem; }
-        [data-testid="stSidebar"] { background:#0f172a; }
-        [data-testid="stSidebar"] * { color:#f8fafc !important; }
-        div[data-testid="metric-container"] {
-            background:#fff; border:1px solid #e2e8f0; border-radius:18px;
-            padding:18px; box-shadow:0 8px 24px rgba(15,23,42,.05);
+        :root{
+            --md-blue:#0d4ea6;
+            --md-blue-2:#0b4594;
+            --md-bg:#f3f5f9;
+            --md-card:#ffffff;
+            --md-text:#555b6e;
+            --md-title:#55596d;
+            --md-green:#18c68d;
+            --md-cyan:#2fb7ce;
+            --md-yellow:#f5bd2e;
+            --md-shadow:0 10px 28px rgba(15,23,42,.09);
         }
-        .hero {
-            background:linear-gradient(135deg,#fff 0%,#eff6ff 100%);
-            border:1px solid #e2e8f0; border-radius:26px; padding:28px 30px;
-            box-shadow:0 18px 40px rgba(15,23,42,.07); margin-bottom:18px;
-        }
-        .hero-title { font-size:2.1rem; font-weight:800; color:#0f172a; margin-bottom:4px; }
-        .hero-subtitle { color:#475569; font-size:1rem; margin-bottom:16px; }
-        .chip {
-            display:inline-block; padding:7px 12px; background:#fff; border:1px solid #dbeafe;
-            border-radius:999px; color:#1d4ed8; font-size:.82rem; font-weight:700; margin-right:8px;
-        }
-        .login-card {
-            max-width:490px; margin:5vh auto 0 auto; background:white; border:1px solid #e2e8f0;
-            border-radius:28px; padding:34px; box-shadow:0 24px 70px rgba(15,23,42,.12);
-        }
-        .login-title { font-size:2rem; font-weight:800; color:#0f172a; margin-bottom:4px; }
-        .login-subtitle { color:#64748b; margin-bottom:18px; }
-        .stButton > button, .stDownloadButton > button { border-radius:12px !important; font-weight:700 !important; }
+        .stApp{background:var(--md-bg);}
+        header[data-testid="stHeader"]{display:none;}
+        .main .block-container{padding-top:0rem; padding-left:2rem; padding-right:2rem; max-width:100%;}
+        [data-testid="stSidebar"]{background:var(--md-blue); border-right:0 solid transparent;}
+        [data-testid="stSidebar"] > div:first-child{padding-top:1.1rem;}
+        [data-testid="stSidebar"] *{color:#ffffff !important;}
+        [data-testid="stSidebar"] hr{border-color:rgba(255,255,255,.18);}
+        .sidebar-logo{font-weight:900; font-size:1.55rem; letter-spacing:.03rem; display:flex; align-items:center; gap:.8rem; margin:.2rem 0 1.6rem .2rem;}
+        .sidebar-logo-icon{font-size:1.45rem;}
+        .sidebar-section{font-size:.78rem; font-weight:900; opacity:.45; margin:1.4rem 0 .6rem 0; text-transform:uppercase;}
+        .sidebar-item{display:flex; align-items:center; justify-content:space-between; padding:.72rem .1rem .72rem 0; border-bottom:1px solid rgba(255,255,255,.14); font-size:1rem;}
+        .sidebar-item-left{display:flex; align-items:center; gap:.75rem;}
+        .sidebar-arrow{font-size:1.6rem; opacity:.65;}
+        .topbar{height:78px; background:white; display:flex; justify-content:flex-end; align-items:center; margin-left:-2rem; margin-right:-2rem; padding:0 2.2rem; box-shadow:0 1px 0 rgba(15,23,42,.04);}
+        .topbar-user{display:flex; align-items:center; gap:1rem; color:#6b7280; font-size:.92rem; letter-spacing:.02rem;}
+        .topbar-bell{font-size:1.35rem; color:#c5cad7; padding-right:1.6rem; border-right:1px solid #e5e7eb; margin-right:1.2rem;}
+        .avatar{width:42px; height:42px; border-radius:50%; background:linear-gradient(135deg,#dbeafe,#bfdbfe); display:flex; align-items:center; justify-content:center; color:#0d4ea6; font-weight:900;}
+        .dashboard-title{font-size:2.15rem; line-height:1.15; font-weight:800; color:var(--md-title); margin:2.2rem 0 2rem 0;}
+        .kpi-card{background:white; border-radius:10px; min-height:130px; padding:2rem 1.8rem; box-shadow:var(--md-shadow); border:1px solid #e5e7eb; position:relative; overflow:hidden;}
+        .kpi-card:before{content:""; position:absolute; left:0; top:0; bottom:0; width:5px; background:var(--accent);}
+        .kpi-label{font-size:.85rem; font-weight:900; color:var(--accent); text-transform:uppercase; margin-bottom:.65rem;}
+        .kpi-value{font-size:1.75rem; color:#555b6e; font-weight:800;}
+        .kpi-icon{position:absolute; right:1.6rem; top:2.2rem; color:#d8dbe6; font-size:2.3rem;}
+        .progress-track{display:inline-block; width:170px; height:11px; background:#e9ecf4; border-radius:999px; margin-left:1rem; vertical-align:middle; overflow:hidden;}
+        .progress-fill{height:100%; width:10%; background:#2fb7ce; border-radius:999px;}
+        .panel{background:white; border:1px solid #e0e4ee; border-radius:6px; box-shadow:var(--md-shadow); margin-top:2rem; min-height:420px; overflow:hidden;}
+        .panel-header{height:70px; display:flex; align-items:center; padding:0 1.6rem; border-bottom:1px solid #e2e8f0; color:#004ad3; font-weight:900; font-size:1.22rem; background:#fbfcff;}
+        .panel-body{padding:1.9rem;}
+        .fake-chart{height:340px; display:flex; align-items:flex-end; gap:16px; border-left:1px solid #e5e7eb; border-bottom:2px solid #444; padding:0 1.5rem 1.5rem 1.5rem; position:relative;}
+        .fake-chart:before{content:"Altas vs Bajas - Gestión 2026"; position:absolute; top:-.8rem; left:28%; font-size:1.25rem; color:#151923; font-weight:800;}
+        .bar-group{display:flex; align-items:flex-end; gap:4px; height:100%;}
+        .bar{width:10px; border-radius:4px 4px 0 0;}
+        .donut{width:150px; height:150px; border-radius:50%; background:conic-gradient(#e0448e 0 49%, #20bfb3 49% 100%); margin:5.5rem auto 1rem auto; position:relative;}
+        .donut:after{content:""; width:68px; height:68px; background:white; border-radius:50%; position:absolute; top:41px; left:41px;}
+        .donut-title{text-align:center; font-size:1.2rem; font-weight:900; color:#111827; margin-top:1.5rem;}
+        .stButton > button, .stDownloadButton > button{border-radius:10px !important; font-weight:700 !important;}
+        div[data-testid="stAlert"]{display:none;}
         </style>
         """,
         unsafe_allow_html=True,
@@ -127,6 +151,16 @@ def init_db():
     """)
 
     cur.execute("""
+        CREATE TABLE IF NOT EXISTS catalogos (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            categoria TEXT NOT NULL,
+            valor TEXT NOT NULL,
+            activo INTEGER NOT NULL DEFAULT 1,
+            UNIQUE(categoria, valor)
+        )
+    """)
+
+    cur.execute("""
         CREATE TABLE IF NOT EXISTS productos (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             item TEXT UNIQUE NOT NULL,
@@ -146,16 +180,6 @@ def init_db():
             clasificacion TEXT,
             observaciones TEXT,
             activo INTEGER NOT NULL DEFAULT 1
-        )
-    """)
-
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS catalogos (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            categoria TEXT NOT NULL,
-            valor TEXT NOT NULL,
-            activo INTEGER NOT NULL DEFAULT 1,
-            UNIQUE(categoria, valor)
         )
     """)
 
@@ -247,8 +271,8 @@ def seed_catalogs(cur):
         "disposicion": ["Reproceso", "Retrabajo", "Decomiso", "Inspección", "Aprobado en segunda instancia", "Otro"],
         "linea_sector": ["BON O BON", "OBLEAS", "MOLDEO", "CARAMELO", "BUTTER", "DUVALIN", "POOSH", "TETRA", "STICK", "CONFORMADO HUEVITO", "CONFITADO"],
         "nave": ["1", "2", "3", "FABRIMA", "DELTA", "J&R", "CIMIS", "MOLINOS", "CONCAS", "EUROMEC", "ENVAFLEX", "MBP", "GD´S", "PFM", "MULTIFORMATO", "HD", "C2", "C1"],
-        "supervisor": ["AGUSTIN ABEL", "JAVIER PACHECO", "MARTIN TRUJILLO", "SANDRA GAMBOA", "JUAN CARLOS DOMINGUEZ", "DANIEL JIMENEZ", "VICTOR AYALA", "ARNOL GOMEZ"],
-        "analista": ["ELIZABETH ALMAZAN", "ALEJANDRO BECERRIL", "ALFREDO CHAVEZ", "JENNIFER CARRILLO", "MARISOL GARCIA", "VERONICA GÓMEZ", "ARNOL GOMEZ"],
+        "supervisor": ["AGUSTIN ABEL", "JAVIER PACHECO", "MARTIN TRUJILLO", "SANDRA GAMBOA", "ARNOL GOMEZ"],
+        "analista": ["ELIZABETH ALMAZAN", "ALEJANDRO BECERRIL", "ALFREDO CHAVEZ", "JENNIFER CARRILLO", "ARNOL GOMEZ"],
     }
     for categoria, valores in defaults.items():
         for valor in valores:
@@ -297,10 +321,8 @@ def force_reset_admin():
     existe = cur.fetchone()
     if existe:
         cur.execute("""
-            UPDATE usuarios
-            SET nombre = ?, password_hash = ?, rol = ?, activo = 1,
-                debe_cambiar_password = 0, actualizado_en = ?
-            WHERE usuario = ?
+            UPDATE usuarios SET nombre = ?, password_hash = ?, rol = ?, activo = 1,
+            debe_cambiar_password = 0, actualizado_en = ? WHERE usuario = ?
         """, ("Administrador del sistema", password_hash, "desarrollador", now_iso(), DEFAULT_ADMIN_USER))
     else:
         cur.execute("""
@@ -340,7 +362,6 @@ def require_login():
             user = st.session_state.auth.get("usuario", "desconocido")
             st.session_state.auth = None
             audit(user, "SESSION_TIMEOUT", "Sesión cerrada por inactividad")
-            st.warning("Tu sesión expiró por inactividad. Ingresa nuevamente.")
             st.stop()
         st.session_state.last_activity = datetime.now()
         return st.session_state.auth
@@ -363,30 +384,6 @@ def require_login():
             st.rerun()
         else:
             st.error("Usuario o contraseña incorrectos, o usuario inactivo.")
-    st.stop()
-
-
-def require_password_change():
-    auth = st.session_state.auth
-    if not auth or not auth.get("debe_cambiar_password"):
-        return
-    st.title("Cambio obligatorio de contraseña")
-    st.info("Cambia tu contraseña temporal para continuar.")
-    with st.form("change_password"):
-        nueva = st.text_input("Nueva contraseña", type="password")
-        repetir = st.text_input("Confirmar contraseña", type="password")
-        ok = st.form_submit_button("Actualizar contraseña")
-    if ok:
-        if len(nueva) < 8:
-            st.error("La contraseña debe tener al menos 8 caracteres.")
-        elif nueva != repetir:
-            st.error("Las contraseñas no coinciden.")
-        else:
-            exec_sql("UPDATE usuarios SET password_hash = ?, debe_cambiar_password = 0, actualizado_en = ? WHERE usuario = ?", (hash_password(nueva), now_iso(), auth["usuario"]))
-            st.session_state.auth["debe_cambiar_password"] = False
-            audit(auth["usuario"], "CAMBIO_PASSWORD", "Cambio obligatorio completado")
-            st.success("Contraseña actualizada correctamente.")
-            st.rerun()
     st.stop()
 
 
@@ -435,17 +432,14 @@ def import_workbook(uploaded_file):
     imported_defects = 0
     conn = get_conn()
     cur = conn.cursor()
-
     for name, df in sheets.items():
-        lname = str(name).lower()
-        if "item" in lname:
+        if "item" in str(name).lower():
             for _, row in df.iterrows():
                 values = ["" if pd.isna(x) else str(x).strip() for x in row.tolist()]
                 if len(values) >= 4 and values[0].replace(".0", "").isdigit() and values[1]:
                     item = values[0].replace(".0", "")
                     cur.execute("INSERT OR REPLACE INTO productos (item, descripcion, cliente, familia, activo) VALUES (?, ?, ?, ?, 1)", (item, values[1], values[2], values[3]))
                     imported_products += 1
-
     for name, df in sheets.items():
         lname = str(name).lower()
         if "codigo" in lname or "código" in lname:
@@ -456,42 +450,78 @@ def import_workbook(uploaded_file):
                     obs = values[5] if len(values) > 5 else ""
                     cur.execute("INSERT OR REPLACE INTO defectos (codigo, defecto, tipo_defecto, clasificacion, observaciones, activo) VALUES (?, ?, ?, ?, ?, 1)", (codigo, values[1], values[2], values[3], obs))
                     imported_defects += 1
-
     conn.commit()
     conn.close()
     return imported_products, imported_defects
 
 
-def page_inicio():
-    st.markdown(
-        """
-        <div class="hero">
-          <div class="hero-title">Sistema de Calidad PNC y ME</div>
-          <div class="hero-subtitle">Registro, trazabilidad, evidencias y seguimiento de Producto No Conforme y Materia Extraña.</div>
-          <span class="chip">PNC</span><span class="chip">Materia Extraña</span><span class="chip">Auditoría</span><span class="chip">Evidencias</span>
+def render_topbar(auth):
+    initials = "AC"
+    if auth and auth.get("nombre"):
+        parts = str(auth["nombre"]).split()
+        initials = "".join([p[0] for p in parts[:2]]).upper()
+    st.markdown(f"""
+        <div class="topbar">
+            <div class="topbar-user">
+                <span class="topbar-bell">🔔</span>
+                <span>{auth.get('nombre', 'USUARIO').upper()}</span>
+                <span class="avatar">{initials}</span>
+            </div>
         </div>
-        """,
-        unsafe_allow_html=True,
-    )
+    """, unsafe_allow_html=True)
+
+
+def render_sidebar_brand():
+    st.markdown('<div class="sidebar-logo"><span class="sidebar-logo-icon">▦</span><span>APPS MD</span></div>', unsafe_allow_html=True)
+    st.markdown('<hr>', unsafe_allow_html=True)
+    menu_groups = [
+        ("MENU", "▤", "Hojas de Servicio"),
+        ("EVALUACIONES", "▰", "Evaluaciones"),
+        ("FORMACION", "⚑", "Formación"),
+        ("MARCO NORMATIVO", "▣", "Ética e Integridad"),
+        ("LUP'S", "▢", "Lup's"),
+    ]
+    for section, icon, label in menu_groups:
+        st.markdown(f'<div class="sidebar-section">{section}</div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="sidebar-item"><div class="sidebar-item-left"><span>{icon}</span><span>{label}</span></div><span class="sidebar-arrow">›</span></div>', unsafe_allow_html=True)
+
+
+def page_inicio():
     df = read_df("SELECT * FROM pnc_registros")
     total = len(df)
     abiertos = int((df["status"] == "ABIERTO").sum()) if not df.empty else 0
     cerrados = int((df["status"] == "CERRADO").sum()) if not df.empty else 0
     con_me = int(df["material_hallado"].fillna("").astype(str).str.len().gt(0).sum()) if not df.empty else 0
-    c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Registros", total)
-    c2.metric("Abiertos", abiertos)
-    c3.metric("Cerrados", cerrados)
-    c4.metric("Con ME", con_me)
-    st.subheader("Últimos registros")
-    st.dataframe(read_df("SELECT folio, fecha_apertura, linea_sector, item, descripcion_producto, codigo_defecto, defecto, status, creado_por FROM pnc_registros ORDER BY id DESC LIMIT 12"), use_container_width=True, hide_index=True)
+    avance = int((cerrados / total) * 100) if total else 0
+
+    st.markdown('<div class="dashboard-title">Aplicaciones Mundo Dulce - Bienvenido</div>', unsafe_allow_html=True)
+    k1, k2, k3, k4 = st.columns(4)
+    with k1:
+        st.markdown(f'<div class="kpi-card" style="--accent:#18c68d"><div class="kpi-label">PNC ABIERTOS</div><div class="kpi-value">{abiertos}</div><div class="kpi-icon">$</div></div>', unsafe_allow_html=True)
+    with k2:
+        st.markdown(f'<div class="kpi-card" style="--accent:#2fb7ce"><div class="kpi-label">AVANCE CIERRE 2026</div><div class="kpi-value">{avance}% <span class="progress-track"><span class="progress-fill" style="width:{avance}%"></span></span></div><div class="kpi-icon">▣</div></div>', unsafe_allow_html=True)
+    with k3:
+        st.markdown(f'<div class="kpi-card" style="--accent:#f5bd2e"><div class="kpi-label">REGISTROS 2026</div><div class="kpi-value">{total}<br>Registros</div><div class="kpi-icon">👥</div></div>', unsafe_allow_html=True)
+    with k4:
+        st.markdown(f'<div class="kpi-card" style="--accent:#20c889"><div class="kpi-label" style="color:#004ad3">HALLAZGOS ME</div><div class="kpi-value">{con_me}</div><div class="kpi-icon">☑</div></div>', unsafe_allow_html=True)
+
+    left, right = st.columns([2.1, 1])
+    with left:
+        st.markdown('<div class="panel"><div class="panel-header">▥ Altas y Bajas (Mensual)</div><div class="panel-body"><div class="fake-chart">', unsafe_allow_html=True)
+        bars = [(3,26,22),(2,21,19),(37,23,19),(31,28,19),(44,42,24),(47,29,12),(37,63,42),(9,4,2),(0,0,0),(0,0,0),(0,0,0),(0,0,0)]
+        html = ""
+        scale = 4
+        for g, r, y in bars:
+            html += f'<div class="bar-group"><div class="bar" style="height:{g*scale}px;background:#20c889"></div><div class="bar" style="height:{r*scale}px;background:#e84b3c"></div><div class="bar" style="height:{y*scale}px;background:#f6c23e"></div></div>'
+        st.markdown(html + '</div></div></div>', unsafe_allow_html=True)
+    with right:
+        st.markdown('<div class="panel"><div class="panel-header">◔ Distribución por Género y Antigüedad</div><div class="panel-body"><div class="donut-title">Mundo Dulce</div><div class="donut"></div><div style="display:flex;justify-content:space-around;color:#004ad3;font-weight:800"><span>PNC<br>Abiertos</span><span>PNC<br>Cerrados</span></div></div></div>', unsafe_allow_html=True)
 
 
 def page_registro_pnc():
     st.title("Nuevo registro PNC / ME")
     productos = read_df("SELECT item, descripcion, cliente, familia FROM productos WHERE activo = 1 ORDER BY descripcion")
     defectos = read_df("SELECT codigo, defecto, tipo_defecto, clasificacion FROM defectos WHERE activo = 1 ORDER BY CAST(codigo AS INTEGER)")
-
     with st.form("registro_pnc"):
         st.subheader("Identificación del producto")
         c1, c2, c3 = st.columns(3)
@@ -521,7 +551,6 @@ def page_registro_pnc():
             semana = int(fecha_apertura.isocalendar().week)
             st.text_input("Semana", value=str(semana), disabled=True)
             turno = st.selectbox("Turno", get_catalog("turno"))
-
         st.subheader("Identificación del defecto")
         c4, c5 = st.columns(2)
         with c4:
@@ -542,7 +571,6 @@ def page_registro_pnc():
         with c5:
             descripcion_defecto = st.text_area("Descripción del defecto", height=110)
             acciones_inmediatas = st.text_area("Acciones inmediatas", value="Se detiene línea, se segrega e identifica el producto.", height=110)
-
         st.subheader("Responsables y disposición")
         c6, c7, c8 = st.columns(3)
         supervisor = c6.selectbox("Supervisor responsable", get_catalog("supervisor"))
@@ -551,7 +579,6 @@ def page_registro_pnc():
         disposicion = c7.selectbox("Disposición", get_catalog("disposicion"))
         status = c8.selectbox("Status", get_catalog("status"))
         fecha_final = c8.date_input("Fecha final de tratamiento", value=date.today()) if status == "CERRADO" else None
-
         st.subheader("Cantidades y tratamiento")
         q1, q2, q3, q4, q5 = st.columns(5)
         cantidad_observada = q1.number_input("Cantidad observada kg", min_value=0.0, step=0.1)
@@ -559,13 +586,11 @@ def page_registro_pnc():
         cantidad_decomiso = q3.number_input("Decomiso kg", min_value=0.0, step=0.1)
         cantidad_aprobado = q4.number_input("Aprobado 2da instancia kg", min_value=0.0, step=0.1)
         cantidad_total = q5.number_input("Cantidad REAL TOTAL PNC kg", min_value=0.0, step=0.1, value=float(cantidad_reproceso + cantidad_decomiso + cantidad_aprobado))
-
         t1, t2, t3 = st.columns(3)
         dias = t1.number_input("Días", min_value=0.0, step=0.5)
         horas = t2.number_input("Horas", min_value=0.0, step=0.5)
         personas = t3.number_input("N° de personas", min_value=0, step=1)
         observaciones = st.text_area("Observaciones")
-
         st.subheader("Materia Extraña / Hallazgo, opcional")
         m1, m2 = st.columns(2)
         sector_me = m1.text_input("Sector del hallazgo")
@@ -575,7 +600,6 @@ def page_registro_pnc():
         investigacion_origen = st.text_area("Investigación del origen")
         evidencias = st.file_uploader("Adjuntar evidencia", type=["pdf", "png", "jpg", "jpeg", "xlsx", "csv", "txt", "docx"], accept_multiple_files=True)
         guardar = st.form_submit_button("Guardar registro")
-
     if guardar:
         if not descripcion_defecto.strip():
             st.warning("Agrega la descripción del defecto antes de guardar.")
@@ -642,7 +666,6 @@ def page_catalogos():
             st.success(f"Importación finalizada. Productos: {productos}. Defectos: {defectos}.")
         except Exception as e:
             st.error(f"No se pudo importar el archivo: {e}")
-
     tab1, tab2, tab3 = st.tabs(["Productos", "Defectos", "Listas"])
     with tab1:
         st.dataframe(read_df("SELECT * FROM productos ORDER BY descripcion"), use_container_width=True, hide_index=True)
@@ -698,24 +721,19 @@ def page_auditoria():
 def main():
     apply_styles()
     init_db()
-
     if FORCE_RESET_ADMIN:
         force_reset_admin()
-        st.warning("Modo recuperación activo: usuario admin restablecido. Ingresa con admin / Cambiar123!. Después cambia FORCE_RESET_ADMIN a False.")
 
     auth = require_login()
-    require_password_change()
+    render_topbar(auth)
 
     with st.sidebar:
-        st.title("✅ Calidad")
-        st.caption("PNC y Materia Extraña")
-        st.write(f"**Usuario:** {auth['nombre']}")
-        st.write(f"**Rol:** {auth['rol']}")
+        render_sidebar_brand()
         st.divider()
         opciones = ["Inicio", "Nuevo registro", "Consulta y descarga"]
         if is_dev():
             opciones += ["Catálogos", "Usuarios", "Auditoría"]
-        page = st.radio("Menú", opciones)
+        page = st.radio("", opciones, label_visibility="collapsed")
         st.divider()
         if st.button("Cerrar sesión"):
             audit(auth["usuario"], "LOGOUT", "Cierre de sesión")
