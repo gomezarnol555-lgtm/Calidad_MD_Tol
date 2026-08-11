@@ -118,27 +118,28 @@ def styles(compact=False):
     div[data-testid="stExpander"], div[data-testid="stDataFrame"] {{ border-radius:16px!important; overflow:hidden!important; }}
 
 
-    /* Ajuste final: menú lateral izquierdo estable */
-    section[data-testid="stSidebar"] {
+
+    /* Ajuste final: menu lateral izquierdo estable */
+    section[data-testid="stSidebar"] {{
         background:linear-gradient(180deg,#062C36 0%,#0A4652 70%,#083640 100%) !important;
         border-radius:0 30px 30px 0 !important;
         box-shadow:0 18px 42px rgba(7,49,61,.32) !important;
-    }
-    section[data-testid="stSidebar"] .stButton button {
+    }}
+    section[data-testid="stSidebar"] .stButton button {{
         box-shadow:0 8px 18px rgba(0,0,0,.08) !important;
-    }
-    .menu-active {
+    }}
+    .menu-active {{
         background:linear-gradient(135deg,#00A884 0%,#3F7BFF 58%,#5850EC 100%) !important;
         color:#fff !important;
-    }
-    /* Login más corporativo */
-    .login-card {
+    }}
+    /* Login mas corporativo */
+    .login-card {{
         background:linear-gradient(135deg,#FFFFFF 0%,#F8FBFC 62%,#ECFDF8 100%) !important;
         border:1px solid #E4EAF2 !important;
         position:relative;
         overflow:hidden;
-    }
-    .login-card:before {
+    }}
+    .login-card:before {{
         content:"";
         position:absolute;
         left:0;
@@ -146,11 +147,11 @@ def styles(compact=False):
         bottom:0;
         width:6px;
         background:linear-gradient(180deg,#00A884,#3F7BFF,#5850EC);
-    }
-    .login-title:before {
+    }}
+    .login-title:before {{
         content:"◆ ";
         color:#00A884;
-    }
+    }}
     </style>
     """, unsafe_allow_html=True)
 
