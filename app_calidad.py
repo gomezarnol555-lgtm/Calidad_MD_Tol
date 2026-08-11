@@ -1,3 +1,4 @@
+
 import streamlit as st
 import pandas as pd
 import sqlite3, hashlib, os, base64
@@ -109,10 +110,33 @@ def styles(compact=False):
         box-sizing:border-box !important;
     }}
     section[data-testid="stSidebar"] * {{ color:#FFFFFF !important; }}
+    /* Controles nativos visibles: permiten recuperar el menú si alguien lo cierra */
     [data-testid="stSidebarCollapsedControl"],
     button[data-testid="stSidebarCollapseButton"],
     button[title="Open sidebar"],
-    button[title="Close sidebar"] {{ display:none !important; }}
+    button[title="Close sidebar"] {{
+        display:flex !important;
+        visibility:visible !important;
+        opacity:1 !important;
+        z-index:9999 !important;
+    }}
+    [data-testid="stSidebarCollapsedControl"] button,
+    button[data-testid="stSidebarCollapseButton"],
+    button[title="Open sidebar"],
+    button[title="Close sidebar"] {{
+        background:#FFFFFF !important;
+        color:#062C36 !important;
+        border:1px solid #D0D7E2 !important;
+        border-radius:10px !important;
+        box-shadow:0 8px 18px rgba(7,49,61,.18) !important;
+    }}
+    [data-testid="stSidebarCollapsedControl"] svg,
+    button[data-testid="stSidebarCollapseButton"] svg,
+    button[title="Open sidebar"] svg,
+    button[title="Close sidebar"] svg {{
+        fill:#062C36 !important;
+        color:#062C36 !important;
+    }}
 
     .menu-brand {{
         display:flex;
