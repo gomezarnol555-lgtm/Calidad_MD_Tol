@@ -190,6 +190,35 @@ def styles(collapsed=False):
     .login-card {{ max-width:480px; margin:6vh auto; background:#fff; border-radius:24px; padding:32px; box-shadow:0 20px 60px rgba(15,23,42,.12); }}
     .login-title {{ color:#0B3440; font-size:2rem; font-weight:900; }}
     .login-subtitle {{ color:#64748B; margin-bottom:18px; }}
+
+    /* Fallback robusto: aplica color al primer bloque/columna del layout principal */
+    div[data-testid="stHorizontalBlock"]:first-of-type > div[data-testid="column"]:first-child {
+        background:linear-gradient(180deg,#062C36 0%,#0E5260 100%) !important;
+        border-radius:26px !important;
+        padding:1rem .85rem !important;
+        min-height:calc(100vh - 2.5rem) !important;
+        box-shadow:0 16px 36px rgba(7,49,61,.32) !important;
+        border:1px solid rgba(255,255,255,.16) !important;
+        overflow:hidden !important;
+        box-sizing:border-box !important;
+    }
+    div[data-testid="stHorizontalBlock"]:first-of-type > div[data-testid="column"]:first-child * { color:#fff !important; }
+    div[data-testid="stHorizontalBlock"]:first-of-type > div[data-testid="column"]:first-child div[role="radiogroup"] label {
+        background:rgba(255,255,255,.10) !important;
+        border:1px solid rgba(255,255,255,.18) !important;
+        border-radius:13px !important;
+        padding:.62rem .75rem !important;
+        margin:.16rem 0 !important;
+        min-height:42px !important;
+        width:100% !important;
+        overflow:hidden !important;
+    }
+    div[data-testid="stHorizontalBlock"]:first-of-type > div[data-testid="column"]:first-child div[role="radiogroup"] label:has(input:checked) {
+        background:linear-gradient(135deg,#00A884,#5850EC) !important;
+        box-shadow:0 8px 18px rgba(0,168,132,.24) !important;
+        border-color:rgba(255,255,255,.32) !important;
+    }
+    div[data-testid="stHorizontalBlock"]:first-of-type > div[data-testid="column"]:first-child div[role="radiogroup"] label[data-baseweb="radio"] > div:first-child { display:none !important; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -239,17 +268,50 @@ def left_menu(current_page: str, collapsed: bool):
     logo_text = "" if collapsed else "CALIDAD MD"
     st.markdown('<span class="menu-marker"></span>', unsafe_allow_html=True)
     st.markdown(f'<div class="menu-logo"><span>◆</span><span class="menu-logo-text">{logo_text}</span></div>', unsafe_allow_html=True)
-    if not collapsed: st.markdown('<div class="menu-title">MENÚ PRINCIPAL</div>', unsafe_allow_html=True)
+    if not collapsed:
+        st.markdown('<div class="menu-title">MENÚ PRINCIPAL</div>', unsafe_allow_html=True)
+
     if st.button("☰" if collapsed else "☰ Acortar menú", key="toggle_menu_btn"):
         st.session_state["collapsed_menu"] = not collapsed
         st.rerun()
-    menu_item("Inicio", "🏠 Inicio", "🏠", current_page, collapsed)
-    menu_item("Nuevo registro", "📝 Nuevo registro", "📝", current_page, collapsed)
-    menu_item("Consulta y descarga", "📊 Consulta y descarga", "📊", current_page, collapsed)
+
+    pages = ["Inicio", "Nuevo registro", "Consulta y descarga"]
+    labels_full = {
+        "Inicio": "🏠 Inicio",
+        "Nuevo registro": "📝 Nuevo registro",
+        "Consulta y descarga": "📊 Consulta y descarga",
+        "Catálogos": "🧩 Catálogos",
+        "Usuarios": "👤 Usuarios",
+        "Auditoría": "🧾 Auditoría",
+    }
+    labels_icon = {
+        "Inicio": "🏠",
+        "Nuevo registro": "📝",
+        "Consulta y descarga": "📊",
+        "Catálogos": "🧩",
+        "Usuarios": "👤",
+        "Auditoría": "🧾",
+    }
     if is_dev():
-        menu_item("Catálogos", "🧩 Catálogos", "🧩", current_page, collapsed)
-        menu_item("Usuarios", "👤 Usuarios", "👤", current_page, collapsed)
-        menu_item("Auditoría", "🧾 Auditoría", "🧾", current_page, collapsed)
+        pages += ["Catálogos", "Usuarios", "Auditoría"]
+
+    labels = [labels_icon[p] if collapsed else labels_full[p] for p in pages]
+    current_label = labels_icon.get(current_page, "🏠") if collapsed else labels_full.get(current_page, "🏠 Inicio")
+    if current_label not in labels:
+        current_label = labels[0]
+    selected_label = st.radio(
+        "Pestañas principales",
+        labels,
+        index=labels.index(current_label),
+        label_visibility="collapsed",
+        key="menu_radio_collapsed" if collapsed else "menu_radio_expanded",
+    )
+    reverse = {labels_icon[p] if collapsed else labels_full[p]: p for p in pages}
+    selected_page = reverse[selected_label]
+    if selected_page != current_page:
+        st.session_state["current_page"] = selected_page
+        st.rerun()
+
     st.markdown('<div style="height:1rem"></div>', unsafe_allow_html=True)
     if st.button("Salir" if collapsed else "Cerrar sesión", key="logout_btn"):
         audit(st.session_state.auth["usuario"], "LOGOUT", "Cierre de sesión")
@@ -369,10 +431,34 @@ def admin_required():
     return True
 
 
+def general_catalog_dataframe():
+    display_map = {
+        "Supervisores": "supervisor",
+        "Analistas": "analista",
+        "Nave": "nave",
+        "Status": "status",
+        "Responsable de detectar PNC": "responsable_detecta",
+        "Etapa": "etapa",
+        "Línea": "linea_sector",
+        "Turno": "turno",
+        "Defecto": "tipo_defecto",
+        "Disposición": "disposicion",
+    }
+    data = {}
+    max_len = 0
+    for header, categoria in display_map.items():
+        values = catalog(categoria)
+        data[header] = values
+        max_len = max(max_len, len(values))
+    for header, values in data.items():
+        data[header] = values + [""] * (max_len - len(values))
+    return pd.DataFrame(data)
+
+
 def page_catalogos():
     st.title("Catálogos")
     st.caption("Datos precargados desde el Excel adjunto. El administrador puede agregar o eliminar elementos.")
-    tab1, tab2, tab3 = st.tabs(["Productos", "Defectos", "Catálogos generales"])
+    tab1, tab2, tab3 = st.tabs(["Productos", "Defectos", "Datos generales"])
     with tab1:
         df = read_df("SELECT id, item, descripcion, cliente, familia FROM productos WHERE activo=1 ORDER BY descripcion")
         st.dataframe(df, use_container_width=True, hide_index=True)
@@ -410,22 +496,33 @@ def page_catalogos():
                     exec_sql("UPDATE defectos SET activo=0 WHERE id=?", (int(opt.split('|')[0].strip()),))
                     st.rerun()
     with tab3:
-        df = read_df("SELECT id, categoria, valor FROM catalogos WHERE activo=1 ORDER BY categoria, valor")
-        st.dataframe(df, use_container_width=True, hide_index=True)
+        st.subheader("Datos generales")
+        st.dataframe(general_catalog_dataframe(), use_container_width=True, hide_index=True)
         if admin_required():
-            cats = sorted(df["categoria"].dropna().unique().tolist()) if not df.empty else []
-            with st.expander("Agregar valor a catálogo general"):
-                with st.form("add_cat"):
-                    categoria = st.selectbox("Categoría existente", cats + ["Nueva categoría"])
-                    nueva = st.text_input("Nueva categoría", disabled=(categoria != "Nueva categoría"))
-                    valor = st.text_input("Valor")
-                    if st.form_submit_button("Agregar valor") and valor:
-                        cat_final = nueva.strip() if categoria == "Nueva categoría" else categoria
-                        if cat_final:
-                            exec_sql("INSERT OR IGNORE INTO catalogos(categoria,valor,activo) VALUES(?,?,1)", (cat_final, valor.strip()))
-                            st.rerun()
-            if not df.empty:
-                opt = st.selectbox("Valor a eliminar", [f"{r.id} | {r.categoria} | {r.valor}" for r in df.itertuples()], key="del_cat")
+            category_labels = {
+                "Supervisores": "supervisor",
+                "Analistas": "analista",
+                "Nave": "nave",
+                "Status": "status",
+                "Responsable de detectar PNC": "responsable_detecta",
+                "Etapa": "etapa",
+                "Línea": "linea_sector",
+                "Turno": "turno",
+                "Defecto": "tipo_defecto",
+                "Disposición": "disposicion",
+            }
+            with st.expander("Agregar valor a datos generales"):
+                with st.form("add_general_cat"):
+                    label = st.selectbox("Lista", list(category_labels.keys()))
+                    valor = st.text_input("Nuevo valor")
+                    if st.form_submit_button("Agregar valor") and valor.strip():
+                        exec_sql("INSERT OR IGNORE INTO catalogos(categoria,valor,activo) VALUES(?,?,1)", (category_labels[label], valor.strip()))
+                        st.rerun()
+            raw = read_df("SELECT id, categoria, valor FROM catalogos WHERE activo=1 ORDER BY categoria, valor")
+            raw["lista"] = raw["categoria"].map({v: k for k, v in category_labels.items()}).fillna(raw["categoria"])
+            raw = raw[raw["categoria"].isin(category_labels.values())]
+            if not raw.empty:
+                opt = st.selectbox("Valor a eliminar", [f"{r.id} | {r.lista} | {r.valor}" for r in raw.itertuples()], key="del_general_cat")
                 if st.button("Eliminar valor seleccionado"):
                     exec_sql("UPDATE catalogos SET activo=0 WHERE id=?", (int(opt.split('|')[0].strip()),))
                     st.rerun()
