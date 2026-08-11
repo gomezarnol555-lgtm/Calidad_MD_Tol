@@ -1,4 +1,3 @@
-
 import streamlit as st
 import pandas as pd
 import sqlite3, hashlib, os, base64
@@ -81,10 +80,7 @@ def save_files(files,rid,folio,user):
         exec_sql("INSERT INTO adjuntos(registro_id,folio,nombre_original,ruta_archivo,tipo_archivo,subido_por,subido_en) VALUES(?,?,?,?,?,?,?)",(rid,folio,file.name,str(path),file.type,user,now_iso()))
 
 def styles(compact=False):
-    sidebar_w = "306px"
-    menu_text = "inline"
-    justify = "flex-start"
-    active_align = "left"
+    sidebar_w = "258px"
     st.markdown(f"""
     <style>
     :root {{ --navy:#062C36; --teal:#00A884; --blue:#3F7BFF; --violet:#5850EC; --bg:#F2F5F8; --text:#203047; }}
@@ -92,67 +88,93 @@ def styles(compact=False):
     header[data-testid="stHeader"] {{ display:none; }}
     .main .block-container {{ padding:1.15rem 1.45rem 2rem 1.45rem; max-width:100% !important; }}
 
-    /* Menú lateral fijo expandido: el recuadro de color es el contenedor real */
+    /* Menú lateral izquierdo estable: sin acortar, sin overlay, sin invadir contenido */
     section[data-testid="stSidebar"] {{
         display:block !important;
         visibility:visible !important;
         opacity:1 !important;
         width:{sidebar_w} !important;
         min-width:{sidebar_w} !important;
+        max-width:{sidebar_w} !important;
         background:linear-gradient(180deg,#062C36 0%,#0A4652 68%,#083640 100%) !important;
-        border-radius:0 32px 32px 0 !important;
-        box-shadow:0 18px 42px rgba(7,49,61,.34) !important;
+        border-radius:0 28px 28px 0 !important;
+        box-shadow:0 16px 34px rgba(7,49,61,.30) !important;
         overflow:hidden !important;
     }}
     section[data-testid="stSidebar"] > div {{
         width:{sidebar_w} !important;
         min-width:{sidebar_w} !important;
+        max-width:{sidebar_w} !important;
         padding:1.25rem .95rem !important;
         box-sizing:border-box !important;
     }}
     section[data-testid="stSidebar"] * {{ color:#FFFFFF !important; }}
-    
-    .menu-brand {{ display:flex; align-items:center; justify-content:{justify}; gap:.65rem; margin:1rem 0 1.6rem 0; font-size:1.22rem; font-weight:950; white-space:nowrap; color:#FFFFFF; }}
-    .menu-brand-text, .menu-section, .menu-label {{ display:{menu_text}; }}
-    .menu-section {{ color:#BDEFE5 !important; font-size:.76rem; font-weight:900; letter-spacing:.06rem; margin:.45rem 0 .75rem 0; }}
+    [data-testid="stSidebarCollapsedControl"],
+    button[data-testid="stSidebarCollapseButton"],
+    button[title="Open sidebar"],
+    button[title="Close sidebar"] {{ display:none !important; }}
+
+    .menu-brand {{
+        display:flex;
+        align-items:center;
+        gap:.6rem;
+        margin:1rem 0 1.55rem 0;
+        font-size:1.12rem;
+        font-weight:950;
+        white-space:nowrap;
+        color:#FFFFFF !important;
+    }}
+    .menu-section {{
+        color:#BDEFE5 !important;
+        font-size:.74rem;
+        font-weight:900;
+        letter-spacing:.06rem;
+        margin:.4rem 0 .7rem 0;
+    }}
     section[data-testid="stSidebar"] .stButton button {{
-        width:100% !important;
-        min-height:54px !important;
-        justify-content:{justify} !important;
-        text-align:{active_align} !important;
-        background:rgba(255,255,255,.16) !important;
-        border:1px solid rgba(255,255,255,.30) !important;
-        border-radius:13px !important;
+        width:auto !important;
+        max-width:100% !important;
+        min-height:44px !important;
+        display:inline-flex !important;
+        align-items:center !important;
+        justify-content:flex-start !important;
+        text-align:left !important;
+        background:rgba(255,255,255,.18) !important;
+        border:1px solid rgba(255,255,255,.34) !important;
+        border-radius:12px !important;
         color:#FFFFFF !important;
         font-weight:850 !important;
         margin:.18rem 0 !important;
-        padding:.68rem .75rem !important;
-        box-shadow:0 8px 18px rgba(0,0,0,.10) !important;
+        padding:.58rem .75rem !important;
+        box-shadow:0 7px 16px rgba(0,0,0,.10) !important;
         overflow:hidden !important;
         white-space:nowrap !important;
     }}
     section[data-testid="stSidebar"] .stButton button:hover {{
         background:rgba(255,255,255,.28) !important;
-        border-color:rgba(255,255,255,.48) !important;
+        border-color:rgba(255,255,255,.55) !important;
+        color:#FFFFFF !important;
     }}
     .menu-active {{
-        width:100% !important;
-        min-height:54px !important;
-        display:flex !important;
+        display:inline-flex !important;
         align-items:center !important;
-        justify-content:{justify} !important;
+        justify-content:flex-start !important;
+        width:auto !important;
+        max-width:100% !important;
+        min-height:46px !important;
         background:linear-gradient(135deg,#00A884 0%,#3F7BFF 58%,#5850EC 100%) !important;
         color:#FFFFFF !important;
-        border-radius:13px !important;
-        padding:.74rem .78rem !important;
+        border-radius:12px !important;
+        padding:.62rem .8rem !important;
         font-weight:950 !important;
-        margin:.28rem 0 .4rem 0 !important;
-        box-shadow:0 10px 24px rgba(0,168,132,.34) !important;
+        margin:.32rem 0 .45rem 0 !important;
+        box-shadow:0 10px 22px rgba(0,168,132,.32) !important;
         box-sizing:border-box !important;
         white-space:nowrap !important;
         overflow:hidden !important;
-        text-align:{active_align} !important;
+        text-align:left !important;
     }}
+
     .topbar {{ height:76px; background:#FFFFFF; display:flex; justify-content:space-between; align-items:center; padding:0 1.6rem; border:1px solid #E4EAF2; border-radius:20px; box-shadow:0 10px 26px rgba(15,23,42,.06); margin-bottom:1.15rem; }}
     .topbar-title {{ color:#0B3440; font-weight:950; font-size:1.05rem; }}
     .topbar-user {{ display:flex; gap:1rem; align-items:center; color:#526078; font-weight:850; }}
@@ -170,55 +192,6 @@ def styles(compact=False):
     .login-card {{ max-width:480px; margin:8vh auto 1rem; background:linear-gradient(135deg,#FFFFFF 0%,#F8FBFC 62%,#ECFDF8 100%); border:1px solid #E4EAF2; border-radius:24px; padding:32px; box-shadow:0 20px 60px rgba(15,23,42,.12); text-align:center; position:relative; overflow:hidden; }} .login-title {{ color:#0B3440; font-size:2rem; font-weight:950; }} .login-title:before {{ content:"◆ "; color:#00A884; }}
     div[data-testid="stExpander"], div[data-testid="stDataFrame"] {{ border-radius:16px!important; overflow:hidden!important; }}
     .topbar, .home-hero, .kpi, .panel {{ box-sizing:border-box !important; max-width:100% !important; }}
-
-    /* Forzado experto: el menu lateral queda fijo visible, sin acortarse */
-    [data-testid="stSidebar"], section[data-testid="stSidebar"] {{
-        display:block !important;
-        visibility:visible !important;
-        opacity:1 !important;
-        transform:translateX(0) !important;
-        left:0 !important;
-        top:0 !important;
-        position:fixed !important;
-        z-index:1000 !important;
-        height:100vh !important;
-        width:306px !important;
-        min-width:306px !important;
-        max-width:306px !important;
-        background:linear-gradient(180deg,#062C36 0%,#0A4652 68%,#083640 100%) !important;
-        border-radius:0 32px 32px 0 !important;
-        box-shadow:0 18px 42px rgba(7,49,61,.34) !important;
-        overflow:hidden !important;
-    }}
-    [data-testid="stSidebar"] > div, section[data-testid="stSidebar"] > div {{
-        width:306px !important;
-        min-width:306px !important;
-        max-width:306px !important;
-        height:100vh !important;
-        padding:1.35rem 1rem !important;
-        box-sizing:border-box !important;
-    }}
-    [data-testid="stSidebarCollapsedControl"],
-    button[data-testid="stSidebarCollapseButton"],
-    button[title="Open sidebar"],
-    button[title="Close sidebar"] {{
-        display:none !important;
-    }}
-    .main, section.main, div[data-testid="stAppViewContainer"] > section.main {{
-        margin-left:306px !important;
-        width:calc(100% - 306px) !important;
-        max-width:calc(100% - 306px) !important;
-    }}
-    .main .block-container {{
-        max-width:1280px !important;
-        margin:0 auto !important;
-    }}
-    [data-testid="stSidebar"] .stButton button,
-    section[data-testid="stSidebar"] .stButton button {{
-        background:rgba(255,255,255,.16) !important;
-        border:1px solid rgba(255,255,255,.30) !important;
-        color:#FFFFFF !important;
-    }}
     </style>
     """, unsafe_allow_html=True)
 
