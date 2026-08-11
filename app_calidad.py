@@ -80,81 +80,83 @@ def save_files(files,rid,folio,user):
         exec_sql("INSERT INTO adjuntos(registro_id,folio,nombre_original,ruta_archivo,tipo_archivo,subido_por,subido_en) VALUES(?,?,?,?,?,?,?)",(rid,folio,file.name,str(path),file.type,user,now_iso()))
 
 def styles(compact=False):
-    nav_w = "92px" if compact else "310px"
+    sidebar_w = "94px" if compact else "306px"
     menu_text = "none" if compact else "inline"
     justify = "center" if compact else "flex-start"
     active_align = "center" if compact else "left"
-    button_width = "64px" if compact else "100%"
-    button_margin = ".52rem auto" if compact else ".14rem 0"
-    active_width = "64px" if compact else "100%"
-    active_margin = ".75rem auto .35rem auto" if compact else ".18rem 0 .35rem 0"
-    panel_min_width = "112px" if compact else "310px"
     st.markdown(f"""
     <style>
     :root {{ --navy:#062C36; --teal:#00A884; --blue:#3F7BFF; --violet:#5850EC; --bg:#F2F5F8; --text:#203047; }}
     .stApp {{ background:var(--bg); }}
     header[data-testid="stHeader"] {{ display:none; }}
-    section[data-testid="stSidebar"] {{ display:none !important; }}
-    .main .block-container {{ padding:1.15rem 1.35rem 2rem 1.35rem; max-width:100% !important; }}
+    .main .block-container {{ padding:1.15rem 1.45rem 2rem 1.45rem; max-width:100% !important; }}
 
-    /* Menú lateral izquierdo propio, independiente del sidebar nativo */
-    .left-nav-bg {{ display:none !important; }}
-    .left-menu-marker, .menu-brand, .menu-section, .menu-active {{ position:relative; z-index:2; }}
-    div[data-testid="stHorizontalBlock"]:has(.left-menu-marker) > div[data-testid="column"]:first-child {{
-        background:linear-gradient(180deg,#062C36 0%,#0A4652 70%,#083640 100%);
-        border-radius:0 30px 30px 0;
-        box-shadow:0 18px 42px rgba(7,49,61,.32);
-        padding:1.15rem 1rem !important;
-        min-height:calc(100vh - 2rem);
-        overflow:hidden;
-        box-sizing:border-box;
+    /* Menú lateral nativo: el recuadro de color es el contenedor real */
+    section[data-testid="stSidebar"] {{
+        display:block !important;
+        visibility:visible !important;
+        opacity:1 !important;
+        width:{sidebar_w} !important;
+        min-width:{sidebar_w} !important;
+        background:linear-gradient(180deg,#062C36 0%,#0A4652 68%,#083640 100%) !important;
+        border-radius:0 32px 32px 0 !important;
+        box-shadow:0 18px 42px rgba(7,49,61,.34) !important;
+        overflow:hidden !important;
     }}
-    div[data-testid="stHorizontalBlock"]:has(.left-menu-marker) > div[data-testid="column"]:first-child .stButton {{ position:relative; z-index:2; }}
-    div[data-testid="stHorizontalBlock"]:has(.left-menu-marker) > div[data-testid="column"]:first-child .stButton button {{
-        width:100%;
-        min-height:44px;
-        justify-content:{justify};
-        text-align:{active_align};
-        border-radius:13px;
-        border:1px solid rgba(255,255,255,.22);
-        background:rgba(255,255,255,.11);
-        color:#fff;
-        font-weight:850;
-        margin:.14rem 0;
-        white-space:nowrap;
-        overflow:hidden;
-        box-shadow:0 8px 18px rgba(0,0,0,.08);
+    section[data-testid="stSidebar"] > div {{
+        width:{sidebar_w} !important;
+        min-width:{sidebar_w} !important;
+        padding:1.25rem .95rem !important;
+        box-sizing:border-box !important;
     }}
-    div[data-testid="stHorizontalBlock"]:has(.left-menu-marker) > div[data-testid="column"]:first-child .stButton button:hover {{
-        background:rgba(255,255,255,.24);
-        border-color:rgba(255,255,255,.45);
-        color:#fff;
-    }}
-    .menu-brand {{ display:flex; align-items:center; gap:.65rem; margin:1rem 0 1.8rem 0; font-size:1.25rem; font-weight:950; white-space:nowrap; color:#FFFFFF; }}
+    section[data-testid="stSidebar"] * {{ color:#FFFFFF !important; }}
+    .menu-brand {{ display:flex; align-items:center; justify-content:{justify}; gap:.65rem; margin:1rem 0 1.6rem 0; font-size:1.22rem; font-weight:950; white-space:nowrap; color:#FFFFFF; }}
     .menu-brand-text, .menu-section, .menu-label {{ display:{menu_text}; }}
-    .menu-section {{ color:#BDEFE5!important; font-size:.76rem; font-weight:900; letter-spacing:.06rem; margin:.5rem 0 .65rem; }}
-    .menu-active {{
-        background:linear-gradient(135deg,#00A884 0%,#3F7BFF 58%,#5850EC 100%);
-        color:#fff;
-        border-radius:13px;
-        padding:.74rem .78rem;
-        font-weight:950;
-        margin:.18rem 0 .35rem;
-        text-align:{active_align};
-        box-shadow:0 8px 18px rgba(0,168,132,.30);
-        min-height:44px;
-        box-sizing:border-box;
-        white-space:nowrap;
-        overflow:hidden;
+    .menu-section {{ color:#BDEFE5 !important; font-size:.76rem; font-weight:900; letter-spacing:.06rem; margin:.45rem 0 .75rem 0; }}
+    section[data-testid="stSidebar"] .stButton button {{
+        width:100% !important;
+        min-height:54px !important;
+        justify-content:{justify} !important;
+        text-align:{active_align} !important;
+        background:rgba(255,255,255,.16) !important;
+        border:1px solid rgba(255,255,255,.30) !important;
+        border-radius:13px !important;
+        color:#FFFFFF !important;
+        font-weight:850 !important;
+        margin:.18rem 0 !important;
+        padding:{'.58rem' if compact else '.68rem .75rem'} !important;
+        box-shadow:0 8px 18px rgba(0,0,0,.10) !important;
+        overflow:hidden !important;
+        white-space:nowrap !important;
     }}
-
+    section[data-testid="stSidebar"] .stButton button:hover {{
+        background:rgba(255,255,255,.28) !important;
+        border-color:rgba(255,255,255,.48) !important;
+    }}
+    .menu-active {{
+        width:100% !important;
+        min-height:54px !important;
+        display:flex !important;
+        align-items:center !important;
+        justify-content:{justify} !important;
+        background:linear-gradient(135deg,#00A884 0%,#3F7BFF 58%,#5850EC 100%) !important;
+        color:#FFFFFF !important;
+        border-radius:13px !important;
+        padding:{'.58rem' if compact else '.74rem .78rem'} !important;
+        font-weight:950 !important;
+        margin:.28rem 0 .4rem 0 !important;
+        box-shadow:0 10px 24px rgba(0,168,132,.34) !important;
+        box-sizing:border-box !important;
+        white-space:nowrap !important;
+        overflow:hidden !important;
+        text-align:{active_align} !important;
+    }}
     .topbar {{ height:76px; background:#FFFFFF; display:flex; justify-content:space-between; align-items:center; padding:0 1.6rem; border:1px solid #E4EAF2; border-radius:20px; box-shadow:0 10px 26px rgba(15,23,42,.06); margin-bottom:1.15rem; }}
     .topbar-title {{ color:#0B3440; font-weight:950; font-size:1.05rem; }}
     .topbar-user {{ display:flex; gap:1rem; align-items:center; color:#526078; font-weight:850; }}
     .avatar {{ width:42px; height:42px; border-radius:50%; background:linear-gradient(135deg,#D6FFF6,#DFE1FF); display:flex; align-items:center; justify-content:center; color:#0B3440; font-weight:950; }}
-    .home-hero {{ background:linear-gradient(135deg,#FFFFFF 0%,#F7FAFC 62%,#ECFDF8 100%); border:1px solid #E2E8F0; border-radius:24px; padding:1.45rem 1.65rem; margin:0 0 1.15rem 0; box-shadow:0 14px 34px rgba(15,23,42,.07); }}
-    .home-hero-title {{ color:#203047; font-size:2.05rem; line-height:1.1; font-weight:950; letter-spacing:-.03em; margin:0 0 .45rem 0; }}
-    .home-hero-subtitle {{ color:#667085; font-size:1rem; margin:0; }}
+    .home-hero {{ background:linear-gradient(135deg,#FFFFFF 0%,#F7FAFC 62%,#ECFDF8 100%); border:1px solid #E2E8F0; border-radius:24px; padding:1.65rem 1.8rem; margin:0 0 1.15rem 0; box-shadow:0 14px 34px rgba(15,23,42,.07); }}
+    .home-hero-title {{ color:#203047; font-size:2.05rem; line-height:1.1; font-weight:950; letter-spacing:-.03em; margin:0; }}
     .kpi {{ background:#FFFFFF; border-radius:18px; padding:1.35rem; min-height:126px; border:1px solid #E3E8EF; box-shadow:0 12px 28px rgba(15,23,42,.07); position:relative; overflow:hidden; }}
     .kpi:before {{ content:""; position:absolute; left:0; top:0; bottom:0; width:5px; background:var(--c); }}
     .kpi-label {{ color:var(--c); font-size:.78rem; font-weight:950; text-transform:uppercase; }} .kpi-value {{ color:#394356; font-size:1.7rem; font-weight:950; margin-top:.35rem; }} .kpi-foot {{ color:#7C8798; font-size:.8rem; margin-top:.35rem; }}
@@ -165,312 +167,6 @@ def styles(compact=False):
     div[data-baseweb="input"] > div:focus-within, div[data-baseweb="select"] > div:focus-within, textarea:focus, input:focus {{ border-color:#00A884 !important; box-shadow:0 0 0 3px rgba(0,168,132,.16) !important; }}
     .login-card {{ max-width:480px; margin:8vh auto 1rem; background:linear-gradient(135deg,#FFFFFF 0%,#F8FBFC 62%,#ECFDF8 100%); border:1px solid #E4EAF2; border-radius:24px; padding:32px; box-shadow:0 20px 60px rgba(15,23,42,.12); text-align:center; position:relative; overflow:hidden; }} .login-title {{ color:#0B3440; font-size:2rem; font-weight:950; }} .login-title:before {{ content:"◆ "; color:#00A884; }}
     div[data-testid="stExpander"], div[data-testid="stDataFrame"] {{ border-radius:16px!important; overflow:hidden!important; }}
-
-
-    div[data-testid="stHorizontalBlock"]:has(.left-menu-marker) > div[data-testid="column"]:last-child {{
-        min-width:0 !important;
-        padding-left:.4rem !important;
-    }}
-    .topbar, .home-hero, .kpi, .panel {{
-        box-sizing:border-box;
-        width:100%;
-    }}
-    .topbar {{ margin-top:.2rem; }}
-    .home-hero {{ margin-top:.2rem; }}
-    div[data-testid="column"] {{ min-width:0 !important; }}
-
-    /* Refuerzo visual del recuadro lateral: aplica al fondo real y a la columna */
-    div[data-testid="stHorizontalBlock"]:has(.left-menu-marker) > div[data-testid="column"]:first-child {{
-        background:linear-gradient(180deg,#062C36 0%,#0A4652 68%,#083640 100%) !important;
-        border-radius:0 32px 32px 0 !important;
-        box-shadow:0 18px 42px rgba(7,49,61,.34) !important;
-        padding:1.25rem 1rem !important;
-        min-height:calc(100vh - 1rem) !important;
-    }}
-    div[data-testid="stHorizontalBlock"]:has(.left-menu-marker) > div[data-testid="column"]:first-child * {{
-        color:#FFFFFF;
-    }}
-    .left-menu-marker, .left-nav-bg, .menu-brand, .menu-section, .menu-active {{
-        position:relative;
-    }}
-    .menu-brand, .menu-section, .menu-active {{
-        z-index:3;
-    }}
-    div[data-testid="stHorizontalBlock"]:has(.left-menu-marker) > div[data-testid="column"]:first-child .element-container,
-    div[data-testid="stHorizontalBlock"]:has(.left-menu-marker) > div[data-testid="column"]:first-child .stButton {{
-        position:relative;
-        z-index:3;
-    }}
-    div[data-testid="stHorizontalBlock"]:has(.left-menu-marker) > div[data-testid="column"]:last-child {{
-        padding-left:1.15rem !important;
-        min-width:0 !important;
-    }}
-    .home-hero {{
-        padding:1.65rem 1.8rem !important;
-    }}
-
-    /* Corrección final: el recuadro de color es la columna real del menú */
-    div[data-testid="stHorizontalBlock"]:first-of-type {{
-        align-items:stretch !important;
-        gap:1.15rem !important;
-    }}
-    div[data-testid="stHorizontalBlock"]:first-of-type > div[data-testid="column"]:first-child {{
-        background:linear-gradient(180deg,#062C36 0%,#0A4652 68%,#083640 100%) !important;
-        border-radius:0 32px 32px 0 !important;
-        box-shadow:0 18px 42px rgba(7,49,61,.34) !important;
-        padding:1.25rem 1rem !important;
-        min-height:calc(100vh - 1.25rem) !important;
-        box-sizing:border-box !important;
-        overflow:hidden !important;
-        align-self:stretch !important;
-    }}
-    div[data-testid="stHorizontalBlock"]:first-of-type > div[data-testid="column"]:first-child * {{
-        color:#FFFFFF !important;
-    }}
-    div[data-testid="stHorizontalBlock"]:first-of-type > div[data-testid="column"]:first-child .stButton button {{
-        width:100% !important;
-        min-height:44px !important;
-        background:rgba(255,255,255,.13) !important;
-        border:1px solid rgba(255,255,255,.24) !important;
-        border-radius:13px !important;
-        color:#FFFFFF !important;
-        font-weight:850 !important;
-        box-shadow:0 8px 18px rgba(0,0,0,.08) !important;
-        margin:.14rem 0 !important;
-        overflow:hidden !important;
-        white-space:nowrap !important;
-    }}
-    div[data-testid="stHorizontalBlock"]:first-of-type > div[data-testid="column"]:first-child .stButton button:hover {{
-        background:rgba(255,255,255,.24) !important;
-        border-color:rgba(255,255,255,.45) !important;
-    }}
-    div[data-testid="stHorizontalBlock"]:first-of-type > div[data-testid="column"]:last-child {{
-        min-width:0 !important;
-        padding-left:.5rem !important;
-        box-sizing:border-box !important;
-    }}
-    .menu-active {{
-        background:linear-gradient(135deg,#00A884 0%,#3F7BFF 58%,#5850EC 100%) !important;
-        color:#FFFFFF !important;
-        border-radius:13px !important;
-        padding:.74rem .78rem !important;
-        font-weight:950 !important;
-        margin:.18rem 0 .35rem !important;
-        box-shadow:0 8px 18px rgba(0,168,132,.30) !important;
-        min-height:44px !important;
-        box-sizing:border-box !important;
-        white-space:nowrap !important;
-        overflow:hidden !important;
-    }}
-    .menu-brand, .menu-section {{
-        color:#FFFFFF !important;
-    }}
-    .menu-section {{
-        color:#BDEFE5 !important;
-    }}
-
-    /* Ajuste experto final: el contenedor real del menú tiene color y se adapta al modo compacto */
-    .left-nav-bg {{ display:none !important; }}
-    div[data-testid="stHorizontalBlock"]:has(.left-menu-marker) > div[data-testid="column"]:first-child {{
-        background:linear-gradient(180deg,#062C36 0%,#0A4652 68%,#083640 100%) !important;
-        border-radius:0 32px 32px 0 !important;
-        box-shadow:0 18px 42px rgba(7,49,61,.34) !important;
-        padding:1.2rem .95rem !important;
-        min-height:calc(100vh - 1rem) !important;
-        box-sizing:border-box !important;
-        overflow:hidden !important;
-    }}
-    div[data-testid="stHorizontalBlock"]:has(.left-menu-marker) > div[data-testid="column"]:first-child * {{
-        color:#FFFFFF !important;
-    }}
-    div[data-testid="stHorizontalBlock"]:has(.left-menu-marker) > div[data-testid="column"]:first-child .stButton button {{
-        width:100% !important;
-        min-height:44px !important;
-        justify-content:{'center' if compact else 'flex-start'} !important;
-        text-align:{'center' if compact else 'left'} !important;
-        background:rgba(255,255,255,.13) !important;
-        border:1px solid rgba(255,255,255,.24) !important;
-        border-radius:13px !important;
-        color:#FFFFFF !important;
-        font-weight:850 !important;
-        margin:.14rem 0 !important;
-        box-shadow:0 8px 18px rgba(0,0,0,.08) !important;
-        overflow:hidden !important;
-        white-space:nowrap !important;
-    }}
-    .menu-active {{
-        background:linear-gradient(135deg,#00A884 0%,#3F7BFF 58%,#5850EC 100%) !important;
-        color:#FFFFFF !important;
-        border-radius:13px !important;
-        padding:.74rem .78rem !important;
-        font-weight:950 !important;
-        margin:.9rem 0 .35rem !important;
-        min-height:44px !important;
-        box-shadow:0 10px 24px rgba(0,168,132,.30) !important;
-        box-sizing:border-box !important;
-        white-space:nowrap !important;
-        overflow:hidden !important;
-        text-align:{'center' if compact else 'left'} !important;
-    }}
-    .menu-brand {{ margin:1rem 0 1.6rem 0 !important; }}
-    .menu-section {{ color:#BDEFE5 !important; }}
-    div[data-testid="stHorizontalBlock"]:has(.left-menu-marker) > div[data-testid="column"]:last-child {{
-        min-width:0 !important;
-        padding-left:1rem !important;
-        box-sizing:border-box !important;
-    }}
-
-    /* Panel lateral adaptativo definitivo: fondo real + fallback visual */
-    .left-menu-marker::before {{
-        content:"";
-        position:fixed;
-        top:0;
-        left:0;
-        width:{"96px" if compact else "330px"};
-        height:100vh;
-        background:linear-gradient(180deg,#062C36 0%,#0A4652 68%,#083640 100%);
-        border-radius:0 32px 32px 0;
-        box-shadow:0 18px 42px rgba(7,49,61,.34);
-        z-index:0;
-        pointer-events:none;
-    }}
-    .left-menu-marker, .menu-brand, .menu-section, .menu-active {{ position:relative; z-index:2; }}
-    div[data-testid="stHorizontalBlock"]:has(.left-menu-marker) > div[data-testid="column"]:first-child,
-    .main .block-container > div > div > div > div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:first-child {{
-        background:linear-gradient(180deg,#062C36 0%,#0A4652 68%,#083640 100%) !important;
-        border-radius:0 32px 32px 0 !important;
-        box-shadow:0 18px 42px rgba(7,49,61,.34) !important;
-        padding:1.25rem 1rem !important;
-        min-height:calc(100vh - 1rem) !important;
-        box-sizing:border-box !important;
-        overflow:hidden !important;
-        align-self:stretch !important;
-    }}
-    div[data-testid="stHorizontalBlock"]:has(.left-menu-marker) > div[data-testid="column"]:first-child * {{ color:#FFFFFF !important; }}
-    div[data-testid="stHorizontalBlock"]:has(.left-menu-marker) > div[data-testid="column"]:first-child .stButton button {{
-        width:100% !important;
-        min-height:44px !important;
-        justify-content:{'center' if compact else 'flex-start'} !important;
-        text-align:{'center' if compact else 'left'} !important;
-        background:rgba(255,255,255,.13) !important;
-        border:1px solid rgba(255,255,255,.24) !important;
-        border-radius:13px !important;
-        color:#FFFFFF !important;
-        font-weight:850 !important;
-        margin:.14rem 0 !important;
-        box-shadow:0 8px 18px rgba(0,0,0,.08) !important;
-        overflow:hidden !important;
-        white-space:nowrap !important;
-    }}
-    div[data-testid="stHorizontalBlock"]:has(.left-menu-marker) > div[data-testid="column"]:first-child .stButton button:hover {{
-        background:rgba(255,255,255,.24) !important;
-        border-color:rgba(255,255,255,.45) !important;
-    }}
-    .menu-active {{
-        background:linear-gradient(135deg,#00A884 0%,#3F7BFF 58%,#5850EC 100%) !important;
-        color:#FFFFFF !important;
-        border-radius:13px !important;
-        padding:.74rem .78rem !important;
-        font-weight:950 !important;
-        margin:.18rem 0 .35rem !important;
-        min-height:44px !important;
-        box-shadow:0 10px 24px rgba(0,168,132,.30) !important;
-        box-sizing:border-box !important;
-        white-space:nowrap !important;
-        overflow:hidden !important;
-        text-align:{'center' if compact else 'left'} !important;
-    }}
-    .menu-brand {{ margin:1rem 0 1.6rem 0 !important; color:#FFFFFF !important; }}
-    .menu-section {{ color:#BDEFE5 !important; }}
-    div[data-testid="stHorizontalBlock"]:has(.left-menu-marker) > div[data-testid="column"]:last-child {{
-        min-width:0 !important;
-        padding-left:1.1rem !important;
-        box-sizing:border-box !important;
-    }}
-
-    /* Ajuste experto definitivo: distribución uniforme y recuadro adaptativo */
-    div[data-testid="stHorizontalBlock"]:has(.left-menu-marker) {{
-        align-items:stretch !important;
-        gap:1.25rem !important;
-    }}
-    div[data-testid="stHorizontalBlock"]:has(.left-menu-marker) > div[data-testid="column"]:first-child {{
-        background:linear-gradient(180deg,#062C36 0%,#0A4652 68%,#083640 100%) !important;
-        border-radius:0 32px 32px 0 !important;
-        box-shadow:0 18px 42px rgba(7,49,61,.34) !important;
-        padding:1.25rem .95rem !important;
-        min-height:calc(100vh - 1rem) !important;
-        min-width:{panel_min_width} !important;
-        box-sizing:border-box !important;
-        overflow:hidden !important;
-        align-self:stretch !important;
-    }}
-    div[data-testid="stHorizontalBlock"]:has(.left-menu-marker) > div[data-testid="column"]:last-child {{
-        min-width:0 !important;
-        padding-left:.6rem !important;
-        box-sizing:border-box !important;
-    }}
-    div[data-testid="stHorizontalBlock"]:has(.left-menu-marker) > div[data-testid="column"]:first-child * {{
-        color:#FFFFFF !important;
-    }}
-    .menu-brand {{
-        display:flex !important;
-        align-items:center !important;
-        justify-content:{'center' if compact else 'flex-start'} !important;
-        gap:.65rem !important;
-        margin:1rem 0 1.6rem 0 !important;
-        color:#FFFFFF !important;
-        white-space:nowrap !important;
-    }}
-    .menu-section {{
-        display:{menu_text} !important;
-        color:#BDEFE5 !important;
-        margin:.45rem 0 .75rem 0 !important;
-    }}
-    div[data-testid="stHorizontalBlock"]:has(.left-menu-marker) > div[data-testid="column"]:first-child .stButton button {{
-        width:{button_width} !important;
-        min-width:{button_width} !important;
-        max-width:{button_width} !important;
-        min-height:54px !important;
-        display:flex !important;
-        align-items:center !important;
-        justify-content:{'center' if compact else 'flex-start'} !important;
-        text-align:{'center' if compact else 'left'} !important;
-        background:rgba(255,255,255,.16) !important;
-        border:1px solid rgba(255,255,255,.30) !important;
-        border-radius:13px !important;
-        color:#FFFFFF !important;
-        font-weight:850 !important;
-        margin:{button_margin} !important;
-        padding:{'.58rem' if compact else '.68rem .75rem'} !important;
-        box-shadow:0 8px 18px rgba(0,0,0,.10) !important;
-        overflow:hidden !important;
-        white-space:nowrap !important;
-    }}
-    div[data-testid="stHorizontalBlock"]:has(.left-menu-marker) > div[data-testid="column"]:first-child .stButton button:hover {{
-        background:rgba(255,255,255,.28) !important;
-        border-color:rgba(255,255,255,.48) !important;
-    }}
-    .menu-active {{
-        width:{active_width} !important;
-        min-width:{active_width} !important;
-        max-width:{active_width} !important;
-        min-height:54px !important;
-        display:flex !important;
-        align-items:center !important;
-        justify-content:{'center' if compact else 'flex-start'} !important;
-        background:linear-gradient(135deg,#00A884 0%,#3F7BFF 58%,#5850EC 100%) !important;
-        color:#FFFFFF !important;
-        border-radius:13px !important;
-        padding:{'.58rem' if compact else '.74rem .78rem'} !important;
-        font-weight:950 !important;
-        margin:{active_margin} !important;
-        box-shadow:0 10px 24px rgba(0,168,132,.34) !important;
-        box-sizing:border-box !important;
-        white-space:nowrap !important;
-        overflow:hidden !important;
-        text-align:{'center' if compact else 'left'} !important;
-    }}
-    .menu-brand-text, .menu-label {{ display:{menu_text} !important; }}
     .topbar, .home-hero, .kpi, .panel {{ box-sizing:border-box !important; max-width:100% !important; }}
     </style>
     """, unsafe_allow_html=True)
@@ -499,28 +195,20 @@ def topbar(user):
     st.markdown(f'<div class="topbar"><div class="topbar-title">Sistema de Calidad MD</div><div class="topbar-user"><span>🔔</span><span>{user["nombre"].upper()}</span><span class="avatar">{initials}</span></div></div>',unsafe_allow_html=True)
 
 def menu_button(page, full, icon):
-    compact=st.session_state.compact; label=icon if compact else full
-    if st.session_state.page==page: st.markdown(f'<div class="menu-active">{label}</div>',unsafe_allow_html=True)
-    else:
-        if st.sidebar.button(label,key=f'menu_{page}'):
-            st.session_state.page=page; st.rerun()
-
-def menu_button(page, full, icon):
     compact=st.session_state.compact
     label=icon if compact else full
     if st.session_state.page==page:
-        st.markdown(f'<div class="menu-active">{label}</div>',unsafe_allow_html=True)
+        st.sidebar.markdown(f'<div class="menu-active"><span>{label}</span></div>',unsafe_allow_html=True)
     else:
-        if st.button(label,key=f'menu_{page}'):
+        if st.sidebar.button(label,key=f'menu_{page}'):
             st.session_state.page=page
             st.rerun()
 
 
 def left_menu():
     compact=st.session_state.compact
-    st.markdown('<span class="left-menu-marker"></span>', unsafe_allow_html=True)
-    st.markdown('<div class="menu-brand"><span>◆</span><span class="menu-brand-text">CALIDAD MD</span></div><div class="menu-section">MENÚ PRINCIPAL</div>', unsafe_allow_html=True)
-    if st.button('☰' if compact else '☰ Acortar menú', key='toggle_left_menu'):
+    st.sidebar.markdown('<div class="menu-brand"><span>◆</span><span class="menu-brand-text">CALIDAD MD</span></div><div class="menu-section">MENÚ PRINCIPAL</div>', unsafe_allow_html=True)
+    if st.sidebar.button('☰' if compact else '☰ Acortar menú', key='toggle_left_menu'):
         st.session_state.compact=not compact
         st.rerun()
     menu_button('Inicio','🏠 Inicio','🏠')
@@ -530,8 +218,8 @@ def left_menu():
         menu_button('Catálogos','🧩 Catálogos','🧩')
         menu_button('Usuarios','👤 Usuarios','👤')
         menu_button('Auditoría','🧾 Auditoría','🧾')
-    st.markdown('<div style="height:1rem"></div>',unsafe_allow_html=True)
-    if st.button('Salir' if compact else 'Cerrar sesión', key='logout_left_menu'):
+    st.sidebar.markdown('<div style="height:1rem"></div>',unsafe_allow_html=True)
+    if st.sidebar.button('Salir' if compact else 'Cerrar sesión', key='logout_left_menu'):
         audit(st.session_state.auth['usuario'],'LOGOUT','Cierre de sesión')
         st.session_state.auth=None
         st.rerun()
@@ -652,18 +340,14 @@ def main():
     if FORCE_RESET_ADMIN: reset_admin()
     user=login()
     styles(st.session_state.compact)
-    left_ratio, right_ratio = (0.235, 0.765) if not st.session_state.compact else (0.105, 0.895)
-    left_col, right_col = st.columns([left_ratio, right_ratio], gap='medium')
-    with left_col:
-        left_menu()
-    with right_col:
-        topbar(user)
-        page=st.session_state.page
-        if page=='Inicio': page_inicio()
-        elif page=='Nuevo registro': page_registro()
-        elif page=='Consulta y descarga': page_consulta()
-        elif page=='Catálogos': page_catalogos()
-        elif page=='Usuarios': page_usuarios()
-        elif page=='Auditoría': page_auditoria()
+    left_menu()
+    topbar(user)
+    page=st.session_state.page
+    if page=='Inicio': page_inicio()
+    elif page=='Nuevo registro': page_registro()
+    elif page=='Consulta y descarga': page_consulta()
+    elif page=='Catálogos': page_catalogos()
+    elif page=='Usuarios': page_usuarios()
+    elif page=='Auditoría': page_auditoria()
 
 if __name__=='__main__': main()
