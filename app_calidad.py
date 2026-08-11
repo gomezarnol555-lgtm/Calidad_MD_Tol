@@ -93,23 +93,16 @@ def styles(compact=False):
     .main .block-container {{ padding:1.15rem 1.35rem 2rem 1.35rem; max-width:100% !important; }}
 
     /* Menú lateral izquierdo propio, independiente del sidebar nativo */
-    .left-nav-bg {{
-        position:fixed;
-        top:0;
-        left:0;
-        width:{nav_w};
-        height:100vh;
+    .left-nav-bg {{ display:none; }}
+    .left-menu-marker, .menu-brand, .menu-section, .menu-active {{ position:relative; z-index:2; }}
+    div[data-testid="stHorizontalBlock"]:has(.left-menu-marker) > div[data-testid="column"]:first-child {{
         background:linear-gradient(180deg,#062C36 0%,#0A4652 70%,#083640 100%);
         border-radius:0 30px 30px 0;
         box-shadow:0 18px 42px rgba(7,49,61,.32);
-        z-index:0;
-        pointer-events:none;
-    }}
-    .left-menu-marker, .menu-brand, .menu-section, .menu-active {{ position:relative; z-index:2; }}
-    div[data-testid="stHorizontalBlock"]:has(.left-menu-marker) > div[data-testid="column"]:first-child {{
-        padding:1rem .9rem !important;
+        padding:1.15rem 1rem !important;
         min-height:calc(100vh - 2rem);
         overflow:hidden;
+        box-sizing:border-box;
     }}
     div[data-testid="stHorizontalBlock"]:has(.left-menu-marker) > div[data-testid="column"]:first-child .stButton {{ position:relative; z-index:2; }}
     div[data-testid="stHorizontalBlock"]:has(.left-menu-marker) > div[data-testid="column"]:first-child .stButton button {{
@@ -167,6 +160,18 @@ def styles(compact=False):
     div[data-baseweb="input"] > div:focus-within, div[data-baseweb="select"] > div:focus-within, textarea:focus, input:focus {{ border-color:#00A884 !important; box-shadow:0 0 0 3px rgba(0,168,132,.16) !important; }}
     .login-card {{ max-width:480px; margin:8vh auto 1rem; background:linear-gradient(135deg,#FFFFFF 0%,#F8FBFC 62%,#ECFDF8 100%); border:1px solid #E4EAF2; border-radius:24px; padding:32px; box-shadow:0 20px 60px rgba(15,23,42,.12); text-align:center; position:relative; overflow:hidden; }} .login-title {{ color:#0B3440; font-size:2rem; font-weight:950; }} .login-title:before {{ content:"◆ "; color:#00A884; }}
     div[data-testid="stExpander"], div[data-testid="stDataFrame"] {{ border-radius:16px!important; overflow:hidden!important; }}
+
+    div[data-testid="stHorizontalBlock"]:has(.left-menu-marker) > div[data-testid="column"]:last-child {
+        min-width:0 !important;
+        padding-left:.4rem !important;
+    }
+    .topbar, .home-hero, .kpi, .panel {
+        box-sizing:border-box;
+        width:100%;
+    }
+    .topbar { margin-top:.2rem; }
+    .home-hero { margin-top:.2rem; }
+    div[data-testid="column"] { min-width:0 !important; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -347,7 +352,7 @@ def main():
     if FORCE_RESET_ADMIN: reset_admin()
     user=login()
     styles(st.session_state.compact)
-    left_ratio, right_ratio = (0.18, 0.82) if not st.session_state.compact else (0.055, 0.945)
+    left_ratio, right_ratio = (0.225, 0.775) if not st.session_state.compact else (0.075, 0.925)
     left_col, right_col = st.columns([left_ratio, right_ratio], gap='medium')
     with left_col:
         left_menu()
