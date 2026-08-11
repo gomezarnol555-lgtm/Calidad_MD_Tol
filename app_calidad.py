@@ -84,6 +84,11 @@ def styles(compact=False):
     menu_text = "none" if compact else "inline"
     justify = "center" if compact else "flex-start"
     active_align = "center" if compact else "left"
+    button_width = "64px" if compact else "100%"
+    button_margin = ".52rem auto" if compact else ".14rem 0"
+    active_width = "64px" if compact else "100%"
+    active_margin = ".75rem auto .35rem auto" if compact else ".18rem 0 .35rem 0"
+    panel_min_width = "112px" if compact else "310px"
     st.markdown(f"""
     <style>
     :root {{ --navy:#062C36; --teal:#00A884; --blue:#3F7BFF; --violet:#5850EC; --bg:#F2F5F8; --text:#203047; }}
@@ -382,6 +387,91 @@ def styles(compact=False):
         padding-left:1.1rem !important;
         box-sizing:border-box !important;
     }}
+
+    /* Ajuste experto definitivo: distribución uniforme y recuadro adaptativo */
+    div[data-testid="stHorizontalBlock"]:has(.left-menu-marker) {{
+        align-items:stretch !important;
+        gap:1.25rem !important;
+    }}
+    div[data-testid="stHorizontalBlock"]:has(.left-menu-marker) > div[data-testid="column"]:first-child {{
+        background:linear-gradient(180deg,#062C36 0%,#0A4652 68%,#083640 100%) !important;
+        border-radius:0 32px 32px 0 !important;
+        box-shadow:0 18px 42px rgba(7,49,61,.34) !important;
+        padding:1.25rem .95rem !important;
+        min-height:calc(100vh - 1rem) !important;
+        min-width:{panel_min_width} !important;
+        box-sizing:border-box !important;
+        overflow:hidden !important;
+        align-self:stretch !important;
+    }}
+    div[data-testid="stHorizontalBlock"]:has(.left-menu-marker) > div[data-testid="column"]:last-child {{
+        min-width:0 !important;
+        padding-left:.6rem !important;
+        box-sizing:border-box !important;
+    }}
+    div[data-testid="stHorizontalBlock"]:has(.left-menu-marker) > div[data-testid="column"]:first-child * {{
+        color:#FFFFFF !important;
+    }}
+    .menu-brand {{
+        display:flex !important;
+        align-items:center !important;
+        justify-content:{'center' if compact else 'flex-start'} !important;
+        gap:.65rem !important;
+        margin:1rem 0 1.6rem 0 !important;
+        color:#FFFFFF !important;
+        white-space:nowrap !important;
+    }}
+    .menu-section {{
+        display:{menu_text} !important;
+        color:#BDEFE5 !important;
+        margin:.45rem 0 .75rem 0 !important;
+    }}
+    div[data-testid="stHorizontalBlock"]:has(.left-menu-marker) > div[data-testid="column"]:first-child .stButton button {{
+        width:{button_width} !important;
+        min-width:{button_width} !important;
+        max-width:{button_width} !important;
+        min-height:54px !important;
+        display:flex !important;
+        align-items:center !important;
+        justify-content:{'center' if compact else 'flex-start'} !important;
+        text-align:{'center' if compact else 'left'} !important;
+        background:rgba(255,255,255,.16) !important;
+        border:1px solid rgba(255,255,255,.30) !important;
+        border-radius:13px !important;
+        color:#FFFFFF !important;
+        font-weight:850 !important;
+        margin:{button_margin} !important;
+        padding:{'.58rem' if compact else '.68rem .75rem'} !important;
+        box-shadow:0 8px 18px rgba(0,0,0,.10) !important;
+        overflow:hidden !important;
+        white-space:nowrap !important;
+    }}
+    div[data-testid="stHorizontalBlock"]:has(.left-menu-marker) > div[data-testid="column"]:first-child .stButton button:hover {{
+        background:rgba(255,255,255,.28) !important;
+        border-color:rgba(255,255,255,.48) !important;
+    }}
+    .menu-active {{
+        width:{active_width} !important;
+        min-width:{active_width} !important;
+        max-width:{active_width} !important;
+        min-height:54px !important;
+        display:flex !important;
+        align-items:center !important;
+        justify-content:{'center' if compact else 'flex-start'} !important;
+        background:linear-gradient(135deg,#00A884 0%,#3F7BFF 58%,#5850EC 100%) !important;
+        color:#FFFFFF !important;
+        border-radius:13px !important;
+        padding:{'.58rem' if compact else '.74rem .78rem'} !important;
+        font-weight:950 !important;
+        margin:{active_margin} !important;
+        box-shadow:0 10px 24px rgba(0,168,132,.34) !important;
+        box-sizing:border-box !important;
+        white-space:nowrap !important;
+        overflow:hidden !important;
+        text-align:{'center' if compact else 'left'} !important;
+    }}
+    .menu-brand-text, .menu-label {{ display:{menu_text} !important; }}
+    .topbar, .home-hero, .kpi, .panel {{ box-sizing:border-box !important; max-width:100% !important; }}
     </style>
     """, unsafe_allow_html=True)
 
@@ -562,7 +652,7 @@ def main():
     if FORCE_RESET_ADMIN: reset_admin()
     user=login()
     styles(st.session_state.compact)
-    left_ratio, right_ratio = (0.23, 0.77) if not st.session_state.compact else (0.07, 0.93)
+    left_ratio, right_ratio = (0.235, 0.765) if not st.session_state.compact else (0.105, 0.895)
     left_col, right_col = st.columns([left_ratio, right_ratio], gap='medium')
     with left_col:
         left_menu()
