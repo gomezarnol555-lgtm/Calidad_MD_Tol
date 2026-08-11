@@ -93,19 +93,7 @@ def styles(compact=False):
     .main .block-container {{ padding:1.15rem 1.35rem 2rem 1.35rem; max-width:100% !important; }}
 
     /* Menú lateral izquierdo propio, independiente del sidebar nativo */
-    .left-nav-bg {{
-        display:block;
-        position:fixed;
-        top:0;
-        left:0;
-        width:{"96px" if compact else "340px"};
-        height:100vh;
-        background:linear-gradient(180deg,#062C36 0%,#0A4652 68%,#083640 100%);
-        border-radius:0 32px 32px 0;
-        box-shadow:0 18px 42px rgba(7,49,61,.34);
-        z-index:0;
-        pointer-events:none;
-    }}
+    .left-nav-bg {{ display:none !important; }}
     .left-menu-marker, .menu-brand, .menu-section, .menu-active {{ position:relative; z-index:2; }}
     div[data-testid="stHorizontalBlock"]:has(.left-menu-marker) > div[data-testid="column"]:first-child {{
         background:linear-gradient(180deg,#062C36 0%,#0A4652 70%,#083640 100%);
@@ -214,6 +202,66 @@ def styles(compact=False):
     }}
     .home-hero {{
         padding:1.65rem 1.8rem !important;
+    }}
+
+    /* Corrección final: el recuadro de color es la columna real del menú */
+    div[data-testid="stHorizontalBlock"]:first-of-type {{
+        align-items:stretch !important;
+        gap:1.15rem !important;
+    }}
+    div[data-testid="stHorizontalBlock"]:first-of-type > div[data-testid="column"]:first-child {{
+        background:linear-gradient(180deg,#062C36 0%,#0A4652 68%,#083640 100%) !important;
+        border-radius:0 32px 32px 0 !important;
+        box-shadow:0 18px 42px rgba(7,49,61,.34) !important;
+        padding:1.25rem 1rem !important;
+        min-height:calc(100vh - 1.25rem) !important;
+        box-sizing:border-box !important;
+        overflow:hidden !important;
+        align-self:stretch !important;
+    }}
+    div[data-testid="stHorizontalBlock"]:first-of-type > div[data-testid="column"]:first-child * {{
+        color:#FFFFFF !important;
+    }}
+    div[data-testid="stHorizontalBlock"]:first-of-type > div[data-testid="column"]:first-child .stButton button {{
+        width:100% !important;
+        min-height:44px !important;
+        background:rgba(255,255,255,.13) !important;
+        border:1px solid rgba(255,255,255,.24) !important;
+        border-radius:13px !important;
+        color:#FFFFFF !important;
+        font-weight:850 !important;
+        box-shadow:0 8px 18px rgba(0,0,0,.08) !important;
+        margin:.14rem 0 !important;
+        overflow:hidden !important;
+        white-space:nowrap !important;
+    }}
+    div[data-testid="stHorizontalBlock"]:first-of-type > div[data-testid="column"]:first-child .stButton button:hover {{
+        background:rgba(255,255,255,.24) !important;
+        border-color:rgba(255,255,255,.45) !important;
+    }}
+    div[data-testid="stHorizontalBlock"]:first-of-type > div[data-testid="column"]:last-child {{
+        min-width:0 !important;
+        padding-left:.5rem !important;
+        box-sizing:border-box !important;
+    }}
+    .menu-active {{
+        background:linear-gradient(135deg,#00A884 0%,#3F7BFF 58%,#5850EC 100%) !important;
+        color:#FFFFFF !important;
+        border-radius:13px !important;
+        padding:.74rem .78rem !important;
+        font-weight:950 !important;
+        margin:.18rem 0 .35rem !important;
+        box-shadow:0 8px 18px rgba(0,168,132,.30) !important;
+        min-height:44px !important;
+        box-sizing:border-box !important;
+        white-space:nowrap !important;
+        overflow:hidden !important;
+    }}
+    .menu-brand, .menu-section {{
+        color:#FFFFFF !important;
+    }}
+    .menu-section {{
+        color:#BDEFE5 !important;
     }}
     </style>
     """, unsafe_allow_html=True)
