@@ -1,3 +1,4 @@
+
 import streamlit as st
 import pandas as pd
 import sqlite3, hashlib, os, base64
@@ -153,19 +154,20 @@ def styles(compact=False):
         color:#00A884;
     }}
 
-    /* Forzar menú lateral izquierdo visible */
-    section[data-testid="stSidebar"] {
+
+    /* Forzar menu lateral izquierdo visible */
+    section[data-testid="stSidebar"] {{
         display:block !important;
         visibility:visible !important;
         opacity:1 !important;
         background:linear-gradient(180deg,#062C36 0%,#0A4652 70%,#083640 100%) !important;
         border-radius:0 30px 30px 0 !important;
         box-shadow:0 18px 42px rgba(7,49,61,.32) !important;
-    }
-    section[data-testid="stSidebar"] * {
+    }}
+    section[data-testid="stSidebar"] * {{
         color:#FFFFFF !important;
-    }
-    section[data-testid="stSidebar"] .stButton button {
+    }}
+    section[data-testid="stSidebar"] .stButton button {{
         width:100% !important;
         min-height:44px !important;
         border-radius:13px !important;
@@ -175,12 +177,12 @@ def styles(compact=False):
         font-weight:850 !important;
         margin:.14rem 0 !important;
         box-shadow:0 8px 18px rgba(0,0,0,.08) !important;
-    }
-    section[data-testid="stSidebar"] .stButton button:hover {
+    }}
+    section[data-testid="stSidebar"] .stButton button:hover {{
         background:rgba(255,255,255,.24) !important;
         border-color:rgba(255,255,255,.45) !important;
-    }
-    .menu-active {
+    }}
+    .menu-active {{
         background:linear-gradient(135deg,#00A884 0%,#3F7BFF 58%,#5850EC 100%) !important;
         color:#fff !important;
         border-radius:13px !important;
@@ -188,12 +190,12 @@ def styles(compact=False):
         font-weight:950 !important;
         margin:.18rem 0 .35rem !important;
         box-shadow:0 8px 18px rgba(0,168,132,.30) !important;
-    }
-    .main .block-container {
+    }}
+    .main .block-container {{
         max-width:100% !important;
         margin:0 !important;
         padding-top:1.05rem !important;
-    }
+    }}
     </style>
     """, unsafe_allow_html=True)
 
