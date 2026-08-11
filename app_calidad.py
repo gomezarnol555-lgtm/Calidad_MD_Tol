@@ -93,7 +93,19 @@ def styles(compact=False):
     .main .block-container {{ padding:1.15rem 1.35rem 2rem 1.35rem; max-width:100% !important; }}
 
     /* Menú lateral izquierdo propio, independiente del sidebar nativo */
-    .left-nav-bg {{ display:none; }}
+    .left-nav-bg {{
+        display:block;
+        position:fixed;
+        top:0;
+        left:0;
+        width:{"96px" if compact else "340px"};
+        height:100vh;
+        background:linear-gradient(180deg,#062C36 0%,#0A4652 68%,#083640 100%);
+        border-radius:0 32px 32px 0;
+        box-shadow:0 18px 42px rgba(7,49,61,.34);
+        z-index:0;
+        pointer-events:none;
+    }}
     .left-menu-marker, .menu-brand, .menu-section, .menu-active {{ position:relative; z-index:2; }}
     div[data-testid="stHorizontalBlock"]:has(.left-menu-marker) > div[data-testid="column"]:first-child {{
         background:linear-gradient(180deg,#062C36 0%,#0A4652 70%,#083640 100%);
@@ -173,6 +185,36 @@ def styles(compact=False):
     .topbar {{ margin-top:.2rem; }}
     .home-hero {{ margin-top:.2rem; }}
     div[data-testid="column"] {{ min-width:0 !important; }}
+
+    /* Refuerzo visual del recuadro lateral: aplica al fondo real y a la columna */
+    div[data-testid="stHorizontalBlock"]:has(.left-menu-marker) > div[data-testid="column"]:first-child {{
+        background:linear-gradient(180deg,#062C36 0%,#0A4652 68%,#083640 100%) !important;
+        border-radius:0 32px 32px 0 !important;
+        box-shadow:0 18px 42px rgba(7,49,61,.34) !important;
+        padding:1.25rem 1rem !important;
+        min-height:calc(100vh - 1rem) !important;
+    }}
+    div[data-testid="stHorizontalBlock"]:has(.left-menu-marker) > div[data-testid="column"]:first-child * {{
+        color:#FFFFFF;
+    }}
+    .left-menu-marker, .left-nav-bg, .menu-brand, .menu-section, .menu-active {{
+        position:relative;
+    }}
+    .menu-brand, .menu-section, .menu-active {{
+        z-index:3;
+    }}
+    div[data-testid="stHorizontalBlock"]:has(.left-menu-marker) > div[data-testid="column"]:first-child .element-container,
+    div[data-testid="stHorizontalBlock"]:has(.left-menu-marker) > div[data-testid="column"]:first-child .stButton {{
+        position:relative;
+        z-index:3;
+    }}
+    div[data-testid="stHorizontalBlock"]:has(.left-menu-marker) > div[data-testid="column"]:last-child {{
+        padding-left:1.15rem !important;
+        min-width:0 !important;
+    }}
+    .home-hero {{
+        padding:1.65rem 1.8rem !important;
+    }}
     </style>
     """, unsafe_allow_html=True)
 
@@ -242,7 +284,7 @@ def page_inicio():
     df=read_df('SELECT * FROM pnc_registros')
     if df.empty: df=pd.DataFrame(columns=['fecha_apertura','status','linea_sector','clasificacion','material_hallado','cantidad_total_pnc'])
     df['fecha_apertura']=pd.to_datetime(df['fecha_apertura'],errors='coerce')
-    st.markdown('<div class="home-hero"><div class="home-hero-title">Panel Calidad Mundo Dulce</div><p class="home-hero-subtitle">Indicadores corporativos para seguimiento de Producto No Conforme y Materia Extraña.</p></div>',unsafe_allow_html=True)
+    st.markdown('<div class="home-hero"><div class="home-hero-title">Panel Calidad Mundo Dulce</div></div>',unsafe_allow_html=True)
     with st.expander('Filtros dinámicos de indicadores',expanded=False):
         a,b,c,d=st.columns(4); fs=a.multiselect('Status',sorted(df['status'].dropna().unique())); fl=b.multiselect('Línea/Sector',sorted(df['linea_sector'].dropna().unique())); fc=c.multiselect('Clasificación',sorted(df['clasificacion'].dropna().unique())); focus=d.radio('Enfoque',['Todos','Abiertos','Cerrados','Con ME'])
     data=df.copy()
@@ -353,7 +395,7 @@ def main():
     if FORCE_RESET_ADMIN: reset_admin()
     user=login()
     styles(st.session_state.compact)
-    left_ratio, right_ratio = (0.225, 0.775) if not st.session_state.compact else (0.075, 0.925)
+    left_ratio, right_ratio = (0.24, 0.76) if not st.session_state.compact else (0.075, 0.925)
     left_col, right_col = st.columns([left_ratio, right_ratio], gap='medium')
     with left_col:
         left_menu()
