@@ -314,12 +314,80 @@ def styles(compact=False):
         padding-left:1rem !important;
         box-sizing:border-box !important;
     }}
+
+    /* Panel lateral adaptativo definitivo: fondo real + fallback visual */
+    .left-menu-marker::before {{
+        content:"";
+        position:fixed;
+        top:0;
+        left:0;
+        width:{"96px" if compact else "330px"};
+        height:100vh;
+        background:linear-gradient(180deg,#062C36 0%,#0A4652 68%,#083640 100%);
+        border-radius:0 32px 32px 0;
+        box-shadow:0 18px 42px rgba(7,49,61,.34);
+        z-index:0;
+        pointer-events:none;
+    }}
+    .left-menu-marker, .menu-brand, .menu-section, .menu-active {{ position:relative; z-index:2; }}
+    div[data-testid="stHorizontalBlock"]:has(.left-menu-marker) > div[data-testid="column"]:first-child,
+    .main .block-container > div > div > div > div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:first-child {{
+        background:linear-gradient(180deg,#062C36 0%,#0A4652 68%,#083640 100%) !important;
+        border-radius:0 32px 32px 0 !important;
+        box-shadow:0 18px 42px rgba(7,49,61,.34) !important;
+        padding:1.25rem 1rem !important;
+        min-height:calc(100vh - 1rem) !important;
+        box-sizing:border-box !important;
+        overflow:hidden !important;
+        align-self:stretch !important;
+    }}
+    div[data-testid="stHorizontalBlock"]:has(.left-menu-marker) > div[data-testid="column"]:first-child * {{ color:#FFFFFF !important; }}
+    div[data-testid="stHorizontalBlock"]:has(.left-menu-marker) > div[data-testid="column"]:first-child .stButton button {{
+        width:100% !important;
+        min-height:44px !important;
+        justify-content:{'center' if compact else 'flex-start'} !important;
+        text-align:{'center' if compact else 'left'} !important;
+        background:rgba(255,255,255,.13) !important;
+        border:1px solid rgba(255,255,255,.24) !important;
+        border-radius:13px !important;
+        color:#FFFFFF !important;
+        font-weight:850 !important;
+        margin:.14rem 0 !important;
+        box-shadow:0 8px 18px rgba(0,0,0,.08) !important;
+        overflow:hidden !important;
+        white-space:nowrap !important;
+    }}
+    div[data-testid="stHorizontalBlock"]:has(.left-menu-marker) > div[data-testid="column"]:first-child .stButton button:hover {{
+        background:rgba(255,255,255,.24) !important;
+        border-color:rgba(255,255,255,.45) !important;
+    }}
+    .menu-active {{
+        background:linear-gradient(135deg,#00A884 0%,#3F7BFF 58%,#5850EC 100%) !important;
+        color:#FFFFFF !important;
+        border-radius:13px !important;
+        padding:.74rem .78rem !important;
+        font-weight:950 !important;
+        margin:.18rem 0 .35rem !important;
+        min-height:44px !important;
+        box-shadow:0 10px 24px rgba(0,168,132,.30) !important;
+        box-sizing:border-box !important;
+        white-space:nowrap !important;
+        overflow:hidden !important;
+        text-align:{'center' if compact else 'left'} !important;
+    }}
+    .menu-brand {{ margin:1rem 0 1.6rem 0 !important; color:#FFFFFF !important; }}
+    .menu-section {{ color:#BDEFE5 !important; }}
+    div[data-testid="stHorizontalBlock"]:has(.left-menu-marker) > div[data-testid="column"]:last-child {{
+        min-width:0 !important;
+        padding-left:1.1rem !important;
+        box-sizing:border-box !important;
+    }}
     </style>
     """, unsafe_allow_html=True)
 
 def init_state():
     if 'auth' not in st.session_state: st.session_state.auth=None
-    if 'page' not in st.session_state: st.session_state.page='Nuevo registro'
+    if 'page' not in st.session_state: st.session_state.page='Inicio'
     if 'compact' not in st.session_state: st.session_state.compact=False
 
 def login():
@@ -360,18 +428,18 @@ def menu_button(page, full, icon):
 
 def left_menu():
     compact=st.session_state.compact
-    st.markdown('<div class="left-nav-bg"></div><span class="left-menu-marker"></span>', unsafe_allow_html=True)
+    st.markdown('<span class="left-menu-marker"></span>', unsafe_allow_html=True)
     st.markdown('<div class="menu-brand"><span>◆</span><span class="menu-brand-text">CALIDAD MD</span></div><div class="menu-section">MENÚ PRINCIPAL</div>', unsafe_allow_html=True)
     if st.button('☰' if compact else '☰ Acortar menú', key='toggle_left_menu'):
         st.session_state.compact=not compact
         st.rerun()
-
-    # Menú solicitado: solo Nuevo registro
-    if st.session_state.page != 'Nuevo registro':
-        st.session_state.page = 'Nuevo registro'
-    label = '📝' if compact else '📝 Nuevo registro'
-    st.markdown(f'<div class="menu-active">{label}</div>', unsafe_allow_html=True)
-
+    menu_button('Inicio','🏠 Inicio','🏠')
+    menu_button('Nuevo registro','📝 Nuevo registro','📝')
+    menu_button('Consulta y descarga','📊 Consulta y descarga','📊')
+    if is_dev():
+        menu_button('Catálogos','🧩 Catálogos','🧩')
+        menu_button('Usuarios','👤 Usuarios','👤')
+        menu_button('Auditoría','🧾 Auditoría','🧾')
     st.markdown('<div style="height:1rem"></div>',unsafe_allow_html=True)
     if st.button('Salir' if compact else 'Cerrar sesión', key='logout_left_menu'):
         audit(st.session_state.auth['usuario'],'LOGOUT','Cierre de sesión')
@@ -413,7 +481,7 @@ def page_inicio():
         st.markdown('</div></div>',unsafe_allow_html=True)
 
 def page_registro():
-    st.title('Nuevo registro PNC / ME')
+    st.title('Nuevo registro')
     prod=read_df('SELECT * FROM productos WHERE activo=1 ORDER BY descripcion'); defs=read_df('SELECT * FROM defectos WHERE activo=1 ORDER BY CAST(codigo AS INTEGER)')
     with st.form('registro'):
         c1,c2,c3=st.columns(3)
@@ -494,7 +562,7 @@ def main():
     if FORCE_RESET_ADMIN: reset_admin()
     user=login()
     styles(st.session_state.compact)
-    left_ratio, right_ratio = (0.18, 0.82) if not st.session_state.compact else (0.07, 0.93)
+    left_ratio, right_ratio = (0.23, 0.77) if not st.session_state.compact else (0.07, 0.93)
     left_col, right_col = st.columns([left_ratio, right_ratio], gap='medium')
     with left_col:
         left_menu()
