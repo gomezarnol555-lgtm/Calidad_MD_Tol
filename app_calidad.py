@@ -4,7 +4,7 @@ import sqlite3
 import hashlib
 import os
 import base64
-from urllib.parse import quote
+from urllib.parse import quote, unquote
 from datetime import datetime, date
 from pathlib import Path
 from uuid import uuid4
@@ -217,14 +217,31 @@ def save_files(files, registro_id, folio, usuario):
         )
 
 # =========================
+# URL state
+# =========================
+
+def get_query_value(key: str, default: str):
+    try:
+        value = st.query_params.get(key, default)
+        if isinstance(value, list):
+            value = value[0] if value else default
+        return unquote(str(value))
+    except Exception:
+        return default
+
+
+def build_url(page: str, collapsed: bool):
+    return f"?page={quote(page)}&menu={'1' if collapsed else '0'}"
+
+# =========================
 # Estilos y layout
 # =========================
 
 def styles(collapsed=False):
     menu_width = "88px" if collapsed else "292px"
-    menu_text = "none" if collapsed else "inline-block"
+    menu_text = "none" if collapsed else "inline-flex"
     menu_detail = "none" if collapsed else "block"
-    item_align = "center" if collapsed else "left"
+    item_justify = "center" if collapsed else "flex-start"
     st.markdown(f"""
     <style>
     :root {{
@@ -245,14 +262,16 @@ def styles(collapsed=False):
     .topbar-title {{ color:#0B3440; font-weight:900; font-size:1.05rem; }}
     .topbar-user {{ display:flex; gap:1rem; align-items:center; color:#526078; font-weight:800; }}
     .avatar {{ width:42px; height:42px; border-radius:50%; background:linear-gradient(135deg,#D6FFF6,#DFE1FF); display:flex; align-items:center; justify-content:center; color:#0B3440; font-weight:900; }}
-    .menu-panel {{ background:linear-gradient(180deg,var(--primary),var(--primary-2)); border-radius:24px; padding:1rem .85rem; min-height:calc(100vh - 2.5rem); box-shadow:var(--shadow); border:1px solid rgba(255,255,255,.10); }}
+    .menu-panel {{ background:linear-gradient(180deg,var(--primary),var(--primary-2)); border-radius:24px; padding:1rem .85rem; min-height:calc(100vh - 2.5rem); box-shadow:var(--shadow); border:1px solid rgba(255,255,255,.10); overflow:hidden; box-sizing:border-box; }}
     .menu-logo {{ display:flex; align-items:center; gap:.65rem; color:#fff; font-size:1.35rem; font-weight:900; margin-bottom:1rem; white-space:nowrap; }}
     .menu-logo-text {{ display:{menu_text}; }}
     .menu-card {{ display:{menu_detail}; color:#E9FFFA; background:rgba(255,255,255,.09); border:1px solid rgba(255,255,255,.20); border-radius:16px; padding:.85rem; margin:.8rem 0 1.05rem; font-size:.9rem; line-height:1.25; }}
     .menu-title {{ color:#CBE7E1; font-weight:900; font-size:.78rem; letter-spacing:.06rem; margin:.85rem 0 .5rem; display:{menu_detail}; }}
-    .menu-active {{ background:linear-gradient(135deg,#00A884,#5850EC); color:#fff; border-radius:13px; padding:.72rem .75rem; font-weight:900; margin:.18rem 0 .35rem; text-align:{item_align}; box-shadow:0 8px 18px rgba(0,168,132,.22); }}
-    div[data-testid="column"]:first-child .stButton button {{ width:100%; text-align:{item_align}; justify-content:{item_align}; border:1px solid rgba(255,255,255,.16); background:rgba(255,255,255,.08); color:#fff; border-radius:13px; padding:.68rem .75rem; margin:.14rem 0; font-weight:850; }}
-    div[data-testid="column"]:first-child .stButton button:hover {{ background:rgba(255,255,255,.18); border-color:rgba(255,255,255,.32); color:#fff; }}
+    .menu-link {{ display:flex; align-items:center; justify-content:{item_justify}; gap:.62rem; width:100%; box-sizing:border-box; border:1px solid rgba(255,255,255,.16); background:rgba(255,255,255,.08); color:#fff !important; border-radius:13px; padding:.72rem .78rem; margin:.18rem 0; font-weight:850; text-decoration:none !important; white-space:nowrap; overflow:hidden; min-height:44px; }}
+    .menu-link:hover {{ background:rgba(255,255,255,.18); border-color:rgba(255,255,255,.32); color:#fff !important; }}
+    .menu-link.active {{ background:linear-gradient(135deg,#00A884,#5850EC); color:#fff !important; border-color:rgba(255,255,255,.28); box-shadow:0 8px 18px rgba(0,168,132,.22); }}
+    .menu-label {{ display:{menu_text}; }}
+    .menu-toggle {{ margin-bottom:.55rem; }}
     .content-card {{ background:transparent; }}
     .page-title {{ color:#243042; font-size:2.15rem; font-weight:900; margin:1.25rem 0 .15rem; letter-spacing:-.02em; }}
     .page-subtitle {{ color:#566176; font-size:1rem; margin-bottom:1.1rem; }}
@@ -274,10 +293,6 @@ def styles(collapsed=False):
 def init_state():
     if "auth" not in st.session_state:
         st.session_state.auth = None
-    if "page" not in st.session_state:
-        st.session_state.page = "Inicio"
-    if "collapsed_menu" not in st.session_state:
-        st.session_state.collapsed_menu = False
 
 
 def login():
@@ -306,44 +321,34 @@ def topbar(user):
     st.markdown(f'<div class="topbar"><div class="topbar-title">Sistema de Calidad MD</div><div class="topbar-user"><span>🔔</span><span>{user["nombre"].upper()}</span><span class="avatar">{initials}</span></div></div>', unsafe_allow_html=True)
 
 
-def menu_item(page_name, label_full, icon_only):
-    collapsed = st.session_state.collapsed_menu
-    selected = st.session_state.page == page_name
-    label = icon_only if collapsed else label_full
-    if selected:
-        st.markdown(f'<div class="menu-active">{label}</div>', unsafe_allow_html=True)
-    else:
-        if st.button(label, key=f"menu_{page_name}"):
-            st.session_state.page = page_name
-            st.rerun()
+def menu_anchor(page_name: str, icon: str, label: str, current_page: str, collapsed: bool):
+    active = " active" if page_name == current_page else ""
+    url = build_url(page_name, collapsed)
+    return f'<a class="menu-link{active}" href="{url}"><span>{icon}</span><span class="menu-label">{label}</span></a>'
 
 
-def left_menu(user):
-    collapsed = st.session_state.collapsed_menu
-    st.markdown('<div class="menu-panel">', unsafe_allow_html=True)
+def left_menu(current_page: str, collapsed: bool):
+    toggle_url = build_url(current_page, not collapsed)
     logo_text = "" if collapsed else "CALIDAD MD"
-    st.markdown(f'<div class="menu-logo"><span>◆</span><span class="menu-logo-text">{logo_text}</span></div>', unsafe_allow_html=True)
-    if not collapsed:
-        st.markdown('<div class="menu-card">PNC y Materia Extraña</div><div class="menu-title">MENÚ PRINCIPAL</div>', unsafe_allow_html=True)
-
-    if st.button("☰" if collapsed else "☰ Acortar menú", key="toggle_menu"):
-        st.session_state.collapsed_menu = not st.session_state.collapsed_menu
-        st.rerun()
-
-    menu_item("Inicio", "🏠 Inicio", "🏠")
-    menu_item("Nuevo registro", "📝 Nuevo registro", "📝")
-    menu_item("Consulta y descarga", "📊 Consulta y descarga", "📊")
+    toggle_label = "☰" if collapsed else "☰ Acortar menú"
+    html = f'''
+    <div class="menu-panel">
+      <div class="menu-logo"><span>◆</span><span class="menu-logo-text">{logo_text}</span></div>
+      <div class="menu-card">PNC y Materia Extraña</div>
+      <div class="menu-title">MENÚ PRINCIPAL</div>
+      <a class="menu-link menu-toggle" href="{toggle_url}"><span>☰</span><span class="menu-label">{toggle_label.replace('☰ ', '')}</span></a>
+      {menu_anchor("Inicio", "🏠", "Inicio", current_page, collapsed)}
+      {menu_anchor("Nuevo registro", "📝", "Nuevo registro", current_page, collapsed)}
+      {menu_anchor("Consulta y descarga", "📊", "Consulta y descarga", current_page, collapsed)}
+    '''
     if is_dev():
-        menu_item("Catálogos", "🧩 Catálogos", "🧩")
-        menu_item("Usuarios", "👤 Usuarios", "👤")
-        menu_item("Auditoría", "🧾 Auditoría", "🧾")
-
-    st.markdown('<div style="height:1rem"></div>', unsafe_allow_html=True)
-    if st.button("Salir" if collapsed else "Cerrar sesión", key="logout"):
-        audit(user["usuario"], "LOGOUT", "Cierre de sesión")
-        st.session_state.auth = None
-        st.rerun()
-    st.markdown('</div>', unsafe_allow_html=True)
+        html += f'''
+      {menu_anchor("Catálogos", "🧩", "Catálogos", current_page, collapsed)}
+      {menu_anchor("Usuarios", "👤", "Usuarios", current_page, collapsed)}
+      {menu_anchor("Auditoría", "🧾", "Auditoría", current_page, collapsed)}
+        '''
+    html += '</div>'
+    st.markdown(html, unsafe_allow_html=True)
 
 # =========================
 # Páginas
@@ -500,31 +505,35 @@ def main():
     if FORCE_RESET_ADMIN:
         reset_admin()
     user = login()
-    styles(st.session_state.collapsed_menu)
 
-    left_ratio, right_ratio = (0.155, 0.845) if not st.session_state.collapsed_menu else (0.055, 0.945)
+    current_page = get_query_value("page", "Inicio")
+    collapsed = get_query_value("menu", "0") == "1"
+    valid_pages = ["Inicio", "Nuevo registro", "Consulta y descarga", "Catálogos", "Usuarios", "Auditoría"]
+    if current_page not in valid_pages:
+        current_page = "Inicio"
+
+    styles(collapsed)
+
+    left_ratio, right_ratio = (0.155, 0.845) if not collapsed else (0.055, 0.945)
     left_col, right_col = st.columns([left_ratio, right_ratio], gap="medium")
 
     with left_col:
-        left_menu(user)
+        left_menu(current_page, collapsed)
 
     with right_col:
-        st.markdown('<div class="content-card">', unsafe_allow_html=True)
         topbar(user)
-        page = st.session_state.page
-        if page == "Inicio":
+        if current_page == "Inicio":
             page_inicio()
-        elif page == "Nuevo registro":
+        elif current_page == "Nuevo registro":
             page_registro()
-        elif page == "Consulta y descarga":
+        elif current_page == "Consulta y descarga":
             page_consulta()
-        elif page == "Catálogos":
+        elif current_page == "Catálogos":
             page_catalogos()
-        elif page == "Usuarios":
+        elif current_page == "Usuarios":
             page_usuarios()
-        elif page == "Auditoría":
+        elif current_page == "Auditoría":
             page_auditoria()
-        st.markdown('</div>', unsafe_allow_html=True)
 
 
 if __name__ == "__main__":
