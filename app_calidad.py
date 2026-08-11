@@ -1,3 +1,4 @@
+
 import streamlit as st
 import pandas as pd
 import sqlite3, hashlib, os, base64
@@ -15,7 +16,7 @@ SEED_PRODUCTS = [('90178100868', 'CAR. BUTTERSCOTCH 36X175G CAN', '02.- Unidal',
 SEED_DEFECTS = [('1', 'PROD_MAL_ESTADO/ALTERADO/DAÑO_SALUD', 'Contaminación', 'Inocuidad'), ('2', 'PROD_PALITO_FLOJO_CON DAÑO SALUD', 'Contaminación', 'Inocuidad'), ('3', 'PROD_MP SUCIA', 'Contaminación', 'Salubridad'), ('4', 'ENV_PROD_SOBRELLENADO', 'Funcional', 'Calidad'), ('5', 'PROD_ALTA_ROTURA', 'Funcional', 'Calidad'), ('6', 'PROD_ALTO_PESO ESCURRIDO', 'Funcional', 'Calidad'), ('7', 'PROD_APELMAZADO', 'Funcional', 'Calidad'), ('8', 'PROD_APLASTADO', 'Funcional', 'Calidad'), ('9', 'PROD_ASPECTO_DEFORMADO', 'Funcional', 'Calidad'), ('10', 'PROD_ASPECTO_ESCARCHADO', 'Funcional', 'Calidad'), ('11', 'PROD_ASPECTO_INCORRECTO', 'Funcional', 'Calidad'), ('12', 'ANÁLISIS PARA PATOGENOS', 'Contaminación', 'Salubridad'), ('13', 'PROD_AUSENCIA_DE_COMPONENTE', 'Funcional', 'Calidad'), ('14', 'PROD_AUSENCIA_DE_RELLENO', 'Funcional', 'Calidad'), ('15', 'PROD_BAJO_PESO', 'Funcional', 'Legalidad'), ('16', 'PROD_BAJO_PESO ESCURRIDO', 'Funcional', 'Calidad'), ('17', 'PROD_BAÑO_INCORRECTO_EN_EXCESO_O_EN_DEFECTO', 'Funcional', 'Calidad'), ('18', 'PROD_BAÑO_INCORRECTO_QUEBRADO', 'Funcional', 'Calidad'), ('19', 'PROD_COLOR_NO PROPIO_FUERA STD.', 'Funcional', 'Calidad'), ('20', 'PROD_CONSISTENCIA_BLANDA', 'Funcional', 'Calidad'), ('21', 'PROD_CONSISTENCIA_DURA', 'Funcional', 'Calidad'), ('22', 'PROD_CONSISTENCIA_LIQUIDA', 'Funcional', 'Calidad'), ('23', 'PROD_CRUDO', 'Funcional', 'Calidad'), ('24', 'PROD_DEFECTO_TAPAS_EN_ RELLENAS', 'Funcional', 'Calidad'), ('25', 'PROD_DEFECTO_TAPAS_RELLENAS_INVERTIDAS', 'Funcional', 'Calidad'), ('26', 'PROD_DERRETIDO', 'Funcional', 'Calidad'), ('27', 'PROD_DIMENSIONES_ANORMALES', 'Funcional', 'Calidad'), ('28', 'PROD_EXUDADO', 'Funcional', 'Calidad'), ('29', 'PROD_FALTA DE ADHERENCIA', 'Funcional', 'Calidad'), ('30', 'PROD_FALTA/SIN_GRANEADO/GARRAPIÑADO', 'Funcional', 'Calidad'), ('31', 'PROD_FALTA_DE_MANI', 'Funcional', 'Calidad'), ('32', 'PROD_FALTA_O_EXCESO_DE_UN_INGREDIENTE', 'Funcional', 'Calidad'), ('33', 'PROD_FAT_BLOOM', 'Funcional', 'Calidad'), ('34', 'PROD_FLOTADO', 'Funcional', 'Calidad'), ('35', 'PROD_GERMINADO', 'Funcional', 'Calidad'), ('36', 'PROD_GRUMOS/TERRON_AZÚCAR', 'Funcional', 'Calidad'), ('37', 'PROD_HUMEDAD_BAJA', 'Funcional', 'Calidad'), ('38', 'PROD_JARABE_NO_PROPIO', 'Funcional', 'Calidad'), ('39', 'PROD_JARABE_QUEMADO', 'Funcional', 'Calidad'), ('40', 'PROD_MAL PELADO', 'Funcional', 'Calidad'), ('41', 'PROD_MANCHADO', 'Funcional', 'Calidad'), ('42', 'PROD_OBLEA CONO_SIN CROCANCIA_TEXTURA A CARTON', 'Funcional', 'Calidad'), ('43', 'PROD_OBLEA_ROTA/FALTA', 'Funcional', 'Calidad'), ('44', 'PROD_OLOR_NO_CARACTERISTICO', 'Funcional', 'Calidad'), ('45', 'PROD_PALITO_AUSENCIA/MAL CENTRADO/ROTO', 'Funcional', 'Calidad'), ('46', 'PROD_PALITO_FLOJO_SIN DAÑO SALUD', 'Funcional', 'Calidad'), ('47', 'PROD_PARTIDO_INCOMPLETOS', 'Funcional', 'Calidad'), ('48', 'PROD_PRESENCIA DE ESPUMA', 'Funcional', 'Calidad'), ('49', 'PROD_PRESENCIA_POLVILLO', 'Funcional', 'Calidad'), ('50', 'PROD_PRODUCTO_MEZCLADO', 'Funcional', 'Calidad'), ('51', 'PROD_PRODUCTO_PEGOTE', 'Funcional', 'Calidad'), ('52', 'PROD_PRODUCTO_PEGOTEADO', 'Funcional', 'Calidad'), ('53', 'PROD_PUNTOS_NEGROS_AZÚCAR', 'Funcional', 'Calidad'), ('54', 'PROD_QUEMADO_EXCESO_DE_COCCIÓN', 'Funcional', 'Calidad'), ('55', 'PROD_RELLENO_FUERA_ESPECIFICACIÓN', 'Funcional', 'Calidad'), ('56', 'PROD_RESTOS DE MASA/CREMA', 'Funcional', 'Calidad'), ('57', 'PROD_RESTOS_MASA_ AZÚCAR', 'Funcional', 'Calidad'), ('58', 'PROD_SABOR/OLOR_AMARGO', 'Funcional', 'Calidad'), ('59', 'PROD_SABOR/OLOR_HUMEDO', 'Funcional', 'Calidad'), ('60', 'PROD_SABOR/OLOR_MOHOSO_TERROSO', 'Funcional', 'Calidad'), ('61', 'PROD_SABOR/OLOR_MUY_ DULCE', 'Funcional', 'Calidad'), ('62', 'PROD_SABOR/OLOR_POCO_INTENSO', 'Funcional', 'Calidad'), ('63', 'PROD_SABOR/OLOR_QUEMADO', 'Funcional', 'Calidad'), ('64', 'PROD_SABOR/OLOR_QUIMICO_NO_CARACTERISTICO', 'Funcional', 'Calidad'), ('65', 'PROD_SABOR/OLOR_RANCIO', 'Funcional', 'Calidad'), ('66', 'PROD_SABOR/OLOR_SALADO', 'Funcional', 'Calidad'), ('67', 'PROD_SABOR_ACIDO', 'Funcional', 'Calidad'), ('68', 'PROD_SABOR_FALTA/SIN_ACIDO', 'Funcional', 'Calidad'), ('69', 'PROD_SABOR_NO_CARACTERISTICO', 'Funcional', 'Calidad'), ('70', 'PROD_SABOR_OLOR_MUY INTENSO', 'Funcional', 'Calidad'), ('71', 'PROD_SIN LIQUIDO COBERTURA', 'Funcional', 'Calidad'), ('72', 'PROD_SOBRELLENADO', 'Funcional', 'Calidad'), ('73', 'PROD_TEXTURA_BABOSO/AGUADO', 'Funcional', 'Calidad'), ('74', 'PROD_TEXTURA_BLANDA', 'Funcional', 'Calidad'), ('75', 'PROD_TEXTURA_DESGRANADO/SECO/ESCAMOSO', 'Funcional', 'Calidad'), ('76', 'PROD_TEXTURA_DURA', 'Funcional', 'Calidad'), ('77', 'PROD_TEXTURA_ESPONJOSO/GOMOSO', 'Funcional', 'Calidad'), ('78', 'PROD_TEXTURA_GRUMOSO/ÁSPERO/ARENOSO', 'Funcional', 'Calidad'), ('79', 'PROD_TEXTURA_NO UNIFORME/ CRISTALIZADO', 'Funcional', 'Calidad'), ('80', 'PROD_TEXTURA_NO_PROPIA', 'Funcional', 'Calidad'), ('81', 'PROD_TRANSFERENCIA_DE_COLOR', 'Funcional', 'Calidad'), ('82', 'PROD_VENCIDO', 'Funcional', 'Legalidad'), ('83', 'ENV_DESPRENDIMIENTO DE BARNIZ SANITARIO', 'Contaminación', 'Salubridad'), ('84', 'ENV_DESPRENDIMIENTO_EMPAQUE', 'Contaminación', 'Salubridad'), ('85', 'ENV_HINCHADO', 'Contaminación', 'Salubridad'), ('86', 'OBJ-EXTR_METALES', 'Contaminación', 'Inocuidad'), ('87', 'ENV_ABRE_FACIL_AUSENCIA/INCORRECTO', 'Funcional', 'Calidad'), ('88', 'ENV_AUSENCIA_DE_PRODUCTO', 'Funcional', 'Calidad'), ('89', 'ENV_AUSENCIA_PERFORACIÓN', 'Funcional', 'Calidad'), ('90', 'ENV_DEFECTO BARNIZ SANITARIO', 'Funcional', 'Calidad'), ('91', 'ENV_DEFECTO_CODIGO_BARRAS', 'Funcional', 'Legalidad'), ('92', 'ENV_DEFECTO_DE_FECHADO', 'Funcional', 'Legalidad'), ('93', 'ENV_DEFECTO_MIX_SURTIDO', 'Funcional', 'Calidad'), ('94', 'ENV_DEFECTUOSO', 'Funcional', 'Calidad'), ('95', 'ENV_DEFORMADO/GOLPEADO/ABOLLADO', 'Funcional', 'Calidad'), ('96', 'ENV_DIFICULTAD_APERTURA', 'Funcional', 'Calidad'), ('97', 'ENV_DISPLAY/ESTUCHE/BANDEJA_MAL_CERRADO', 'Funcional', 'Calidad'), ('98', 'ENV_EMPALME', 'Funcional', 'Calidad'), ('99', 'ENV_EMPAQUE_ROTO', 'Funcional', 'Calidad'), ('100', 'ENV_EXCESO_DE_AZÚCAR', 'Funcional', 'Calidad'), ('101', 'ENV_FALTA_ETIQUETA', 'Funcional', 'Calidad'), ('102', 'ENV_FALTANTE_UNIDADES EN BULTO PT', 'Funcional', 'Legalidad'), ('103', 'ENV_FALTANTE_UNIDADES EN ENVASE PRIMARIO', 'Funcional', 'Legalidad'), ('104', 'ENV_FALTANTE_UNIDADES EN ENVASE SECUNDARIO', 'Funcional', 'Legalidad'), ('105', 'ENV_FECHADO_ADULTERADO', 'Funcional', 'Legalidad'), ('106', 'ENV_FECHADO_AUSENTE', 'Funcional', 'Legalidad'), ('107', 'ENV_FECHADO_BORROSO', 'Funcional', 'Legalidad'), ('108', 'ENV_FLOJO', 'Funcional', 'Calidad'), ('109', 'ENV_GOLPEADO_PINCHADO', 'Funcional', 'Calidad'), ('110', 'ENV_IMAGEN ENVASE DIFIERE DEL PRODUCTO', 'Funcional', 'Calidad'), ('111', 'ENV_IMPRESIÓN_CORRIDA', 'Funcional', 'Calidad'), ('112', 'ENV_OXIDADO', 'Funcional', 'Calidad'), ('113', 'ENV_PRIMARIO_ABIERTO', 'Funcional', 'Calidad'), ('114', 'ENV_PRODUCTO MAL ENVUELTO', 'Funcional', 'Calidad'), ('115', 'ENV_PRODUCTO_DESENVUELTO', 'Funcional', 'Calidad'), ('116', 'ENV_PRODUCTO_ENVASE_INCORRECTO', 'Funcional', 'Calidad'), ('117', 'ENV_PRODUCTO_EXPUESTO', 'Funcional', 'Calidad'), ('118', 'ENV_ROTULADO_ILEGIBLE/DESCENTRADO', 'Funcional', 'Calidad'), ('119', 'ENV_SECUNDARIO/TERCIARIO_ABIERTO', 'Funcional', 'Calidad'), ('120', 'ENV_SELLADO_DEFECTUOSO', 'Funcional', 'Calidad'), ('121', 'ENV_TAPA DEFECTUOSA/CRUZADA/FLOJA', 'Funcional', 'Calidad'), ('122', 'ALERGENOS_PRESENCIA/ROTULADO ERRONEO', 'Contaminación', 'Inocuidad'), ('123', 'CONT_INSECTOS_CUCARACHAS', 'Contaminación', 'Inocuidad'), ('124', 'CONT_INSECTOS_MOSCAS', 'Contaminación', 'Inocuidad'), ('125', 'OBJ-EXTR_MADERA/PALOS', 'Contaminación', 'Inocuidad'), ('126', 'ANÁLISIS_MICROBIOLOGICO_INDICADORES', 'Contaminación', 'Salubridad'), ('127', 'OBJ-EXTR_PIEDRAS', 'Contaminación', 'Inocuidad'), ('128', 'OBJ-EXTR_PLASTICO_DURO/VIDRIO/ACRILICO/POLICARBONATO', 'Contaminación', 'Inocuidad'), ('129', 'OTROS_NO TIPIFICADO_CONT.INOCUIDAD', 'Contaminación', 'Inocuidad'), ('130', 'CONT_INSECTO_ARAÑA', 'Contaminación', 'Salubridad'), ('131', 'CONT_INSECTOS_ABEJAS', 'Contaminación', 'Salubridad'), ('132', 'CONT_INSECTOS_HORMIGAS', 'Contaminación', 'Salubridad'), ('133', 'CONT_INSECTOS_OTROS', 'Contaminación', 'Salubridad'), ('134', 'CONT_INSECTOS_POLILLAS/GUSANOS', 'Contaminación', 'Salubridad'), ('135', 'CONT_MOHO_HONGOS_LEVADURAS', 'Contaminación', 'Salubridad'), ('136', 'OBJ-EXTR_CABELLO', 'Contaminación', 'Salubridad'), ('137', 'OBJ-EXTR_CARTON', 'Contaminación', 'Salubridad'), ('138', 'OBJ-EXTR_FLEXIBLE', 'Contaminación', 'Salubridad'), ('139', 'OBJ-EXTR_GUANTE', 'Contaminación', 'Salubridad'), ('140', 'OBJ-EXTR_HILOS_ALGODÓN/LONAS/BANDAS', 'Contaminación', 'Salubridad'), ('141', 'OBJ-EXTR_HILOS_HILACHAS_AZUCAR', 'Contaminación', 'Salubridad'), ('142', 'OBJ-EXTR_NYLON', 'Contaminación', 'Salubridad'), ('143', 'OBJ-EXTR_PAPEL', 'Contaminación', 'Salubridad'), ('144', 'OBJ-EXTR_PIEZA_DENTAL', 'Contaminación', 'Salubridad'), ('145', 'OBJ-EXTR_PINTURA', 'Contaminación', 'Salubridad'), ('146', 'OBJ-EXTR_PLASTICO_BLANDO/CERDAS', 'Contaminación', 'Salubridad'), ('147', 'OTROS_NO TIPIFICADO_CONT.SALUBRIDAD', 'Contaminación', 'Salubridad'), ('148', 'SUST-EXTR_CHICHARRON_OBLEA QUEMADA', 'Contaminación', 'Salubridad'), ('149', 'SUST-EXTR_DEL_HORNO', 'Contaminación', 'Salubridad'), ('150', 'SUST-EXTR_GRASA/LUBRICANTE_EQUIPO', 'Contaminación', 'Salubridad'), ('151', 'SUST-EXTR_OTROS', 'Contaminación', 'Salubridad'), ('152', 'SUST-EXTR_PUNTOS_NEGROS', 'Contaminación', 'Salubridad'), ('153', 'OBJ_EXTR_OTROS', 'Funcional', 'Calidad'), ('154', 'OTROS_NO TIPIFICADO_FUNCIONAL', 'Funcional', 'Calidad'), ('155', 'SUST-EXTR_EXUDADO', 'Funcional', 'Calidad'), ('156', 'SUST-EXTR_GRASA_PRODUCTO', 'Funcional', 'Calidad'), ('157', 'SUST-EXTR_INGREDIENTE_MAL_DISUELTO', 'Funcional', 'Calidad'), ('158', 'PATRON_NO_DETECTADO', 'Contaminación', 'Inocuidad'), ('159', 'ENV_PRIMARIO_CODIFICADO', 'Funcional', 'Legalidad'), ('160', 'ENV_SECUNDARIO_CODIFICADO', 'Funcional', 'Legalidad'), ('161', 'ENV_TERCIARIO_CODIFICADO', 'Funcional', 'Legalidad'), ('162', 'CONTAMINACION CON AGUA', 'Contaminación', 'Salubridad')]
 SEED_CATALOGS = {'supervisor': ['AGUSTIN ABEL', 'JAVIER PACHECO', 'MARTIN TRUJILLO', 'SANDRA GAMBOA', 'JUAN CARLOS DOMINGUEZ', 'DANIEL JIMENEZ', 'VICTOR AYALA', 'LUIS GERARDO', 'GERSON VAZQUEZ', 'JOSE LUIS HERNANDEZ', 'EDUARDO VELAZQUEZ', 'FRANCISCO FIRO', 'FAVIAN TARANGO', 'ANDREA ESQUIVEL', 'ESVEIDA CORNEJO', 'YESENIA PEREZ', 'ISMAEL PEREZ', 'JESUS SANCHEZ', 'FERNANDA CUADRA', 'FERNANDA ALVAREZ', 'SUPERVISORES BOB,OBLEAS NV1', 'SUPERVISORES DUVALIN, MOLDEO NV1', 'SUPERVISORES NV2', 'SUPERVISORES NV3'], 'analista': ['ELIZABETH ALMAZAN', 'ALEJANDRO BECERRIL', 'ALFREDO CHAVEZ', 'JENNIFER CARRILLO', 'MARISOL GARCIA', 'VERONICA GÓMEZ', 'ARNOL GOMEZ', 'KAREN HERAZ', 'DULCE HERNÁNDEZ', 'PAOLA JIMENEZ', 'URIEL LEON', 'BRENDA MARTINEZ', 'DIANA MELQUIADES', 'ISAIAS MILPA', 'BERENICE MORALES', 'JOSÉ RAMIREZ'], 'nave': ['1', '2', '3'], 'status': ['ABIERTO', 'CERRADO'], 'responsable_detecta': ['AUTONOMO', 'CALIDAD'], 'etapa': ['PT', 'SE', 'MP'], 'linea_sector': ['BON O BON', 'OBLEAS', 'MOLDEO', 'FABRIMA', 'DELTA', 'J&R', 'CIMIS', 'MOLINOS', 'TETRA', 'CONCAS', 'BUTTER', 'CARAMELO', 'BATCH', 'EUROMEC', 'FLOW VARIOS', 'STICK', 'TNA', 'ENVAFLEX', 'YAMATO DE POOSH', 'MBP', 'GD´S', 'PFM', 'MULTIFORMATO', 'HD', 'C2', 'C1', 'CONFORMADO HUEVITO', 'TAMIZADO', 'RECUBIERTO', 'TROQUEL POOSH', 'CONFITADO'], 'turno': ['A', 'B', 'C', 'MIXTO'], 'tipo_defecto': ['Funcional', 'Contaminación'], 'disposicion': ['Reproceso', 'Retrabajo', 'Decomiso', 'Inspección', 'Aprobado en segunda instancia', 'Otro']}
 
-st.set_page_config(page_title=APP_NAME, page_icon="✅", layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(page_title=APP_NAME, page_icon="✅", layout="wide", initial_sidebar_state="collapsed")
 
 
 def now_iso(): return datetime.now().isoformat(timespec="seconds")
@@ -80,81 +81,47 @@ def save_files(files,rid,folio,user):
         exec_sql("INSERT INTO adjuntos(registro_id,folio,nombre_original,ruta_archivo,tipo_archivo,subido_por,subido_en) VALUES(?,?,?,?,?,?,?)",(rid,folio,file.name,str(path),file.type,user,now_iso()))
 
 def styles(compact=False):
-    sidebar_w = "258px"
-    st.markdown(f"""
+    st.markdown("""
     <style>
-    :root {{ --navy:#062C36; --teal:#00A884; --blue:#3F7BFF; --violet:#5850EC; --bg:#F2F5F8; --text:#203047; }}
-    .stApp {{ background:var(--bg); }}
-    header[data-testid="stHeader"] {{ display:none; }}
-    .main .block-container {{ padding:1.15rem 1.45rem 2rem 1.45rem; max-width:100% !important; }}
+    :root { --navy:#062C36; --navy2:#0A4652; --navy3:#083640; --teal:#00A884; --blue:#3F7BFF; --violet:#5850EC; --bg:#F2F5F8; --text:#203047; }
+    .stApp { background:var(--bg); }
+    header[data-testid="stHeader"] { display:none; }
+    section[data-testid="stSidebar"] { display:none !important; }
+    [data-testid="stSidebarCollapsedControl"], button[title="Open sidebar"], button[title="Close sidebar"] { display:none !important; }
+    .main .block-container { padding:1rem 1.25rem 2rem 1.25rem; max-width:100% !important; }
 
-    /* Menú lateral izquierdo estable: sin acortar, sin overlay, sin invadir contenido */
-    section[data-testid="stSidebar"] {{
-        display:block !important;
-        visibility:visible !important;
-        opacity:1 !important;
-        width:{sidebar_w} !important;
-        min-width:{sidebar_w} !important;
-        max-width:{sidebar_w} !important;
+    /* Layout principal: columna izquierda SIEMPRE visible */
+    div[data-testid="stHorizontalBlock"]:has(.left-menu-marker) { align-items:stretch !important; gap:1.2rem !important; }
+    div[data-testid="stHorizontalBlock"]:has(.left-menu-marker) > div[data-testid="column"]:first-child {
         background:linear-gradient(180deg,#062C36 0%,#0A4652 68%,#083640 100%) !important;
         border-radius:0 28px 28px 0 !important;
         box-shadow:0 16px 34px rgba(7,49,61,.30) !important;
-        overflow:hidden !important;
-    }}
-    section[data-testid="stSidebar"] > div {{
-        width:{sidebar_w} !important;
-        min-width:{sidebar_w} !important;
-        max-width:{sidebar_w} !important;
-        padding:1.25rem .95rem !important;
+        padding:1.25rem 1rem !important;
+        min-height:calc(100vh - 1rem) !important;
         box-sizing:border-box !important;
-    }}
-    section[data-testid="stSidebar"] * {{ color:#FFFFFF !important; }}
-    /* Controles nativos visibles: permiten recuperar el menú si alguien lo cierra */
-    [data-testid="stSidebarCollapsedControl"],
-    button[data-testid="stSidebarCollapseButton"],
-    button[title="Open sidebar"],
-    button[title="Close sidebar"] {{
-        display:flex !important;
-        visibility:visible !important;
-        opacity:1 !important;
-        z-index:9999 !important;
-    }}
-    [data-testid="stSidebarCollapsedControl"] button,
-    button[data-testid="stSidebarCollapseButton"],
-    button[title="Open sidebar"],
-    button[title="Close sidebar"] {{
-        background:#FFFFFF !important;
-        color:#062C36 !important;
-        border:1px solid #D0D7E2 !important;
-        border-radius:10px !important;
-        box-shadow:0 8px 18px rgba(7,49,61,.18) !important;
-    }}
-    [data-testid="stSidebarCollapsedControl"] svg,
-    button[data-testid="stSidebarCollapseButton"] svg,
-    button[title="Open sidebar"] svg,
-    button[title="Close sidebar"] svg {{
-        fill:#062C36 !important;
-        color:#062C36 !important;
-    }}
+        overflow:hidden !important;
+        align-self:stretch !important;
+    }
+    div[data-testid="stHorizontalBlock"]:has(.left-menu-marker) > div[data-testid="column"]:first-child * { color:#FFFFFF !important; }
+    div[data-testid="stHorizontalBlock"]:has(.left-menu-marker) > div[data-testid="column"]:last-child {
+        min-width:0 !important;
+        padding-left:.25rem !important;
+        box-sizing:border-box !important;
+    }
+    /* Fallback por si el navegador no aplica :has correctamente */
+    .main .block-container > div > div > div[data-testid="stHorizontalBlock"]:first-of-type > div[data-testid="column"]:first-child {
+        background:linear-gradient(180deg,#062C36 0%,#0A4652 68%,#083640 100%) !important;
+        border-radius:0 28px 28px 0 !important;
+        box-shadow:0 16px 34px rgba(7,49,61,.30) !important;
+        padding:1.25rem 1rem !important;
+        min-height:calc(100vh - 1rem) !important;
+        box-sizing:border-box !important;
+        overflow:hidden !important;
+    }
 
-    .menu-brand {{
-        display:flex;
-        align-items:center;
-        gap:.6rem;
-        margin:1rem 0 1.55rem 0;
-        font-size:1.12rem;
-        font-weight:950;
-        white-space:nowrap;
-        color:#FFFFFF !important;
-    }}
-    .menu-section {{
-        color:#BDEFE5 !important;
-        font-size:.74rem;
-        font-weight:900;
-        letter-spacing:.06rem;
-        margin:.4rem 0 .7rem 0;
-    }}
-    section[data-testid="stSidebar"] .stButton button {{
+    .menu-brand { display:flex; align-items:center; gap:.6rem; margin:1rem 0 1.55rem 0; font-size:1.12rem; font-weight:950; white-space:nowrap; color:#FFFFFF !important; }
+    .menu-section { color:#BDEFE5 !important; font-size:.74rem; font-weight:900; letter-spacing:.06rem; margin:.4rem 0 .7rem 0; }
+    div[data-testid="stHorizontalBlock"]:has(.left-menu-marker) > div[data-testid="column"]:first-child .stButton button {
         width:auto !important;
         max-width:100% !important;
         min-height:44px !important;
@@ -172,13 +139,13 @@ def styles(compact=False):
         box-shadow:0 7px 16px rgba(0,0,0,.10) !important;
         overflow:hidden !important;
         white-space:nowrap !important;
-    }}
-    section[data-testid="stSidebar"] .stButton button:hover {{
+    }
+    div[data-testid="stHorizontalBlock"]:has(.left-menu-marker) > div[data-testid="column"]:first-child .stButton button:hover {
         background:rgba(255,255,255,.28) !important;
         border-color:rgba(255,255,255,.55) !important;
         color:#FFFFFF !important;
-    }}
-    .menu-active {{
+    }
+    .menu-active {
         display:inline-flex !important;
         align-items:center !important;
         justify-content:flex-start !important;
@@ -196,25 +163,25 @@ def styles(compact=False):
         white-space:nowrap !important;
         overflow:hidden !important;
         text-align:left !important;
-    }}
+    }
 
-    .topbar {{ height:76px; background:#FFFFFF; display:flex; justify-content:space-between; align-items:center; padding:0 1.6rem; border:1px solid #E4EAF2; border-radius:20px; box-shadow:0 10px 26px rgba(15,23,42,.06); margin-bottom:1.15rem; }}
-    .topbar-title {{ color:#0B3440; font-weight:950; font-size:1.05rem; }}
-    .topbar-user {{ display:flex; gap:1rem; align-items:center; color:#526078; font-weight:850; }}
-    .avatar {{ width:42px; height:42px; border-radius:50%; background:linear-gradient(135deg,#D6FFF6,#DFE1FF); display:flex; align-items:center; justify-content:center; color:#0B3440; font-weight:950; }}
-    .home-hero {{ background:linear-gradient(135deg,#FFFFFF 0%,#F7FAFC 62%,#ECFDF8 100%); border:1px solid #E2E8F0; border-radius:24px; padding:1.65rem 1.8rem; margin:0 0 1.15rem 0; box-shadow:0 14px 34px rgba(15,23,42,.07); }}
-    .home-hero-title {{ color:#203047; font-size:2.05rem; line-height:1.1; font-weight:950; letter-spacing:-.03em; margin:0; }}
-    .kpi {{ background:#FFFFFF; border-radius:18px; padding:1.35rem; min-height:126px; border:1px solid #E3E8EF; box-shadow:0 12px 28px rgba(15,23,42,.07); position:relative; overflow:hidden; }}
-    .kpi:before {{ content:""; position:absolute; left:0; top:0; bottom:0; width:5px; background:var(--c); }}
-    .kpi-label {{ color:var(--c); font-size:.78rem; font-weight:950; text-transform:uppercase; }} .kpi-value {{ color:#394356; font-size:1.7rem; font-weight:950; margin-top:.35rem; }} .kpi-foot {{ color:#7C8798; font-size:.8rem; margin-top:.35rem; }}
-    .panel {{ background:#FFFFFF; border:1px solid #E0E6EE; border-radius:18px; box-shadow:0 12px 28px rgba(15,23,42,.07); margin-top:1.25rem; overflow:hidden; }} .panel-header {{ padding:1rem 1.25rem; border-bottom:1px solid #E2E8F0; color:#0B3440; font-weight:950; }} .panel-body {{ padding:1.25rem; }}
-    div[data-testid="stForm"] {{ background:#FFFFFF !important; border:1px solid #E4EAF2 !important; border-radius:22px !important; padding:1.15rem 1.25rem !important; box-shadow:0 14px 34px rgba(15,23,42,.07) !important; }}
-    label, .stTextInput label, .stTextArea label, .stSelectbox label, .stNumberInput label, .stDateInput label, .stFileUploader label {{ color:#344054 !important; font-weight:850 !important; font-size:.82rem !important; }}
-    div[data-baseweb="input"] > div, div[data-baseweb="select"] > div, textarea, input {{ background:#F9FAFB !important; border:1px solid #D0D7E2 !important; border-radius:12px !important; color:#1F2937 !important; box-shadow:inset 0 1px 0 rgba(255,255,255,.8) !important; }}
-    div[data-baseweb="input"] > div:focus-within, div[data-baseweb="select"] > div:focus-within, textarea:focus, input:focus {{ border-color:#00A884 !important; box-shadow:0 0 0 3px rgba(0,168,132,.16) !important; }}
-    .login-card {{ max-width:480px; margin:8vh auto 1rem; background:linear-gradient(135deg,#FFFFFF 0%,#F8FBFC 62%,#ECFDF8 100%); border:1px solid #E4EAF2; border-radius:24px; padding:32px; box-shadow:0 20px 60px rgba(15,23,42,.12); text-align:center; position:relative; overflow:hidden; }} .login-title {{ color:#0B3440; font-size:2rem; font-weight:950; }} .login-title:before {{ content:"◆ "; color:#00A884; }}
-    div[data-testid="stExpander"], div[data-testid="stDataFrame"] {{ border-radius:16px!important; overflow:hidden!important; }}
-    .topbar, .home-hero, .kpi, .panel {{ box-sizing:border-box !important; max-width:100% !important; }}
+    .topbar { height:76px; background:#FFFFFF; display:flex; justify-content:space-between; align-items:center; padding:0 1.6rem; border:1px solid #E4EAF2; border-radius:20px; box-shadow:0 10px 26px rgba(15,23,42,.06); margin-bottom:1.15rem; }
+    .topbar-title { color:#0B3440; font-weight:950; font-size:1.05rem; }
+    .topbar-user { display:flex; gap:1rem; align-items:center; color:#526078; font-weight:850; }
+    .avatar { width:42px; height:42px; border-radius:50%; background:linear-gradient(135deg,#D6FFF6,#DFE1FF); display:flex; align-items:center; justify-content:center; color:#0B3440; font-weight:950; }
+    .home-hero { background:linear-gradient(135deg,#FFFFFF 0%,#F7FAFC 62%,#ECFDF8 100%); border:1px solid #E2E8F0; border-radius:24px; padding:1.65rem 1.8rem; margin:0 0 1.15rem 0; box-shadow:0 14px 34px rgba(15,23,42,.07); }
+    .home-hero-title { color:#203047; font-size:2.05rem; line-height:1.1; font-weight:950; letter-spacing:-.03em; margin:0; }
+    .kpi { background:#FFFFFF; border-radius:18px; padding:1.35rem; min-height:126px; border:1px solid #E3E8EF; box-shadow:0 12px 28px rgba(15,23,42,.07); position:relative; overflow:hidden; }
+    .kpi:before { content:""; position:absolute; left:0; top:0; bottom:0; width:5px; background:var(--c); }
+    .kpi-label { color:var(--c); font-size:.78rem; font-weight:950; text-transform:uppercase; } .kpi-value { color:#394356; font-size:1.7rem; font-weight:950; margin-top:.35rem; } .kpi-foot { color:#7C8798; font-size:.8rem; margin-top:.35rem; }
+    .panel { background:#FFFFFF; border:1px solid #E0E6EE; border-radius:18px; box-shadow:0 12px 28px rgba(15,23,42,.07); margin-top:1.25rem; overflow:hidden; } .panel-header { padding:1rem 1.25rem; border-bottom:1px solid #E2E8F0; color:#0B3440; font-weight:950; } .panel-body { padding:1.25rem; }
+    div[data-testid="stForm"] { background:#FFFFFF !important; border:1px solid #E4EAF2 !important; border-radius:22px !important; padding:1.15rem 1.25rem !important; box-shadow:0 14px 34px rgba(15,23,42,.07) !important; }
+    label, .stTextInput label, .stTextArea label, .stSelectbox label, .stNumberInput label, .stDateInput label, .stFileUploader label { color:#344054 !important; font-weight:850 !important; font-size:.82rem !important; }
+    div[data-baseweb="input"] > div, div[data-baseweb="select"] > div, textarea, input { background:#F9FAFB !important; border:1px solid #D0D7E2 !important; border-radius:12px !important; color:#1F2937 !important; box-shadow:inset 0 1px 0 rgba(255,255,255,.8) !important; }
+    div[data-baseweb="input"] > div:focus-within, div[data-baseweb="select"] > div:focus-within, textarea:focus, input:focus { border-color:#00A884 !important; box-shadow:0 0 0 3px rgba(0,168,132,.16) !important; }
+    .login-card { max-width:480px; margin:8vh auto 1rem; background:linear-gradient(135deg,#FFFFFF 0%,#F8FBFC 62%,#ECFDF8 100%); border:1px solid #E4EAF2; border-radius:24px; padding:32px; box-shadow:0 20px 60px rgba(15,23,42,.12); text-align:center; position:relative; overflow:hidden; } .login-title { color:#0B3440; font-size:2rem; font-weight:950; } .login-title:before { content:"◆ "; color:#00A884; }
+    div[data-testid="stExpander"], div[data-testid="stDataFrame"] { border-radius:16px!important; overflow:hidden!important; }
+    .topbar, .home-hero, .kpi, .panel { box-sizing:border-box !important; max-width:100% !important; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -243,15 +210,16 @@ def topbar(user):
 def menu_button(page, full, icon):
     label=full
     if st.session_state.page==page:
-        st.sidebar.markdown(f'<div class="menu-active"><span>{label}</span></div>',unsafe_allow_html=True)
+        st.markdown(f'<div class="menu-active"><span>{label}</span></div>',unsafe_allow_html=True)
     else:
-        if st.sidebar.button(label,key=f'menu_{page}'):
+        if st.button(label,key=f'menu_{page}'):
             st.session_state.page=page
             st.rerun()
 
 
 def left_menu():
-    st.sidebar.markdown('<div class="menu-brand"><span>◆</span><span class="menu-brand-text">CALIDAD MD</span></div><div class="menu-section">MENÚ PRINCIPAL</div>', unsafe_allow_html=True)
+    st.markdown('<span class="left-menu-marker"></span>', unsafe_allow_html=True)
+    st.markdown('<div class="menu-brand"><span>◆</span><span class="menu-brand-text">CALIDAD MD</span></div><div class="menu-section">MENÚ PRINCIPAL</div>', unsafe_allow_html=True)
     menu_button('Inicio','🏠 Inicio','🏠')
     menu_button('Nuevo registro','📝 Nuevo registro','📝')
     menu_button('Consulta y descarga','📊 Consulta y descarga','📊')
@@ -259,8 +227,8 @@ def left_menu():
         menu_button('Catálogos','🧩 Catálogos','🧩')
         menu_button('Usuarios','👤 Usuarios','👤')
         menu_button('Auditoría','🧾 Auditoría','🧾')
-    st.sidebar.markdown('<div style="height:1rem"></div>',unsafe_allow_html=True)
-    if st.sidebar.button('Cerrar sesión', key='logout_left_menu'):
+    st.markdown('<div style="height:1rem"></div>',unsafe_allow_html=True)
+    if st.button('Cerrar sesión', key='logout_left_menu'):
         audit(st.session_state.auth['usuario'],'LOGOUT','Cierre de sesión')
         st.session_state.auth=None
         st.rerun()
@@ -381,14 +349,17 @@ def main():
     if FORCE_RESET_ADMIN: reset_admin()
     user=login()
     styles(False)
-    left_menu()
-    topbar(user)
-    page=st.session_state.page
-    if page=='Inicio': page_inicio()
-    elif page=='Nuevo registro': page_registro()
-    elif page=='Consulta y descarga': page_consulta()
-    elif page=='Catálogos': page_catalogos()
-    elif page=='Usuarios': page_usuarios()
-    elif page=='Auditoría': page_auditoria()
+    left_col, right_col = st.columns([0.18, 0.82], gap='medium')
+    with left_col:
+        left_menu()
+    with right_col:
+        topbar(user)
+        page=st.session_state.page
+        if page=='Inicio': page_inicio()
+        elif page=='Nuevo registro': page_registro()
+        elif page=='Consulta y descarga': page_consulta()
+        elif page=='Catálogos': page_catalogos()
+        elif page=='Usuarios': page_usuarios()
+        elif page=='Auditoría': page_auditoria()
 
 if __name__=='__main__': main()
