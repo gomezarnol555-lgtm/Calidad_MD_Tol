@@ -191,66 +191,118 @@ def styles(collapsed=False):
     .login-title {{ color:#0B3440; font-size:2rem; font-weight:900; }}
     .login-subtitle {{ color:#64748B; margin-bottom:18px; }}
 
-    /* Fallback robusto: aplica color al primer bloque/columna del layout principal */
-    div[data-testid="stHorizontalBlock"]:first-of-type > div[data-testid="column"]:first-child {{
-        background:linear-gradient(180deg,#062C36 0%,#0E5260 100%) !important;
-        border-radius:26px !important;
-        padding:1rem .85rem !important;
-        min-height:calc(100vh - 2.5rem) !important;
-        box-shadow:0 16px 36px rgba(7,49,61,.32) !important;
-        border:1px solid rgba(255,255,255,.16) !important;
-        overflow:hidden !important;
-        box-sizing:border-box !important;
-    }}
-    div[data-testid="stHorizontalBlock"]:first-of-type > div[data-testid="column"]:first-child * {{ color:#fff !important; }}
-    div[data-testid="stHorizontalBlock"]:first-of-type > div[data-testid="column"]:first-child div[role="radiogroup"] label {{
-        background:rgba(255,255,255,.10) !important;
-        border:1px solid rgba(255,255,255,.18) !important;
-        border-radius:13px !important;
-        padding:.62rem .75rem !important;
-        margin:.16rem 0 !important;
-        min-height:42px !important;
-        width:100% !important;
-        overflow:hidden !important;
-    }}
-    div[data-testid="stHorizontalBlock"]:first-of-type > div[data-testid="column"]:first-child div[role="radiogroup"] label:has(input:checked) {{
-        background:linear-gradient(135deg,#00A884,#5850EC) !important;
-        box-shadow:0 8px 18px rgba(0,168,132,.24) !important;
-        border-color:rgba(255,255,255,.32) !important;
-    }}
-    div[data-testid="stHorizontalBlock"]:first-of-type > div[data-testid="column"]:first-child div[role="radiogroup"] label[data-baseweb="radio"] > div:first-child {{ display:none !important; }}
 
-    /* Color directo al bloque vertical que contiene el menú */
-    div[data-testid="stVerticalBlock"]:has(.menu-marker) {{
-        background:linear-gradient(180deg,#062C36 0%,#0E5260 100%) !important;
+    /* Fondo fijo del recuadro del menú: no afecta la hoja principal */
+    .menu-bg-fixed {
+        position:fixed;
+        top:1rem;
+        left:1rem;
+        width:{"88px" if collapsed else "292px"};
+        height:calc(100vh - 2rem);
+        background:linear-gradient(180deg,#062C36 0%,#0E5260 58%,#0A3F4B 100%);
+        border:1px solid rgba(255,255,255,.18);
+        border-radius:26px;
+        box-shadow:0 18px 42px rgba(7,49,61,.35);
+        z-index:0;
+        pointer-events:none;
+    }
+    .menu-marker, .menu-logo, .menu-title, .menu-active-button {
+        position:relative;
+        z-index:2;
+    }
+    div[data-testid="column"] .stButton {
+        position:relative;
+        z-index:2;
+    }
+    div[data-testid="column"]:has(.menu-marker) {
+        background:transparent !important;
         border-radius:26px !important;
         padding:1rem .85rem !important;
         min-height:calc(100vh - 2.5rem) !important;
-        box-shadow:0 16px 36px rgba(7,49,61,.34) !important;
-        border:1px solid rgba(255,255,255,.16) !important;
         overflow:hidden !important;
         box-sizing:border-box !important;
-    }}
-    div[data-testid="stVerticalBlock"]:has(.menu-marker) .stButton button {{
+    }
+    div[data-testid="column"]:has(.menu-marker) .stButton button {
         width:100% !important;
         min-height:44px !important;
         justify-content:{item_justify} !important;
         text-align:{'center' if collapsed else 'left'} !important;
-        border:1px solid rgba(255,255,255,.18) !important;
-        background:rgba(255,255,255,.10) !important;
-        color:#fff !important;
+        border:1px solid rgba(255,255,255,.24) !important;
+        background:rgba(255,255,255,.13) !important;
+        color:#FFFFFF !important;
         border-radius:13px !important;
         padding:.68rem .75rem !important;
-        margin:.12rem 0 !important;
+        margin:.14rem 0 !important;
         font-weight:850 !important;
         white-space:nowrap !important;
         overflow:hidden !important;
-    }}
-    div[data-testid="stVerticalBlock"]:has(.menu-marker) .stButton button:hover {{
-        background:rgba(255,255,255,.22) !important;
-        border-color:rgba(255,255,255,.38) !important;
-        color:#fff !important;
-    }}
+    }
+    div[data-testid="column"]:has(.menu-marker) .stButton button:hover {
+        background:rgba(255,255,255,.25) !important;
+        border-color:rgba(255,255,255,.45) !important;
+        color:#FFFFFF !important;
+    }
+    .menu-logo { color:#FFFFFF !important; }
+    .menu-title { color:#BDEFE5 !important; }
+    .menu-active-button {
+        background:linear-gradient(135deg,#00A884 0%,#3F7BFF 58%,#5850EC 100%);
+        color:#fff;
+        border-radius:13px;
+        padding:.74rem .78rem;
+        font-weight:900;
+        margin:.18rem 0 .35rem;
+        text-align:{'center' if collapsed else 'left'};
+        box-shadow:0 8px 18px rgba(0,168,132,.30);
+        min-height:44px;
+        box-sizing:border-box;
+        white-space:nowrap;
+        overflow:hidden;
+    }
+    /* Hoja principal más corporativa */
+    .stApp { background:#F2F5F8 !important; }
+    .topbar {
+        border-radius:20px !important;
+        margin:1rem 0 1.25rem 0 !important;
+        box-shadow:0 10px 26px rgba(15,23,42,.06) !important;
+        border:1px solid #E4EAF2 !important;
+    }
+    h1, h2, h3, .page-title { color:#203047 !important; }
+    .page-subtitle { color:#667085 !important; }
+    /* Casillas modernas */
+    div[data-testid="stForm"] {
+        background:#FFFFFF !important;
+        border:1px solid #E4EAF2 !important;
+        border-radius:22px !important;
+        padding:1.15rem 1.25rem !important;
+        box-shadow:0 14px 34px rgba(15,23,42,.07) !important;
+    }
+    label, .stTextInput label, .stTextArea label, .stSelectbox label, .stNumberInput label, .stDateInput label, .stFileUploader label {
+        color:#344054 !important;
+        font-weight:800 !important;
+        font-size:.82rem !important;
+    }
+    div[data-baseweb="input"] > div,
+    div[data-baseweb="select"] > div,
+    textarea,
+    input {
+        background:#F9FAFB !important;
+        border:1px solid #D0D7E2 !important;
+        border-radius:12px !important;
+        color:#1F2937 !important;
+        box-shadow:inset 0 1px 0 rgba(255,255,255,.8) !important;
+    }
+    div[data-baseweb="input"] > div:focus-within,
+    div[data-baseweb="select"] > div:focus-within,
+    textarea:focus,
+    input:focus {
+        border-color:#00A884 !important;
+        box-shadow:0 0 0 3px rgba(0,168,132,.16) !important;
+    }
+    .stTextArea textarea { min-height:92px !important; }
+    .stForm button[kind="primary"], .stButton button, .stDownloadButton button {
+        border-radius:12px !important;
+        font-weight:850 !important;
+    }
     </style>
     """, unsafe_allow_html=True)
 
@@ -298,6 +350,7 @@ def menu_item(page_name: str, label_full: str, icon_only: str, current_page: str
 
 def left_menu(current_page: str, collapsed: bool):
     logo_text = "" if collapsed else "CALIDAD MD"
+    st.markdown('<div class="menu-bg-fixed"></div>', unsafe_allow_html=True)
     st.markdown('<span class="menu-marker"></span>', unsafe_allow_html=True)
     st.markdown(f'<div class="menu-logo"><span>◆</span><span class="menu-logo-text">{logo_text}</span></div>', unsafe_allow_html=True)
     if not collapsed:
