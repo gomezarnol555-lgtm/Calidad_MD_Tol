@@ -286,6 +286,52 @@ def styles(collapsed=False):
     .login-card {{ max-width:480px; margin:6vh auto; background:#fff; border-radius:24px; padding:32px; box-shadow:0 20px 60px rgba(15,23,42,.12); }}
     .login-title {{ color:#0B3440; font-size:2rem; font-weight:900; }}
     .login-subtitle {{ color:#64748B; margin-bottom:18px; }}
+
+    div[data-testid="column"]:has(.menu-marker) {{
+        background:linear-gradient(180deg,var(--primary),var(--primary-2));
+        border-radius:24px;
+        padding:1rem .85rem;
+        min-height:calc(100vh - 2.5rem);
+        box-shadow:var(--shadow);
+        border:1px solid rgba(255,255,255,.10);
+        overflow:hidden;
+        box-sizing:border-box;
+    }}
+    div[data-testid="column"]:has(.menu-marker) .stButton button {{
+        width:100%;
+        min-height:44px;
+        justify-content:{item_justify};
+        text-align:{'center' if collapsed else 'left'};
+        border:1px solid rgba(255,255,255,.16);
+        background:rgba(255,255,255,.08);
+        color:#fff;
+        border-radius:13px;
+        padding:.68rem .75rem;
+        margin:.12rem 0;
+        font-weight:850;
+        white-space:nowrap;
+        overflow:hidden;
+    }}
+    div[data-testid="column"]:has(.menu-marker) .stButton button:hover {{
+        background:rgba(255,255,255,.18);
+        border-color:rgba(255,255,255,.32);
+        color:#fff;
+    }}
+    .menu-active-button {{
+        background:linear-gradient(135deg,#00A884,#5850EC);
+        color:#fff;
+        border-radius:13px;
+        padding:.74rem .78rem;
+        font-weight:900;
+        margin:.18rem 0 .35rem;
+        text-align:{'center' if collapsed else 'left'};
+        box-shadow:0 8px 18px rgba(0,168,132,.22);
+        min-height:44px;
+        box-sizing:border-box;
+        white-space:nowrap;
+        overflow:hidden;
+    }}
+    .menu-marker {{ display:none; }}
     </style>
     """, unsafe_allow_html=True)
 
@@ -293,6 +339,10 @@ def styles(collapsed=False):
 def init_state():
     if "auth" not in st.session_state:
         st.session_state.auth = None
+    if "current_page" not in st.session_state:
+        st.session_state.current_page = "Inicio"
+    if "collapsed_menu" not in st.session_state:
+        st.session_state.collapsed_menu = False
 
 
 def login():
@@ -321,34 +371,40 @@ def topbar(user):
     st.markdown(f'<div class="topbar"><div class="topbar-title">Sistema de Calidad MD</div><div class="topbar-user"><span>🔔</span><span>{user["nombre"].upper()}</span><span class="avatar">{initials}</span></div></div>', unsafe_allow_html=True)
 
 
-def menu_anchor(page_name: str, icon: str, label: str, current_page: str, collapsed: bool):
-    active = " active" if page_name == current_page else ""
-    url = build_url(page_name, collapsed)
-    return f'<a class="menu-link{active}" href="{url}"><span>{icon}</span><span class="menu-label">{label}</span></a>'
+def menu_item(page_name: str, label_full: str, icon_only: str, current_page: str, collapsed: bool):
+    label = icon_only if collapsed else label_full
+    if page_name == current_page:
+        st.markdown(f'<div class="menu-active-button">{label}</div>', unsafe_allow_html=True)
+    else:
+        if st.button(label, key=f"menu_btn_{page_name}"):
+            st.session_state["current_page"] = page_name
+            st.rerun()
 
 
 def left_menu(current_page: str, collapsed: bool):
-    toggle_url = build_url(current_page, not collapsed)
     logo_text = "" if collapsed else "CALIDAD MD"
-    toggle_label = "☰" if collapsed else "☰ Acortar menú"
-    html = f'''
-    <div class="menu-panel">
-      <div class="menu-logo"><span>◆</span><span class="menu-logo-text">{logo_text}</span></div>
-      <div class="menu-card">PNC y Materia Extraña</div>
-      <div class="menu-title">MENÚ PRINCIPAL</div>
-      <a class="menu-link menu-toggle" href="{toggle_url}"><span>☰</span><span class="menu-label">{toggle_label.replace('☰ ', '')}</span></a>
-      {menu_anchor("Inicio", "🏠", "Inicio", current_page, collapsed)}
-      {menu_anchor("Nuevo registro", "📝", "Nuevo registro", current_page, collapsed)}
-      {menu_anchor("Consulta y descarga", "📊", "Consulta y descarga", current_page, collapsed)}
-    '''
+    st.markdown('<span class="menu-marker"></span>', unsafe_allow_html=True)
+    st.markdown(f'<div class="menu-logo"><span>◆</span><span class="menu-logo-text">{logo_text}</span></div>', unsafe_allow_html=True)
+    if not collapsed:
+        st.markdown('<div class="menu-title">MENÚ PRINCIPAL</div>', unsafe_allow_html=True)
+
+    if st.button("☰" if collapsed else "☰ Acortar menú", key="toggle_menu_btn"):
+        st.session_state["collapsed_menu"] = not collapsed
+        st.rerun()
+
+    menu_item("Inicio", "🏠 Inicio", "🏠", current_page, collapsed)
+    menu_item("Nuevo registro", "📝 Nuevo registro", "📝", current_page, collapsed)
+    menu_item("Consulta y descarga", "📊 Consulta y descarga", "📊", current_page, collapsed)
     if is_dev():
-        html += f'''
-      {menu_anchor("Catálogos", "🧩", "Catálogos", current_page, collapsed)}
-      {menu_anchor("Usuarios", "👤", "Usuarios", current_page, collapsed)}
-      {menu_anchor("Auditoría", "🧾", "Auditoría", current_page, collapsed)}
-        '''
-    html += '</div>'
-    st.markdown(html, unsafe_allow_html=True)
+        menu_item("Catálogos", "🧩 Catálogos", "🧩", current_page, collapsed)
+        menu_item("Usuarios", "👤 Usuarios", "👤", current_page, collapsed)
+        menu_item("Auditoría", "🧾 Auditoría", "🧾", current_page, collapsed)
+
+    st.markdown('<div style="height:1rem"></div>', unsafe_allow_html=True)
+    if st.button("Salir" if collapsed else "Cerrar sesión", key="logout_btn"):
+        audit(st.session_state.auth["usuario"], "LOGOUT", "Cierre de sesión")
+        st.session_state.auth = None
+        st.rerun()
 
 # =========================
 # Páginas
@@ -506,15 +562,16 @@ def main():
         reset_admin()
     user = login()
 
-    current_page = get_query_value("page", "Inicio")
-    collapsed = get_query_value("menu", "0") == "1"
+    current_page = st.session_state.get("current_page", "Inicio")
+    collapsed = st.session_state.get("collapsed_menu", False)
     valid_pages = ["Inicio", "Nuevo registro", "Consulta y descarga", "Catálogos", "Usuarios", "Auditoría"]
     if current_page not in valid_pages:
         current_page = "Inicio"
+        st.session_state.current_page = current_page
 
     styles(collapsed)
 
-    left_ratio, right_ratio = (0.155, 0.845) if not collapsed else (0.055, 0.945)
+    left_ratio, right_ratio = (0.16, 0.84) if not collapsed else (0.06, 0.94)
     left_col, right_col = st.columns([left_ratio, right_ratio], gap="medium")
 
     with left_col:
