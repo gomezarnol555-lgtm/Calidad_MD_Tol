@@ -182,6 +182,68 @@ def styles(compact=False):
     .login-card { max-width:480px; margin:8vh auto 1rem; background:linear-gradient(135deg,#FFFFFF 0%,#F8FBFC 62%,#ECFDF8 100%); border:1px solid #E4EAF2; border-radius:24px; padding:32px; box-shadow:0 20px 60px rgba(15,23,42,.12); text-align:center; position:relative; overflow:hidden; } .login-title { color:#0B3440; font-size:2rem; font-weight:950; } .login-title:before { content:"◆ "; color:#00A884; }
     div[data-testid="stExpander"], div[data-testid="stDataFrame"] { border-radius:16px!important; overflow:hidden!important; }
     .topbar, .home-hero, .kpi, .panel { box-sizing:border-box !important; max-width:100% !important; }
+
+    /* Panel de color del menú: fondo independiente y estable */
+    .left-menu-bg {
+        position:fixed;
+        top:0;
+        left:0;
+        width:282px;
+        height:100vh;
+        background:linear-gradient(180deg,#062C36 0%,#0A4652 68%,#083640 100%);
+        border-radius:0 28px 28px 0;
+        box-shadow:0 16px 34px rgba(7,49,61,.30);
+        z-index:0;
+        pointer-events:none;
+    }
+    .left-menu-marker, .menu-brand, .menu-section, .menu-active {
+        position:relative;
+        z-index:3;
+    }
+    div[data-testid="stHorizontalBlock"]:first-of-type > div[data-testid="column"]:first-child {
+        position:relative !important;
+        z-index:2 !important;
+        padding:1.25rem 1rem !important;
+        min-height:calc(100vh - 1rem) !important;
+        box-sizing:border-box !important;
+        overflow:hidden !important;
+    }
+    div[data-testid="stHorizontalBlock"]:first-of-type > div[data-testid="column"]:first-child * {
+        color:#FFFFFF !important;
+    }
+    div[data-testid="stHorizontalBlock"]:first-of-type > div[data-testid="column"]:first-child .stButton,
+    div[data-testid="stHorizontalBlock"]:first-of-type > div[data-testid="column"]:first-child .element-container {
+        position:relative !important;
+        z-index:3 !important;
+    }
+    div[data-testid="stHorizontalBlock"]:first-of-type > div[data-testid="column"]:first-child .stButton button {
+        width:auto !important;
+        max-width:100% !important;
+        min-height:44px !important;
+        display:inline-flex !important;
+        align-items:center !important;
+        justify-content:flex-start !important;
+        text-align:left !important;
+        background:rgba(255,255,255,.18) !important;
+        border:1px solid rgba(255,255,255,.34) !important;
+        border-radius:12px !important;
+        color:#FFFFFF !important;
+        font-weight:850 !important;
+        margin:.18rem 0 !important;
+        padding:.58rem .75rem !important;
+        box-shadow:0 7px 16px rgba(0,0,0,.10) !important;
+        overflow:hidden !important;
+        white-space:nowrap !important;
+    }
+    div[data-testid="stHorizontalBlock"]:first-of-type > div[data-testid="column"]:first-child .stButton button:hover {
+        background:rgba(255,255,255,.28) !important;
+        border-color:rgba(255,255,255,.55) !important;
+    }
+    div[data-testid="stHorizontalBlock"]:first-of-type > div[data-testid="column"]:last-child {
+        min-width:0 !important;
+        padding-left:.25rem !important;
+        box-sizing:border-box !important;
+    }
     </style>
     """, unsafe_allow_html=True)
 
@@ -218,7 +280,7 @@ def menu_button(page, full, icon):
 
 
 def left_menu():
-    st.markdown('<span class="left-menu-marker"></span>', unsafe_allow_html=True)
+    st.markdown('<div class="left-menu-bg"></div><span class="left-menu-marker"></span>', unsafe_allow_html=True)
     st.markdown('<div class="menu-brand"><span>◆</span><span class="menu-brand-text">CALIDAD MD</span></div><div class="menu-section">MENÚ PRINCIPAL</div>', unsafe_allow_html=True)
     menu_button('Inicio','🏠 Inicio','🏠')
     menu_button('Nuevo registro','📝 Nuevo registro','📝')
