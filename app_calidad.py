@@ -192,7 +192,7 @@ def styles(collapsed=False):
     .login-subtitle {{ color:#64748B; margin-bottom:18px; }}
 
     /* Fallback robusto: aplica color al primer bloque/columna del layout principal */
-    div[data-testid="stHorizontalBlock"]:first-of-type > div[data-testid="column"]:first-child {
+    div[data-testid="stHorizontalBlock"]:first-of-type > div[data-testid="column"]:first-child {{
         background:linear-gradient(180deg,#062C36 0%,#0E5260 100%) !important;
         border-radius:26px !important;
         padding:1rem .85rem !important;
@@ -201,9 +201,9 @@ def styles(collapsed=False):
         border:1px solid rgba(255,255,255,.16) !important;
         overflow:hidden !important;
         box-sizing:border-box !important;
-    }
-    div[data-testid="stHorizontalBlock"]:first-of-type > div[data-testid="column"]:first-child * { color:#fff !important; }
-    div[data-testid="stHorizontalBlock"]:first-of-type > div[data-testid="column"]:first-child div[role="radiogroup"] label {
+    }}
+    div[data-testid="stHorizontalBlock"]:first-of-type > div[data-testid="column"]:first-child * {{ color:#fff !important; }}
+    div[data-testid="stHorizontalBlock"]:first-of-type > div[data-testid="column"]:first-child div[role="radiogroup"] label {{
         background:rgba(255,255,255,.10) !important;
         border:1px solid rgba(255,255,255,.18) !important;
         border-radius:13px !important;
@@ -212,13 +212,13 @@ def styles(collapsed=False):
         min-height:42px !important;
         width:100% !important;
         overflow:hidden !important;
-    }
-    div[data-testid="stHorizontalBlock"]:first-of-type > div[data-testid="column"]:first-child div[role="radiogroup"] label:has(input:checked) {
+    }}
+    div[data-testid="stHorizontalBlock"]:first-of-type > div[data-testid="column"]:first-child div[role="radiogroup"] label:has(input:checked) {{
         background:linear-gradient(135deg,#00A884,#5850EC) !important;
         box-shadow:0 8px 18px rgba(0,168,132,.24) !important;
         border-color:rgba(255,255,255,.32) !important;
-    }
-    div[data-testid="stHorizontalBlock"]:first-of-type > div[data-testid="column"]:first-child div[role="radiogroup"] label[data-baseweb="radio"] > div:first-child { display:none !important; }
+    }}
+    div[data-testid="stHorizontalBlock"]:first-of-type > div[data-testid="column"]:first-child div[role="radiogroup"] label[data-baseweb="radio"] > div:first-child {{ display:none !important; }}
     </style>
     """, unsafe_allow_html=True)
 
