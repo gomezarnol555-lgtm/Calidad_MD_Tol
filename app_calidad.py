@@ -219,6 +219,38 @@ def styles(collapsed=False):
         border-color:rgba(255,255,255,.32) !important;
     }}
     div[data-testid="stHorizontalBlock"]:first-of-type > div[data-testid="column"]:first-child div[role="radiogroup"] label[data-baseweb="radio"] > div:first-child {{ display:none !important; }}
+
+    /* Color directo al bloque vertical que contiene el menú */
+    div[data-testid="stVerticalBlock"]:has(.menu-marker) {{
+        background:linear-gradient(180deg,#062C36 0%,#0E5260 100%) !important;
+        border-radius:26px !important;
+        padding:1rem .85rem !important;
+        min-height:calc(100vh - 2.5rem) !important;
+        box-shadow:0 16px 36px rgba(7,49,61,.34) !important;
+        border:1px solid rgba(255,255,255,.16) !important;
+        overflow:hidden !important;
+        box-sizing:border-box !important;
+    }}
+    div[data-testid="stVerticalBlock"]:has(.menu-marker) .stButton button {{
+        width:100% !important;
+        min-height:44px !important;
+        justify-content:{item_justify} !important;
+        text-align:{'center' if collapsed else 'left'} !important;
+        border:1px solid rgba(255,255,255,.18) !important;
+        background:rgba(255,255,255,.10) !important;
+        color:#fff !important;
+        border-radius:13px !important;
+        padding:.68rem .75rem !important;
+        margin:.12rem 0 !important;
+        font-weight:850 !important;
+        white-space:nowrap !important;
+        overflow:hidden !important;
+    }}
+    div[data-testid="stVerticalBlock"]:has(.menu-marker) .stButton button:hover {{
+        background:rgba(255,255,255,.22) !important;
+        border-color:rgba(255,255,255,.38) !important;
+        color:#fff !important;
+    }}
     </style>
     """, unsafe_allow_html=True)
 
@@ -275,42 +307,13 @@ def left_menu(current_page: str, collapsed: bool):
         st.session_state["collapsed_menu"] = not collapsed
         st.rerun()
 
-    pages = ["Inicio", "Nuevo registro", "Consulta y descarga"]
-    labels_full = {
-        "Inicio": "🏠 Inicio",
-        "Nuevo registro": "📝 Nuevo registro",
-        "Consulta y descarga": "📊 Consulta y descarga",
-        "Catálogos": "🧩 Catálogos",
-        "Usuarios": "👤 Usuarios",
-        "Auditoría": "🧾 Auditoría",
-    }
-    labels_icon = {
-        "Inicio": "🏠",
-        "Nuevo registro": "📝",
-        "Consulta y descarga": "📊",
-        "Catálogos": "🧩",
-        "Usuarios": "👤",
-        "Auditoría": "🧾",
-    }
+    menu_item("Inicio", "🏠 Inicio", "🏠", current_page, collapsed)
+    menu_item("Nuevo registro", "📝 Nuevo registro", "📝", current_page, collapsed)
+    menu_item("Consulta y descarga", "📊 Consulta y descarga", "📊", current_page, collapsed)
     if is_dev():
-        pages += ["Catálogos", "Usuarios", "Auditoría"]
-
-    labels = [labels_icon[p] if collapsed else labels_full[p] for p in pages]
-    current_label = labels_icon.get(current_page, "🏠") if collapsed else labels_full.get(current_page, "🏠 Inicio")
-    if current_label not in labels:
-        current_label = labels[0]
-    selected_label = st.radio(
-        "Pestañas principales",
-        labels,
-        index=labels.index(current_label),
-        label_visibility="collapsed",
-        key="menu_radio_collapsed" if collapsed else "menu_radio_expanded",
-    )
-    reverse = {labels_icon[p] if collapsed else labels_full[p]: p for p in pages}
-    selected_page = reverse[selected_label]
-    if selected_page != current_page:
-        st.session_state["current_page"] = selected_page
-        st.rerun()
+        menu_item("Catálogos", "🧩 Catálogos", "🧩", current_page, collapsed)
+        menu_item("Usuarios", "👤 Usuarios", "👤", current_page, collapsed)
+        menu_item("Auditoría", "🧾 Auditoría", "🧾", current_page, collapsed)
 
     st.markdown('<div style="height:1rem"></div>', unsafe_allow_html=True)
     if st.button("Salir" if collapsed else "Cerrar sesión", key="logout_btn"):
