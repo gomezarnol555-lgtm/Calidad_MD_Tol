@@ -1,4 +1,3 @@
-
 import streamlit as st
 import pandas as pd
 import sqlite3, hashlib, os, base64
@@ -16,7 +15,7 @@ SEED_PRODUCTS = [('90178100868', 'CAR. BUTTERSCOTCH 36X175G CAN', '02.- Unidal',
 SEED_DEFECTS = [('1', 'PROD_MAL_ESTADO/ALTERADO/DAÑO_SALUD', 'Contaminación', 'Inocuidad'), ('2', 'PROD_PALITO_FLOJO_CON DAÑO SALUD', 'Contaminación', 'Inocuidad'), ('3', 'PROD_MP SUCIA', 'Contaminación', 'Salubridad'), ('4', 'ENV_PROD_SOBRELLENADO', 'Funcional', 'Calidad'), ('5', 'PROD_ALTA_ROTURA', 'Funcional', 'Calidad'), ('6', 'PROD_ALTO_PESO ESCURRIDO', 'Funcional', 'Calidad'), ('7', 'PROD_APELMAZADO', 'Funcional', 'Calidad'), ('8', 'PROD_APLASTADO', 'Funcional', 'Calidad'), ('9', 'PROD_ASPECTO_DEFORMADO', 'Funcional', 'Calidad'), ('10', 'PROD_ASPECTO_ESCARCHADO', 'Funcional', 'Calidad'), ('11', 'PROD_ASPECTO_INCORRECTO', 'Funcional', 'Calidad'), ('12', 'ANÁLISIS PARA PATOGENOS', 'Contaminación', 'Salubridad'), ('13', 'PROD_AUSENCIA_DE_COMPONENTE', 'Funcional', 'Calidad'), ('14', 'PROD_AUSENCIA_DE_RELLENO', 'Funcional', 'Calidad'), ('15', 'PROD_BAJO_PESO', 'Funcional', 'Legalidad'), ('16', 'PROD_BAJO_PESO ESCURRIDO', 'Funcional', 'Calidad'), ('17', 'PROD_BAÑO_INCORRECTO_EN_EXCESO_O_EN_DEFECTO', 'Funcional', 'Calidad'), ('18', 'PROD_BAÑO_INCORRECTO_QUEBRADO', 'Funcional', 'Calidad'), ('19', 'PROD_COLOR_NO PROPIO_FUERA STD.', 'Funcional', 'Calidad'), ('20', 'PROD_CONSISTENCIA_BLANDA', 'Funcional', 'Calidad'), ('21', 'PROD_CONSISTENCIA_DURA', 'Funcional', 'Calidad'), ('22', 'PROD_CONSISTENCIA_LIQUIDA', 'Funcional', 'Calidad'), ('23', 'PROD_CRUDO', 'Funcional', 'Calidad'), ('24', 'PROD_DEFECTO_TAPAS_EN_ RELLENAS', 'Funcional', 'Calidad'), ('25', 'PROD_DEFECTO_TAPAS_RELLENAS_INVERTIDAS', 'Funcional', 'Calidad'), ('26', 'PROD_DERRETIDO', 'Funcional', 'Calidad'), ('27', 'PROD_DIMENSIONES_ANORMALES', 'Funcional', 'Calidad'), ('28', 'PROD_EXUDADO', 'Funcional', 'Calidad'), ('29', 'PROD_FALTA DE ADHERENCIA', 'Funcional', 'Calidad'), ('30', 'PROD_FALTA/SIN_GRANEADO/GARRAPIÑADO', 'Funcional', 'Calidad'), ('31', 'PROD_FALTA_DE_MANI', 'Funcional', 'Calidad'), ('32', 'PROD_FALTA_O_EXCESO_DE_UN_INGREDIENTE', 'Funcional', 'Calidad'), ('33', 'PROD_FAT_BLOOM', 'Funcional', 'Calidad'), ('34', 'PROD_FLOTADO', 'Funcional', 'Calidad'), ('35', 'PROD_GERMINADO', 'Funcional', 'Calidad'), ('36', 'PROD_GRUMOS/TERRON_AZÚCAR', 'Funcional', 'Calidad'), ('37', 'PROD_HUMEDAD_BAJA', 'Funcional', 'Calidad'), ('38', 'PROD_JARABE_NO_PROPIO', 'Funcional', 'Calidad'), ('39', 'PROD_JARABE_QUEMADO', 'Funcional', 'Calidad'), ('40', 'PROD_MAL PELADO', 'Funcional', 'Calidad'), ('41', 'PROD_MANCHADO', 'Funcional', 'Calidad'), ('42', 'PROD_OBLEA CONO_SIN CROCANCIA_TEXTURA A CARTON', 'Funcional', 'Calidad'), ('43', 'PROD_OBLEA_ROTA/FALTA', 'Funcional', 'Calidad'), ('44', 'PROD_OLOR_NO_CARACTERISTICO', 'Funcional', 'Calidad'), ('45', 'PROD_PALITO_AUSENCIA/MAL CENTRADO/ROTO', 'Funcional', 'Calidad'), ('46', 'PROD_PALITO_FLOJO_SIN DAÑO SALUD', 'Funcional', 'Calidad'), ('47', 'PROD_PARTIDO_INCOMPLETOS', 'Funcional', 'Calidad'), ('48', 'PROD_PRESENCIA DE ESPUMA', 'Funcional', 'Calidad'), ('49', 'PROD_PRESENCIA_POLVILLO', 'Funcional', 'Calidad'), ('50', 'PROD_PRODUCTO_MEZCLADO', 'Funcional', 'Calidad'), ('51', 'PROD_PRODUCTO_PEGOTE', 'Funcional', 'Calidad'), ('52', 'PROD_PRODUCTO_PEGOTEADO', 'Funcional', 'Calidad'), ('53', 'PROD_PUNTOS_NEGROS_AZÚCAR', 'Funcional', 'Calidad'), ('54', 'PROD_QUEMADO_EXCESO_DE_COCCIÓN', 'Funcional', 'Calidad'), ('55', 'PROD_RELLENO_FUERA_ESPECIFICACIÓN', 'Funcional', 'Calidad'), ('56', 'PROD_RESTOS DE MASA/CREMA', 'Funcional', 'Calidad'), ('57', 'PROD_RESTOS_MASA_ AZÚCAR', 'Funcional', 'Calidad'), ('58', 'PROD_SABOR/OLOR_AMARGO', 'Funcional', 'Calidad'), ('59', 'PROD_SABOR/OLOR_HUMEDO', 'Funcional', 'Calidad'), ('60', 'PROD_SABOR/OLOR_MOHOSO_TERROSO', 'Funcional', 'Calidad'), ('61', 'PROD_SABOR/OLOR_MUY_ DULCE', 'Funcional', 'Calidad'), ('62', 'PROD_SABOR/OLOR_POCO_INTENSO', 'Funcional', 'Calidad'), ('63', 'PROD_SABOR/OLOR_QUEMADO', 'Funcional', 'Calidad'), ('64', 'PROD_SABOR/OLOR_QUIMICO_NO_CARACTERISTICO', 'Funcional', 'Calidad'), ('65', 'PROD_SABOR/OLOR_RANCIO', 'Funcional', 'Calidad'), ('66', 'PROD_SABOR/OLOR_SALADO', 'Funcional', 'Calidad'), ('67', 'PROD_SABOR_ACIDO', 'Funcional', 'Calidad'), ('68', 'PROD_SABOR_FALTA/SIN_ACIDO', 'Funcional', 'Calidad'), ('69', 'PROD_SABOR_NO_CARACTERISTICO', 'Funcional', 'Calidad'), ('70', 'PROD_SABOR_OLOR_MUY INTENSO', 'Funcional', 'Calidad'), ('71', 'PROD_SIN LIQUIDO COBERTURA', 'Funcional', 'Calidad'), ('72', 'PROD_SOBRELLENADO', 'Funcional', 'Calidad'), ('73', 'PROD_TEXTURA_BABOSO/AGUADO', 'Funcional', 'Calidad'), ('74', 'PROD_TEXTURA_BLANDA', 'Funcional', 'Calidad'), ('75', 'PROD_TEXTURA_DESGRANADO/SECO/ESCAMOSO', 'Funcional', 'Calidad'), ('76', 'PROD_TEXTURA_DURA', 'Funcional', 'Calidad'), ('77', 'PROD_TEXTURA_ESPONJOSO/GOMOSO', 'Funcional', 'Calidad'), ('78', 'PROD_TEXTURA_GRUMOSO/ÁSPERO/ARENOSO', 'Funcional', 'Calidad'), ('79', 'PROD_TEXTURA_NO UNIFORME/ CRISTALIZADO', 'Funcional', 'Calidad'), ('80', 'PROD_TEXTURA_NO_PROPIA', 'Funcional', 'Calidad'), ('81', 'PROD_TRANSFERENCIA_DE_COLOR', 'Funcional', 'Calidad'), ('82', 'PROD_VENCIDO', 'Funcional', 'Legalidad'), ('83', 'ENV_DESPRENDIMIENTO DE BARNIZ SANITARIO', 'Contaminación', 'Salubridad'), ('84', 'ENV_DESPRENDIMIENTO_EMPAQUE', 'Contaminación', 'Salubridad'), ('85', 'ENV_HINCHADO', 'Contaminación', 'Salubridad'), ('86', 'OBJ-EXTR_METALES', 'Contaminación', 'Inocuidad'), ('87', 'ENV_ABRE_FACIL_AUSENCIA/INCORRECTO', 'Funcional', 'Calidad'), ('88', 'ENV_AUSENCIA_DE_PRODUCTO', 'Funcional', 'Calidad'), ('89', 'ENV_AUSENCIA_PERFORACIÓN', 'Funcional', 'Calidad'), ('90', 'ENV_DEFECTO BARNIZ SANITARIO', 'Funcional', 'Calidad'), ('91', 'ENV_DEFECTO_CODIGO_BARRAS', 'Funcional', 'Legalidad'), ('92', 'ENV_DEFECTO_DE_FECHADO', 'Funcional', 'Legalidad'), ('93', 'ENV_DEFECTO_MIX_SURTIDO', 'Funcional', 'Calidad'), ('94', 'ENV_DEFECTUOSO', 'Funcional', 'Calidad'), ('95', 'ENV_DEFORMADO/GOLPEADO/ABOLLADO', 'Funcional', 'Calidad'), ('96', 'ENV_DIFICULTAD_APERTURA', 'Funcional', 'Calidad'), ('97', 'ENV_DISPLAY/ESTUCHE/BANDEJA_MAL_CERRADO', 'Funcional', 'Calidad'), ('98', 'ENV_EMPALME', 'Funcional', 'Calidad'), ('99', 'ENV_EMPAQUE_ROTO', 'Funcional', 'Calidad'), ('100', 'ENV_EXCESO_DE_AZÚCAR', 'Funcional', 'Calidad'), ('101', 'ENV_FALTA_ETIQUETA', 'Funcional', 'Calidad'), ('102', 'ENV_FALTANTE_UNIDADES EN BULTO PT', 'Funcional', 'Legalidad'), ('103', 'ENV_FALTANTE_UNIDADES EN ENVASE PRIMARIO', 'Funcional', 'Legalidad'), ('104', 'ENV_FALTANTE_UNIDADES EN ENVASE SECUNDARIO', 'Funcional', 'Legalidad'), ('105', 'ENV_FECHADO_ADULTERADO', 'Funcional', 'Legalidad'), ('106', 'ENV_FECHADO_AUSENTE', 'Funcional', 'Legalidad'), ('107', 'ENV_FECHADO_BORROSO', 'Funcional', 'Legalidad'), ('108', 'ENV_FLOJO', 'Funcional', 'Calidad'), ('109', 'ENV_GOLPEADO_PINCHADO', 'Funcional', 'Calidad'), ('110', 'ENV_IMAGEN ENVASE DIFIERE DEL PRODUCTO', 'Funcional', 'Calidad'), ('111', 'ENV_IMPRESIÓN_CORRIDA', 'Funcional', 'Calidad'), ('112', 'ENV_OXIDADO', 'Funcional', 'Calidad'), ('113', 'ENV_PRIMARIO_ABIERTO', 'Funcional', 'Calidad'), ('114', 'ENV_PRODUCTO MAL ENVUELTO', 'Funcional', 'Calidad'), ('115', 'ENV_PRODUCTO_DESENVUELTO', 'Funcional', 'Calidad'), ('116', 'ENV_PRODUCTO_ENVASE_INCORRECTO', 'Funcional', 'Calidad'), ('117', 'ENV_PRODUCTO_EXPUESTO', 'Funcional', 'Calidad'), ('118', 'ENV_ROTULADO_ILEGIBLE/DESCENTRADO', 'Funcional', 'Calidad'), ('119', 'ENV_SECUNDARIO/TERCIARIO_ABIERTO', 'Funcional', 'Calidad'), ('120', 'ENV_SELLADO_DEFECTUOSO', 'Funcional', 'Calidad'), ('121', 'ENV_TAPA DEFECTUOSA/CRUZADA/FLOJA', 'Funcional', 'Calidad'), ('122', 'ALERGENOS_PRESENCIA/ROTULADO ERRONEO', 'Contaminación', 'Inocuidad'), ('123', 'CONT_INSECTOS_CUCARACHAS', 'Contaminación', 'Inocuidad'), ('124', 'CONT_INSECTOS_MOSCAS', 'Contaminación', 'Inocuidad'), ('125', 'OBJ-EXTR_MADERA/PALOS', 'Contaminación', 'Inocuidad'), ('126', 'ANÁLISIS_MICROBIOLOGICO_INDICADORES', 'Contaminación', 'Salubridad'), ('127', 'OBJ-EXTR_PIEDRAS', 'Contaminación', 'Inocuidad'), ('128', 'OBJ-EXTR_PLASTICO_DURO/VIDRIO/ACRILICO/POLICARBONATO', 'Contaminación', 'Inocuidad'), ('129', 'OTROS_NO TIPIFICADO_CONT.INOCUIDAD', 'Contaminación', 'Inocuidad'), ('130', 'CONT_INSECTO_ARAÑA', 'Contaminación', 'Salubridad'), ('131', 'CONT_INSECTOS_ABEJAS', 'Contaminación', 'Salubridad'), ('132', 'CONT_INSECTOS_HORMIGAS', 'Contaminación', 'Salubridad'), ('133', 'CONT_INSECTOS_OTROS', 'Contaminación', 'Salubridad'), ('134', 'CONT_INSECTOS_POLILLAS/GUSANOS', 'Contaminación', 'Salubridad'), ('135', 'CONT_MOHO_HONGOS_LEVADURAS', 'Contaminación', 'Salubridad'), ('136', 'OBJ-EXTR_CABELLO', 'Contaminación', 'Salubridad'), ('137', 'OBJ-EXTR_CARTON', 'Contaminación', 'Salubridad'), ('138', 'OBJ-EXTR_FLEXIBLE', 'Contaminación', 'Salubridad'), ('139', 'OBJ-EXTR_GUANTE', 'Contaminación', 'Salubridad'), ('140', 'OBJ-EXTR_HILOS_ALGODÓN/LONAS/BANDAS', 'Contaminación', 'Salubridad'), ('141', 'OBJ-EXTR_HILOS_HILACHAS_AZUCAR', 'Contaminación', 'Salubridad'), ('142', 'OBJ-EXTR_NYLON', 'Contaminación', 'Salubridad'), ('143', 'OBJ-EXTR_PAPEL', 'Contaminación', 'Salubridad'), ('144', 'OBJ-EXTR_PIEZA_DENTAL', 'Contaminación', 'Salubridad'), ('145', 'OBJ-EXTR_PINTURA', 'Contaminación', 'Salubridad'), ('146', 'OBJ-EXTR_PLASTICO_BLANDO/CERDAS', 'Contaminación', 'Salubridad'), ('147', 'OTROS_NO TIPIFICADO_CONT.SALUBRIDAD', 'Contaminación', 'Salubridad'), ('148', 'SUST-EXTR_CHICHARRON_OBLEA QUEMADA', 'Contaminación', 'Salubridad'), ('149', 'SUST-EXTR_DEL_HORNO', 'Contaminación', 'Salubridad'), ('150', 'SUST-EXTR_GRASA/LUBRICANTE_EQUIPO', 'Contaminación', 'Salubridad'), ('151', 'SUST-EXTR_OTROS', 'Contaminación', 'Salubridad'), ('152', 'SUST-EXTR_PUNTOS_NEGROS', 'Contaminación', 'Salubridad'), ('153', 'OBJ_EXTR_OTROS', 'Funcional', 'Calidad'), ('154', 'OTROS_NO TIPIFICADO_FUNCIONAL', 'Funcional', 'Calidad'), ('155', 'SUST-EXTR_EXUDADO', 'Funcional', 'Calidad'), ('156', 'SUST-EXTR_GRASA_PRODUCTO', 'Funcional', 'Calidad'), ('157', 'SUST-EXTR_INGREDIENTE_MAL_DISUELTO', 'Funcional', 'Calidad'), ('158', 'PATRON_NO_DETECTADO', 'Contaminación', 'Inocuidad'), ('159', 'ENV_PRIMARIO_CODIFICADO', 'Funcional', 'Legalidad'), ('160', 'ENV_SECUNDARIO_CODIFICADO', 'Funcional', 'Legalidad'), ('161', 'ENV_TERCIARIO_CODIFICADO', 'Funcional', 'Legalidad'), ('162', 'CONTAMINACION CON AGUA', 'Contaminación', 'Salubridad')]
 SEED_CATALOGS = {'supervisor': ['AGUSTIN ABEL', 'JAVIER PACHECO', 'MARTIN TRUJILLO', 'SANDRA GAMBOA', 'JUAN CARLOS DOMINGUEZ', 'DANIEL JIMENEZ', 'VICTOR AYALA', 'LUIS GERARDO', 'GERSON VAZQUEZ', 'JOSE LUIS HERNANDEZ', 'EDUARDO VELAZQUEZ', 'FRANCISCO FIRO', 'FAVIAN TARANGO', 'ANDREA ESQUIVEL', 'ESVEIDA CORNEJO', 'YESENIA PEREZ', 'ISMAEL PEREZ', 'JESUS SANCHEZ', 'FERNANDA CUADRA', 'FERNANDA ALVAREZ', 'SUPERVISORES BOB,OBLEAS NV1', 'SUPERVISORES DUVALIN, MOLDEO NV1', 'SUPERVISORES NV2', 'SUPERVISORES NV3'], 'analista': ['ELIZABETH ALMAZAN', 'ALEJANDRO BECERRIL', 'ALFREDO CHAVEZ', 'JENNIFER CARRILLO', 'MARISOL GARCIA', 'VERONICA GÓMEZ', 'ARNOL GOMEZ', 'KAREN HERAZ', 'DULCE HERNÁNDEZ', 'PAOLA JIMENEZ', 'URIEL LEON', 'BRENDA MARTINEZ', 'DIANA MELQUIADES', 'ISAIAS MILPA', 'BERENICE MORALES', 'JOSÉ RAMIREZ'], 'nave': ['1', '2', '3'], 'status': ['ABIERTO', 'CERRADO'], 'responsable_detecta': ['AUTONOMO', 'CALIDAD'], 'etapa': ['PT', 'SE', 'MP'], 'linea_sector': ['BON O BON', 'OBLEAS', 'MOLDEO', 'FABRIMA', 'DELTA', 'J&R', 'CIMIS', 'MOLINOS', 'TETRA', 'CONCAS', 'BUTTER', 'CARAMELO', 'BATCH', 'EUROMEC', 'FLOW VARIOS', 'STICK', 'TNA', 'ENVAFLEX', 'YAMATO DE POOSH', 'MBP', 'GD´S', 'PFM', 'MULTIFORMATO', 'HD', 'C2', 'C1', 'CONFORMADO HUEVITO', 'TAMIZADO', 'RECUBIERTO', 'TROQUEL POOSH', 'CONFITADO'], 'turno': ['A', 'B', 'C', 'MIXTO'], 'tipo_defecto': ['Funcional', 'Contaminación'], 'disposicion': ['Reproceso', 'Retrabajo', 'Decomiso', 'Inspección', 'Aprobado en segunda instancia', 'Otro']}
 
-st.set_page_config(page_title=APP_NAME, page_icon="✅", layout="wide", initial_sidebar_state="collapsed")
+st.set_page_config(page_title=APP_NAME, page_icon="✅", layout="wide", initial_sidebar_state="expanded")
 
 
 def now_iso(): return datetime.now().isoformat(timespec="seconds")
@@ -118,35 +117,40 @@ def styles(compact=False):
     .login-card {{ max-width:480px; margin:8vh auto 1rem; background:#fff; border-radius:24px; padding:32px; box-shadow:0 20px 60px rgba(15,23,42,.12); text-align:center; }} .login-title {{ color:#0B3440; font-size:2rem; font-weight:950; }}
     div[data-testid="stExpander"], div[data-testid="stDataFrame"] {{ border-radius:16px!important; overflow:hidden!important; }}
 
-    /* Menú desplegable superior */
-    section[data-testid="stSidebar"] {{ display:none !important; }}
-    .main .block-container {{ max-width:1320px !important; margin:0 auto !important; padding-top:1.45rem !important; }}
-    .top-menu-title {{ display:none; }}
-    div[data-testid="stSelectbox"]:first-of-type {{
-        margin:0 auto .75rem auto !important;
-        max-width:1320px !important;
-    }}
-    div[data-testid="stSelectbox"]:first-of-type label {{ display:none !important; }}
-    div[data-testid="stSelectbox"]:first-of-type div[data-baseweb="select"] > div {{
-        min-height:74px !important;
-        border-radius:18px !important;
-        border:0 !important;
+
+    /* Ajuste final: menú lateral izquierdo estable */
+    section[data-testid="stSidebar"] {
+        background:linear-gradient(180deg,#062C36 0%,#0A4652 70%,#083640 100%) !important;
+        border-radius:0 30px 30px 0 !important;
+        box-shadow:0 18px 42px rgba(7,49,61,.32) !important;
+    }
+    section[data-testid="stSidebar"] .stButton button {
+        box-shadow:0 8px 18px rgba(0,0,0,.08) !important;
+    }
+    .menu-active {
         background:linear-gradient(135deg,#00A884 0%,#3F7BFF 58%,#5850EC 100%) !important;
-        box-shadow:0 18px 38px rgba(33,93,190,.22) !important;
-        color:#FFFFFF !important;
-        padding-left:1.2rem !important;
-    }}
-    div[data-testid="stSelectbox"]:first-of-type div[data-baseweb="select"] span,
-    div[data-testid="stSelectbox"]:first-of-type div[data-baseweb="select"] svg {{
-        color:#FFFFFF !important;
-        fill:#FFFFFF !important;
-        font-weight:950 !important;
-        font-size:1.05rem !important;
-    }}
-    div[data-testid="stSelectbox"]:first-of-type div[data-baseweb="select"] > div:hover {{
-        filter:brightness(1.02);
-    }}
-    .topbar {{ margin-top:.15rem !important; }}
+        color:#fff !important;
+    }
+    /* Login más corporativo */
+    .login-card {
+        background:linear-gradient(135deg,#FFFFFF 0%,#F8FBFC 62%,#ECFDF8 100%) !important;
+        border:1px solid #E4EAF2 !important;
+        position:relative;
+        overflow:hidden;
+    }
+    .login-card:before {
+        content:"";
+        position:absolute;
+        left:0;
+        top:0;
+        bottom:0;
+        width:6px;
+        background:linear-gradient(180deg,#00A884,#3F7BFF,#5850EC);
+    }
+    .login-title:before {
+        content:"◆ ";
+        color:#00A884;
+    }
     </style>
     """, unsafe_allow_html=True)
 
@@ -331,7 +335,7 @@ def page_auditoria(): st.title('Auditoría'); st.dataframe(read_df('SELECT * FRO
 def main():
     init_state(); init_db()
     if FORCE_RESET_ADMIN: reset_admin()
-    user=login(); styles(False); top_dropdown_menu(); topbar(user)
+    user=login(); styles(st.session_state.compact); sidebar_menu(); topbar(user)
     page=st.session_state.page
     if page=='Inicio': page_inicio()
     elif page=='Nuevo registro': page_registro()
