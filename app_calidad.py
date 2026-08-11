@@ -80,10 +80,10 @@ def save_files(files,rid,folio,user):
         exec_sql("INSERT INTO adjuntos(registro_id,folio,nombre_original,ruta_archivo,tipo_archivo,subido_por,subido_en) VALUES(?,?,?,?,?,?,?)",(rid,folio,file.name,str(path),file.type,user,now_iso()))
 
 def styles(compact=False):
-    sidebar_w = "94px" if compact else "306px"
-    menu_text = "none" if compact else "inline"
-    justify = "center" if compact else "flex-start"
-    active_align = "center" if compact else "left"
+    sidebar_w = "306px"
+    menu_text = "inline"
+    justify = "flex-start"
+    active_align = "left"
     st.markdown(f"""
     <style>
     :root {{ --navy:#062C36; --teal:#00A884; --blue:#3F7BFF; --violet:#5850EC; --bg:#F2F5F8; --text:#203047; }}
@@ -91,7 +91,7 @@ def styles(compact=False):
     header[data-testid="stHeader"] {{ display:none; }}
     .main .block-container {{ padding:1.15rem 1.45rem 2rem 1.45rem; max-width:100% !important; }}
 
-    /* Menú lateral nativo: el recuadro de color es el contenedor real */
+    /* Menú lateral fijo expandido: el recuadro de color es el contenedor real */
     section[data-testid="stSidebar"] {{
         display:block !important;
         visibility:visible !important;
@@ -110,6 +110,8 @@ def styles(compact=False):
         box-sizing:border-box !important;
     }}
     section[data-testid="stSidebar"] * {{ color:#FFFFFF !important; }}
+    section[data-testid="stSidebar"] button[title="Close sidebar"],
+    section[data-testid="stSidebar"] button[title="Open sidebar"] {{ display:none !important; }}
     .menu-brand {{ display:flex; align-items:center; justify-content:{justify}; gap:.65rem; margin:1rem 0 1.6rem 0; font-size:1.22rem; font-weight:950; white-space:nowrap; color:#FFFFFF; }}
     .menu-brand-text, .menu-section, .menu-label {{ display:{menu_text}; }}
     .menu-section {{ color:#BDEFE5 !important; font-size:.76rem; font-weight:900; letter-spacing:.06rem; margin:.45rem 0 .75rem 0; }}
@@ -124,7 +126,7 @@ def styles(compact=False):
         color:#FFFFFF !important;
         font-weight:850 !important;
         margin:.18rem 0 !important;
-        padding:{'.58rem' if compact else '.68rem .75rem'} !important;
+        padding:.68rem .75rem !important;
         box-shadow:0 8px 18px rgba(0,0,0,.10) !important;
         overflow:hidden !important;
         white-space:nowrap !important;
@@ -142,7 +144,7 @@ def styles(compact=False):
         background:linear-gradient(135deg,#00A884 0%,#3F7BFF 58%,#5850EC 100%) !important;
         color:#FFFFFF !important;
         border-radius:13px !important;
-        padding:{'.58rem' if compact else '.74rem .78rem'} !important;
+        padding:.74rem .78rem !important;
         font-weight:950 !important;
         margin:.28rem 0 .4rem 0 !important;
         box-shadow:0 10px 24px rgba(0,168,132,.34) !important;
@@ -174,7 +176,6 @@ def styles(compact=False):
 def init_state():
     if 'auth' not in st.session_state: st.session_state.auth=None
     if 'page' not in st.session_state: st.session_state.page='Inicio'
-    if 'compact' not in st.session_state: st.session_state.compact=False
 
 def login():
     if st.session_state.auth: return st.session_state.auth
@@ -195,8 +196,7 @@ def topbar(user):
     st.markdown(f'<div class="topbar"><div class="topbar-title">Sistema de Calidad MD</div><div class="topbar-user"><span>🔔</span><span>{user["nombre"].upper()}</span><span class="avatar">{initials}</span></div></div>',unsafe_allow_html=True)
 
 def menu_button(page, full, icon):
-    compact=st.session_state.compact
-    label=icon if compact else full
+    label=full
     if st.session_state.page==page:
         st.sidebar.markdown(f'<div class="menu-active"><span>{label}</span></div>',unsafe_allow_html=True)
     else:
@@ -206,11 +206,7 @@ def menu_button(page, full, icon):
 
 
 def left_menu():
-    compact=st.session_state.compact
     st.sidebar.markdown('<div class="menu-brand"><span>◆</span><span class="menu-brand-text">CALIDAD MD</span></div><div class="menu-section">MENÚ PRINCIPAL</div>', unsafe_allow_html=True)
-    if st.sidebar.button('☰' if compact else '☰ Acortar menú', key='toggle_left_menu'):
-        st.session_state.compact=not compact
-        st.rerun()
     menu_button('Inicio','🏠 Inicio','🏠')
     menu_button('Nuevo registro','📝 Nuevo registro','📝')
     menu_button('Consulta y descarga','📊 Consulta y descarga','📊')
@@ -219,7 +215,7 @@ def left_menu():
         menu_button('Usuarios','👤 Usuarios','👤')
         menu_button('Auditoría','🧾 Auditoría','🧾')
     st.sidebar.markdown('<div style="height:1rem"></div>',unsafe_allow_html=True)
-    if st.sidebar.button('Salir' if compact else 'Cerrar sesión', key='logout_left_menu'):
+    if st.sidebar.button('Cerrar sesión', key='logout_left_menu'):
         audit(st.session_state.auth['usuario'],'LOGOUT','Cierre de sesión')
         st.session_state.auth=None
         st.rerun()
@@ -339,7 +335,7 @@ def main():
     init_state(); init_db()
     if FORCE_RESET_ADMIN: reset_admin()
     user=login()
-    styles(st.session_state.compact)
+    styles(False)
     left_menu()
     topbar(user)
     page=st.session_state.page
