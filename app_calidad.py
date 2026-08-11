@@ -1,4 +1,3 @@
-
 import streamlit as st
 import pandas as pd
 import sqlite3, hashlib, os, base64
@@ -81,25 +80,76 @@ def save_files(files,rid,folio,user):
         exec_sql("INSERT INTO adjuntos(registro_id,folio,nombre_original,ruta_archivo,tipo_archivo,subido_por,subido_en) VALUES(?,?,?,?,?,?,?)",(rid,folio,file.name,str(path),file.type,user,now_iso()))
 
 def styles(compact=False):
-    sidebar_w = "96px" if compact else "292px"
+    nav_w = "92px" if compact else "310px"
     menu_text = "none" if compact else "inline"
     justify = "center" if compact else "flex-start"
+    active_align = "center" if compact else "left"
     st.markdown(f"""
     <style>
     :root {{ --navy:#062C36; --teal:#00A884; --blue:#3F7BFF; --violet:#5850EC; --bg:#F2F5F8; --text:#203047; }}
     .stApp {{ background:var(--bg); }}
     header[data-testid="stHeader"] {{ display:none; }}
-    .main .block-container {{ padding-top:1.05rem; padding-left:1.5rem; padding-right:1.5rem; max-width:100%; }}
-    section[data-testid="stSidebar"] {{ background:linear-gradient(180deg,#062C36,#0A4652 70%,#083640) !important; width:{sidebar_w}!important; min-width:{sidebar_w}!important; border-radius:0 26px 26px 0; box-shadow:0 18px 42px rgba(7,49,61,.32); }}
-    section[data-testid="stSidebar"] > div {{ width:{sidebar_w}!important; min-width:{sidebar_w}!important; }}
-    section[data-testid="stSidebar"] * {{ color:#FFFFFF !important; }}
-    .menu-brand {{ display:flex; align-items:center; gap:.65rem; margin:1rem 0 1.8rem 0; font-size:1.25rem; font-weight:950; white-space:nowrap; }}
-    .menu-brand-text, .menu-section {{ display:{menu_text}; }}
+    section[data-testid="stSidebar"] {{ display:none !important; }}
+    .main .block-container {{ padding:1.15rem 1.35rem 2rem 1.35rem; max-width:100% !important; }}
+
+    /* Menú lateral izquierdo propio, independiente del sidebar nativo */
+    .left-nav-bg {{
+        position:fixed;
+        top:0;
+        left:0;
+        width:{nav_w};
+        height:100vh;
+        background:linear-gradient(180deg,#062C36 0%,#0A4652 70%,#083640 100%);
+        border-radius:0 30px 30px 0;
+        box-shadow:0 18px 42px rgba(7,49,61,.32);
+        z-index:0;
+        pointer-events:none;
+    }}
+    .left-menu-marker, .menu-brand, .menu-section, .menu-active {{ position:relative; z-index:2; }}
+    div[data-testid="stHorizontalBlock"]:has(.left-menu-marker) > div[data-testid="column"]:first-child {{
+        padding:1rem .9rem !important;
+        min-height:calc(100vh - 2rem);
+        overflow:hidden;
+    }}
+    div[data-testid="stHorizontalBlock"]:has(.left-menu-marker) > div[data-testid="column"]:first-child .stButton {{ position:relative; z-index:2; }}
+    div[data-testid="stHorizontalBlock"]:has(.left-menu-marker) > div[data-testid="column"]:first-child .stButton button {{
+        width:100%;
+        min-height:44px;
+        justify-content:{justify};
+        text-align:{active_align};
+        border-radius:13px;
+        border:1px solid rgba(255,255,255,.22);
+        background:rgba(255,255,255,.11);
+        color:#fff;
+        font-weight:850;
+        margin:.14rem 0;
+        white-space:nowrap;
+        overflow:hidden;
+        box-shadow:0 8px 18px rgba(0,0,0,.08);
+    }}
+    div[data-testid="stHorizontalBlock"]:has(.left-menu-marker) > div[data-testid="column"]:first-child .stButton button:hover {{
+        background:rgba(255,255,255,.24);
+        border-color:rgba(255,255,255,.45);
+        color:#fff;
+    }}
+    .menu-brand {{ display:flex; align-items:center; gap:.65rem; margin:1rem 0 1.8rem 0; font-size:1.25rem; font-weight:950; white-space:nowrap; color:#FFFFFF; }}
+    .menu-brand-text, .menu-section, .menu-label {{ display:{menu_text}; }}
     .menu-section {{ color:#BDEFE5!important; font-size:.76rem; font-weight:900; letter-spacing:.06rem; margin:.5rem 0 .65rem; }}
-    section[data-testid="stSidebar"] .stButton button {{ width:100%; min-height:44px; justify-content:{justify}; text-align:left; border-radius:13px; border:1px solid rgba(255,255,255,.22); background:rgba(255,255,255,.11); color:#fff; font-weight:850; margin:.14rem 0; white-space:nowrap; overflow:hidden; }}
-    section[data-testid="stSidebar"] .stButton button:hover {{ background:rgba(255,255,255,.24); border-color:rgba(255,255,255,.45); color:#fff; }}
-    .menu-active {{ background:linear-gradient(135deg,#00A884 0%,#3F7BFF 58%,#5850EC 100%); color:#fff; border-radius:13px; padding:.74rem .78rem; font-weight:950; margin:.18rem 0 .35rem; text-align:{'center' if compact else 'left'}; box-shadow:0 8px 18px rgba(0,168,132,.30); min-height:44px; box-sizing:border-box; white-space:nowrap; overflow:hidden; }}
-    .menu-active .menu-label, .stButton .menu-label {{ display:{menu_text}; }}
+    .menu-active {{
+        background:linear-gradient(135deg,#00A884 0%,#3F7BFF 58%,#5850EC 100%);
+        color:#fff;
+        border-radius:13px;
+        padding:.74rem .78rem;
+        font-weight:950;
+        margin:.18rem 0 .35rem;
+        text-align:{active_align};
+        box-shadow:0 8px 18px rgba(0,168,132,.30);
+        min-height:44px;
+        box-sizing:border-box;
+        white-space:nowrap;
+        overflow:hidden;
+    }}
+
     .topbar {{ height:76px; background:#FFFFFF; display:flex; justify-content:space-between; align-items:center; padding:0 1.6rem; border:1px solid #E4EAF2; border-radius:20px; box-shadow:0 10px 26px rgba(15,23,42,.06); margin-bottom:1.15rem; }}
     .topbar-title {{ color:#0B3440; font-weight:950; font-size:1.05rem; }}
     .topbar-user {{ display:flex; gap:1rem; align-items:center; color:#526078; font-weight:850; }}
@@ -115,87 +165,8 @@ def styles(compact=False):
     label, .stTextInput label, .stTextArea label, .stSelectbox label, .stNumberInput label, .stDateInput label, .stFileUploader label {{ color:#344054 !important; font-weight:850 !important; font-size:.82rem !important; }}
     div[data-baseweb="input"] > div, div[data-baseweb="select"] > div, textarea, input {{ background:#F9FAFB !important; border:1px solid #D0D7E2 !important; border-radius:12px !important; color:#1F2937 !important; box-shadow:inset 0 1px 0 rgba(255,255,255,.8) !important; }}
     div[data-baseweb="input"] > div:focus-within, div[data-baseweb="select"] > div:focus-within, textarea:focus, input:focus {{ border-color:#00A884 !important; box-shadow:0 0 0 3px rgba(0,168,132,.16) !important; }}
-    .login-card {{ max-width:480px; margin:8vh auto 1rem; background:#fff; border-radius:24px; padding:32px; box-shadow:0 20px 60px rgba(15,23,42,.12); text-align:center; }} .login-title {{ color:#0B3440; font-size:2rem; font-weight:950; }}
+    .login-card {{ max-width:480px; margin:8vh auto 1rem; background:linear-gradient(135deg,#FFFFFF 0%,#F8FBFC 62%,#ECFDF8 100%); border:1px solid #E4EAF2; border-radius:24px; padding:32px; box-shadow:0 20px 60px rgba(15,23,42,.12); text-align:center; position:relative; overflow:hidden; }} .login-title {{ color:#0B3440; font-size:2rem; font-weight:950; }} .login-title:before {{ content:"◆ "; color:#00A884; }}
     div[data-testid="stExpander"], div[data-testid="stDataFrame"] {{ border-radius:16px!important; overflow:hidden!important; }}
-
-
-
-    /* Ajuste final: menu lateral izquierdo estable */
-    section[data-testid="stSidebar"] {{
-        background:linear-gradient(180deg,#062C36 0%,#0A4652 70%,#083640 100%) !important;
-        border-radius:0 30px 30px 0 !important;
-        box-shadow:0 18px 42px rgba(7,49,61,.32) !important;
-    }}
-    section[data-testid="stSidebar"] .stButton button {{
-        box-shadow:0 8px 18px rgba(0,0,0,.08) !important;
-    }}
-    .menu-active {{
-        background:linear-gradient(135deg,#00A884 0%,#3F7BFF 58%,#5850EC 100%) !important;
-        color:#fff !important;
-    }}
-    /* Login mas corporativo */
-    .login-card {{
-        background:linear-gradient(135deg,#FFFFFF 0%,#F8FBFC 62%,#ECFDF8 100%) !important;
-        border:1px solid #E4EAF2 !important;
-        position:relative;
-        overflow:hidden;
-    }}
-    .login-card:before {{
-        content:"";
-        position:absolute;
-        left:0;
-        top:0;
-        bottom:0;
-        width:6px;
-        background:linear-gradient(180deg,#00A884,#3F7BFF,#5850EC);
-    }}
-    .login-title:before {{
-        content:"◆ ";
-        color:#00A884;
-    }}
-
-
-    /* Forzar menu lateral izquierdo visible */
-    section[data-testid="stSidebar"] {{
-        display:block !important;
-        visibility:visible !important;
-        opacity:1 !important;
-        background:linear-gradient(180deg,#062C36 0%,#0A4652 70%,#083640 100%) !important;
-        border-radius:0 30px 30px 0 !important;
-        box-shadow:0 18px 42px rgba(7,49,61,.32) !important;
-    }}
-    section[data-testid="stSidebar"] * {{
-        color:#FFFFFF !important;
-    }}
-    section[data-testid="stSidebar"] .stButton button {{
-        width:100% !important;
-        min-height:44px !important;
-        border-radius:13px !important;
-        border:1px solid rgba(255,255,255,.22) !important;
-        background:rgba(255,255,255,.11) !important;
-        color:#FFFFFF !important;
-        font-weight:850 !important;
-        margin:.14rem 0 !important;
-        box-shadow:0 8px 18px rgba(0,0,0,.08) !important;
-    }}
-    section[data-testid="stSidebar"] .stButton button:hover {{
-        background:rgba(255,255,255,.24) !important;
-        border-color:rgba(255,255,255,.45) !important;
-    }}
-    .menu-active {{
-        background:linear-gradient(135deg,#00A884 0%,#3F7BFF 58%,#5850EC 100%) !important;
-        color:#fff !important;
-        border-radius:13px !important;
-        padding:.74rem .78rem !important;
-        font-weight:950 !important;
-        margin:.18rem 0 .35rem !important;
-        box-shadow:0 8px 18px rgba(0,168,132,.30) !important;
-    }}
-    .main .block-container {{
-        max-width:100% !important;
-        margin:0 !important;
-        padding-top:1.05rem !important;
-    }}
     </style>
     """, unsafe_allow_html=True)
 
@@ -229,18 +200,36 @@ def menu_button(page, full, icon):
         if st.sidebar.button(label,key=f'menu_{page}'):
             st.session_state.page=page; st.rerun()
 
-def sidebar_menu():
+def menu_button(page, full, icon):
     compact=st.session_state.compact
-    st.sidebar.markdown(f'<div class="menu-brand"><span>◆</span><span class="menu-brand-text">CALIDAD MD</span></div><div class="menu-section">MENÚ PRINCIPAL</div>',unsafe_allow_html=True)
-    if st.sidebar.button('☰' if compact else '☰ Acortar menú'):
-        st.session_state.compact=not compact; st.rerun()
-    menu_button('Inicio','🏠 Inicio','🏠'); menu_button('Nuevo registro','📝 Nuevo registro','📝'); menu_button('Consulta y descarga','📊 Consulta y descarga','📊')
-    if is_dev():
-        menu_button('Catálogos','🧩 Catálogos','🧩'); menu_button('Usuarios','👤 Usuarios','👤'); menu_button('Auditoría','🧾 Auditoría','🧾')
-    st.sidebar.markdown('<div style="height:1rem"></div>',unsafe_allow_html=True)
-    if st.sidebar.button('Salir' if compact else 'Cerrar sesión'):
-        audit(st.session_state.auth['usuario'],'LOGOUT','Cierre de sesión'); st.session_state.auth=None; st.rerun()
+    label=icon if compact else full
+    if st.session_state.page==page:
+        st.markdown(f'<div class="menu-active">{label}</div>',unsafe_allow_html=True)
+    else:
+        if st.button(label,key=f'menu_{page}'):
+            st.session_state.page=page
+            st.rerun()
 
+
+def left_menu():
+    compact=st.session_state.compact
+    st.markdown('<div class="left-nav-bg"></div><span class="left-menu-marker"></span>', unsafe_allow_html=True)
+    st.markdown('<div class="menu-brand"><span>◆</span><span class="menu-brand-text">CALIDAD MD</span></div><div class="menu-section">MENÚ PRINCIPAL</div>', unsafe_allow_html=True)
+    if st.button('☰' if compact else '☰ Acortar menú', key='toggle_left_menu'):
+        st.session_state.compact=not compact
+        st.rerun()
+    menu_button('Inicio','🏠 Inicio','🏠')
+    menu_button('Nuevo registro','📝 Nuevo registro','📝')
+    menu_button('Consulta y descarga','📊 Consulta y descarga','📊')
+    if is_dev():
+        menu_button('Catálogos','🧩 Catálogos','🧩')
+        menu_button('Usuarios','👤 Usuarios','👤')
+        menu_button('Auditoría','🧾 Auditoría','🧾')
+    st.markdown('<div style="height:1rem"></div>',unsafe_allow_html=True)
+    if st.button('Salir' if compact else 'Cerrar sesión', key='logout_left_menu'):
+        audit(st.session_state.auth['usuario'],'LOGOUT','Cierre de sesión')
+        st.session_state.auth=None
+        st.rerun()
 
 
 def page_inicio():
@@ -356,13 +345,20 @@ def page_auditoria(): st.title('Auditoría'); st.dataframe(read_df('SELECT * FRO
 def main():
     init_state(); init_db()
     if FORCE_RESET_ADMIN: reset_admin()
-    user=login(); styles(st.session_state.compact); sidebar_menu(); topbar(user)
-    page=st.session_state.page
-    if page=='Inicio': page_inicio()
-    elif page=='Nuevo registro': page_registro()
-    elif page=='Consulta y descarga': page_consulta()
-    elif page=='Catálogos': page_catalogos()
-    elif page=='Usuarios': page_usuarios()
-    elif page=='Auditoría': page_auditoria()
+    user=login()
+    styles(st.session_state.compact)
+    left_ratio, right_ratio = (0.18, 0.82) if not st.session_state.compact else (0.055, 0.945)
+    left_col, right_col = st.columns([left_ratio, right_ratio], gap='medium')
+    with left_col:
+        left_menu()
+    with right_col:
+        topbar(user)
+        page=st.session_state.page
+        if page=='Inicio': page_inicio()
+        elif page=='Nuevo registro': page_registro()
+        elif page=='Consulta y descarga': page_consulta()
+        elif page=='Catálogos': page_catalogos()
+        elif page=='Usuarios': page_usuarios()
+        elif page=='Auditoría': page_auditoria()
 
 if __name__=='__main__': main()
