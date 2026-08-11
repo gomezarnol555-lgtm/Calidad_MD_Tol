@@ -1,4 +1,3 @@
-
 import streamlit as st
 import pandas as pd
 import sqlite3, hashlib, os, base64
@@ -403,7 +402,142 @@ def page_catalogos():
                 opt=st.selectbox('Valor a eliminar',[f'{r.id} | {r.lista} | {r.valor}' for r in raw.itertuples()],key='del_general')
                 if st.button('Eliminar valor seleccionado'): exec_sql('UPDATE catalogos SET activo=0 WHERE id=?',(int(opt.split('|')[0].strip()),)); st.rerun()
 
-def page_usuarios(): st.title('Usuarios'); st.dataframe(read_df('SELECT id,usuario,nombre,rol,activo,creado_en FROM usuarios ORDER BY id'),use_container_width=True,hide_index=True)
+def page_usuarios():
+    if not is_dev():
+        st.warning('Solo el administrador puede gestionar usuarios.')
+        return
+
+    st.title('Administración de usuarios')
+    st.caption('Desde esta sección el administrador puede crear usuarios, asignar rol y activar o desactivar accesos.')
+
+    st.subheader('Crear nuevo usuario')
+
+    with st.form('crear_usuario_form', clear_on_submit=False):
+        col1, col2 = st.columns(2)
+
+        with col1:
+            nuevo_usuario = st.text_input('Usuario', placeholder='Ejemplo: jperez')
+            nuevo_nombre = st.text_input('Nombre completo', placeholder='Ejemplo: Juan Pérez')
+
+        with col2:
+            nueva_password = st.text_input('Contraseña inicial', type='password', placeholder='Contraseña temporal')
+            nuevo_rol = st.selectbox('Rol', ['usuario', 'desarrollador'])
+
+        crear = st.form_submit_button('➕ Crear usuario')
+
+    if crear:
+        nuevo_usuario = nuevo_usuario.strip()
+        nuevo_nombre = nuevo_nombre.strip()
+        nueva_password = nueva_password.strip()
+
+        if not nuevo_usuario:
+            st.error('Ingresa el usuario.')
+        elif not nuevo_nombre:
+            st.error('Ingresa el nombre completo.')
+        elif not nueva_password:
+            st.error('Ingresa una contraseña inicial.')
+        else:
+            existe = read_df('SELECT id FROM usuarios WHERE usuario=?', (nuevo_usuario,))
+
+            if not existe.empty:
+                st.error('No se pudo crear. Ese usuario ya existe.')
+            else:
+                exec_sql(
+                    """
+                    INSERT INTO usuarios
+                    (usuario, nombre, password_hash, rol, activo, creado_en)
+                    VALUES (?, ?, ?, ?, 1, ?)
+                    """,
+                    (
+                        nuevo_usuario,
+                        nuevo_nombre,
+                        hash_password(nueva_password),
+                        nuevo_rol,
+                        now_iso()
+                    )
+                )
+
+                audit(
+                    st.session_state.auth['usuario'],
+                    'CREAR_USUARIO',
+                    f'Usuario creado: {nuevo_usuario} | Rol: {nuevo_rol}'
+                )
+
+                st.success(f'Usuario creado correctamente: {nuevo_usuario}')
+                st.rerun()
+
+    st.divider()
+
+    st.subheader('Usuarios registrados')
+
+    usuarios = read_df(
+        """
+        SELECT
+            id,
+            usuario,
+            nombre,
+            rol,
+            CASE WHEN activo=1 THEN 'Activo' ELSE 'Inactivo' END AS estado,
+            creado_en
+        FROM usuarios
+        ORDER BY id
+        """
+    )
+
+    st.dataframe(
+        usuarios,
+        use_container_width=True,
+        hide_index=True
+    )
+
+    if usuarios.empty:
+        st.info('No hay usuarios registrados.')
+        return
+
+    st.subheader('Activar o desactivar usuario')
+
+    opciones = [
+        f"{r.id} | {r.usuario} | {r.nombre} | {r.rol} | {r.estado}"
+        for r in usuarios.itertuples()
+    ]
+
+    usuario_sel = st.selectbox('Selecciona un usuario', opciones)
+    id_usuario = int(usuario_sel.split('|')[0].strip())
+    usuario_objetivo = usuario_sel.split('|')[1].strip()
+    estado_objetivo = usuario_sel.split('|')[-1].strip()
+
+    col_a, col_b = st.columns(2)
+
+    with col_a:
+        desactivar = st.button('🔒 Desactivar usuario', disabled=(estado_objetivo == 'Inactivo'))
+
+    with col_b:
+        activar = st.button('✅ Activar usuario', disabled=(estado_objetivo == 'Activo'))
+
+    if desactivar:
+        if usuario_objetivo == st.session_state.auth['usuario']:
+            st.error('No puedes desactivar el usuario con el que estás trabajando actualmente.')
+        elif usuario_objetivo == ADMIN_USER:
+            st.error('Por seguridad, no se puede desactivar el usuario administrador principal.')
+        else:
+            exec_sql('UPDATE usuarios SET activo=0 WHERE id=?', (id_usuario,))
+            audit(
+                st.session_state.auth['usuario'],
+                'DESACTIVAR_USUARIO',
+                f'Usuario desactivado: {usuario_objetivo}'
+            )
+            st.success(f'Usuario desactivado correctamente: {usuario_objetivo}')
+            st.rerun()
+
+    if activar:
+        exec_sql('UPDATE usuarios SET activo=1 WHERE id=?', (id_usuario,))
+        audit(
+            st.session_state.auth['usuario'],
+            'ACTIVAR_USUARIO',
+            f'Usuario activado: {usuario_objetivo}'
+        )
+        st.success(f'Usuario activado correctamente: {usuario_objetivo}')
+        st.rerun()
 def page_auditoria(): st.title('Auditoría'); st.dataframe(read_df('SELECT * FROM auditoria ORDER BY id DESC LIMIT 1000'),use_container_width=True,hide_index=True)
 
 def main():
