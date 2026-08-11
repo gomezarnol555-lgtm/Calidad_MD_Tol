@@ -1,3 +1,4 @@
+
 import streamlit as st
 import pandas as pd
 import sqlite3, hashlib, os, base64
@@ -170,8 +171,8 @@ def styles(compact=False):
     div[data-testid="stExpander"], div[data-testid="stDataFrame"] {{ border-radius:16px!important; overflow:hidden!important; }}
     .topbar, .home-hero, .kpi, .panel {{ box-sizing:border-box !important; max-width:100% !important; }}
 
-    /* Forzado experto: el menú lateral queda fijo visible, sin acortarse */
-    [data-testid="stSidebar"], section[data-testid="stSidebar"] {
+    /* Forzado experto: el menu lateral queda fijo visible, sin acortarse */
+    [data-testid="stSidebar"], section[data-testid="stSidebar"] {{
         display:block !important;
         visibility:visible !important;
         opacity:1 !important;
@@ -188,36 +189,36 @@ def styles(compact=False):
         border-radius:0 32px 32px 0 !important;
         box-shadow:0 18px 42px rgba(7,49,61,.34) !important;
         overflow:hidden !important;
-    }
-    [data-testid="stSidebar"] > div, section[data-testid="stSidebar"] > div {
+    }}
+    [data-testid="stSidebar"] > div, section[data-testid="stSidebar"] > div {{
         width:306px !important;
         min-width:306px !important;
         max-width:306px !important;
         height:100vh !important;
         padding:1.35rem 1rem !important;
         box-sizing:border-box !important;
-    }
+    }}
     [data-testid="stSidebarCollapsedControl"],
     button[data-testid="stSidebarCollapseButton"],
     button[title="Open sidebar"],
-    button[title="Close sidebar"] {
+    button[title="Close sidebar"] {{
         display:none !important;
-    }
-    .main, section.main, div[data-testid="stAppViewContainer"] > section.main {
+    }}
+    .main, section.main, div[data-testid="stAppViewContainer"] > section.main {{
         margin-left:306px !important;
         width:calc(100% - 306px) !important;
         max-width:calc(100% - 306px) !important;
-    }
-    .main .block-container {
+    }}
+    .main .block-container {{
         max-width:1280px !important;
         margin:0 auto !important;
-    }
+    }}
     [data-testid="stSidebar"] .stButton button,
-    section[data-testid="stSidebar"] .stButton button {
+    section[data-testid="stSidebar"] .stButton button {{
         background:rgba(255,255,255,.16) !important;
         border:1px solid rgba(255,255,255,.30) !important;
         color:#FFFFFF !important;
-    }
+    }}
     </style>
     """, unsafe_allow_html=True)
 
