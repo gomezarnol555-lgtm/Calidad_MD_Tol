@@ -161,17 +161,18 @@ def styles(compact=False):
     .login-card {{ max-width:480px; margin:8vh auto 1rem; background:linear-gradient(135deg,#FFFFFF 0%,#F8FBFC 62%,#ECFDF8 100%); border:1px solid #E4EAF2; border-radius:24px; padding:32px; box-shadow:0 20px 60px rgba(15,23,42,.12); text-align:center; position:relative; overflow:hidden; }} .login-title {{ color:#0B3440; font-size:2rem; font-weight:950; }} .login-title:before {{ content:"◆ "; color:#00A884; }}
     div[data-testid="stExpander"], div[data-testid="stDataFrame"] {{ border-radius:16px!important; overflow:hidden!important; }}
 
-    div[data-testid="stHorizontalBlock"]:has(.left-menu-marker) > div[data-testid="column"]:last-child {
+
+    div[data-testid="stHorizontalBlock"]:has(.left-menu-marker) > div[data-testid="column"]:last-child {{
         min-width:0 !important;
         padding-left:.4rem !important;
-    }
-    .topbar, .home-hero, .kpi, .panel {
+    }}
+    .topbar, .home-hero, .kpi, .panel {{
         box-sizing:border-box;
         width:100%;
-    }
-    .topbar { margin-top:.2rem; }
-    .home-hero { margin-top:.2rem; }
-    div[data-testid="column"] { min-width:0 !important; }
+    }}
+    .topbar {{ margin-top:.2rem; }}
+    .home-hero {{ margin-top:.2rem; }}
+    div[data-testid="column"] {{ min-width:0 !important; }}
     </style>
     """, unsafe_allow_html=True)
 
