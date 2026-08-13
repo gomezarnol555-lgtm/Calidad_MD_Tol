@@ -512,12 +512,11 @@ def page_registro():
         numero_default = f"{prefijo}-{hoy.year}-{consecutivo:05d}"
 
         with st.form(f'form_{tabla}'):
-            a1, a2 = st.columns([1, 1])
-            numero = a1.text_input('N°', value=numero_default)
-            fecha_registro = a2.date_input('Fecha', value=hoy, key=f'fecha_{tabla}')
+            fecha_registro = st.date_input('Fecha', value=hoy, key=f'fecha_{tabla}')
             dia = fecha_registro.day
             mes = fecha_registro.month
             anio = fecha_registro.year
+            numero = None
 
             b1, b2, b3 = st.columns(3)
             nave = b1.selectbox('Nave', catalog('nave'), key=f'nave_{tabla}')
@@ -548,18 +547,10 @@ def page_registro():
             guardar = st.form_submit_button('Guardar registro')
 
         if guardar:
-            numero = numero.strip()
-            if not numero:
-                st.error('Ingresa el N° del registro.')
-            else:
-                existe = read_df(f'SELECT id FROM {tabla} WHERE numero=?', (numero,))
-                if not existe.empty:
-                    st.error('Ya existe un registro con ese N°.')
-                else:
-                    exec_sql(f'INSERT INTO {tabla}(numero,dia,mes,anio,nave,sector,equipo_hallazgo,item,producto,linea,lote,descripcion_hallazgo,tipo,particulas_halladas,accion_contingente,investigacion_origen,analista_detecta,supervisor_responsable,acciones_evitar_incidencia,creado_por,creado_en) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)', (numero, int(dia), int(mes), int(anio), nave, sector, equipo_hallazgo, item, producto, linea, lote, descripcion_hallazgo, tipo, int(particulas), accion_contingente, investigacion_origen, analista_detecta, supervisor_responsable, acciones_evitar, st.session_state.auth['usuario'], now_iso()))
-                    audit(st.session_state.auth['usuario'], auditoria, numero)
-                    st.success(f'Registro guardado correctamente: {numero}')
-                    st.rerun()
+            rid = exec_sql(f'INSERT INTO {tabla}(numero,dia,mes,anio,nave,sector,equipo_hallazgo,item,producto,linea,lote,descripcion_hallazgo,tipo,particulas_halladas,accion_contingente,investigacion_origen,analista_detecta,supervisor_responsable,acciones_evitar_incidencia,creado_por,creado_en) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)', (None, int(dia), int(mes), int(anio), nave, sector, equipo_hallazgo, item, producto, linea, lote, descripcion_hallazgo, tipo, int(particulas), accion_contingente, investigacion_origen, analista_detecta, supervisor_responsable, acciones_evitar, st.session_state.auth['usuario'], now_iso()))
+            audit(st.session_state.auth['usuario'], auditoria, f'ID {rid}')
+            st.success(f'Registro guardado correctamente: Número {rid}')
+            st.rerun()
         st.markdown('</div>', unsafe_allow_html=True)
         st.markdown('</div>', unsafe_allow_html=True)
 
@@ -601,10 +592,167 @@ def page_registro():
     elif st.session_state.registro_tipo == 'DDM_RX':
         formulario_hallazgo('ddm_rx_registros', 'DDM-RX', '📦 Producto segregado por detector de metales y RX', 'CREAR_DDM_RX')
 def page_consulta():
-    st.title('Consulta, seguimiento y descarga'); df=read_df('SELECT * FROM pnc_registros ORDER BY id DESC')
-    if df.empty: st.info('No hay registros capturados.'); return
-    st.dataframe(df,use_container_width=True,hide_index=True); st.download_button('Descargar registros CSV',df.to_csv(index=False).encode('utf-8-sig'),f"pnc_me_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",'text/csv')
+    st.title('Consulta, seguimiento y descarga')
+    st.caption('Selecciona un registro en la tabla para editarlo. El número mostrado corresponde al ID automático del sistema.')
 
+    def idx_opt(options, value):
+        return options.index(value) if value in options else 0
+
+    def safe_date_from_parts(dia, mes, anio):
+        try:
+            return date(int(anio), int(mes), int(dia))
+        except Exception:
+            return date.today()
+
+    def safe_date_from_text(value):
+        try:
+            return pd.to_datetime(value).date()
+        except Exception:
+            return date.today()
+
+    def mostrar_tabla(df, key):
+        if df.empty:
+            st.info('No hay registros capturados.')
+            return None
+        vista = df.copy()
+        for col in ['folio', 'numero']:
+            if col in vista.columns:
+                vista = vista.drop(columns=[col])
+        vista = vista.rename(columns={
+            'id': 'Número',
+            'fecha_apertura': 'Fecha',
+            'descripcion_producto': 'Producto',
+            'linea_sector': 'Línea/Sector',
+            'descripcion_defecto': 'Descripción del defecto',
+            'material_hallado': 'Material hallado',
+            'descripcion_hallazgo': 'Descripción del hallazgo',
+            'particulas_halladas': '# partículas',
+            'equipo_hallazgo': 'Equipo',
+            'analista_detecta': 'Analista',
+            'supervisor_responsable': 'Supervisor'
+        })
+        try:
+            evento = st.dataframe(
+                vista,
+                use_container_width=True,
+                hide_index=True,
+                on_select='rerun',
+                selection_mode='single-row',
+                key=f'tabla_{key}'
+            )
+            filas = getattr(evento, 'selection', {}).get('rows', []) if evento is not None else []
+            if filas:
+                return int(vista.iloc[filas[0]]['Número'])
+        except Exception:
+            st.dataframe(vista, use_container_width=True, hide_index=True)
+            opciones = [f"{int(r.id)} | {getattr(r, 'item', '')} | {getattr(r, 'producto', getattr(r, 'descripcion_producto', ''))}" for r in df.itertuples()]
+            sel = st.selectbox('Selecciona un registro para editar', [''] + opciones, key=f'select_{key}')
+            if sel:
+                return int(sel.split('|')[0].strip())
+        return None
+
+    def editar_hallazgo(tabla, registro_id, titulo, accion_auditoria):
+        row_df = read_df(f'SELECT * FROM {tabla} WHERE id=?', (registro_id,))
+        if row_df.empty:
+            st.warning('No se encontró el registro seleccionado.')
+            return
+        r = row_df.iloc[0]
+        st.markdown(f'### Editar {titulo} - Número {registro_id}')
+        fecha_actual = safe_date_from_parts(r.get('dia'), r.get('mes'), r.get('anio'))
+        tipo_opts = ['Metal', 'Plástico duro', 'Plástico blando', 'Vidrio', 'Madera', 'Papel/Cartón', 'Cabello', 'Insecto', 'Otro']
+        with st.form(f'edit_{tabla}_{registro_id}'):
+            fecha_registro = st.date_input('Fecha', value=fecha_actual, key=f'edit_fecha_{tabla}_{registro_id}')
+            c1, c2, c3 = st.columns(3)
+            nave = c1.selectbox('Nave', catalog('nave'), index=idx_opt(catalog('nave'), str(r.get('nave') or '')), key=f'edit_nave_{tabla}_{registro_id}')
+            sector = c2.selectbox('Sector', catalog('linea_sector'), index=idx_opt(catalog('linea_sector'), str(r.get('sector') or '')), key=f'edit_sector_{tabla}_{registro_id}')
+            equipo = c3.text_input('Equipo en donde se tiene el hallazgo', value=str(r.get('equipo_hallazgo') or ''))
+            c4, c5, c6 = st.columns(3)
+            item = c4.text_input('ITEM', value=str(r.get('item') or ''))
+            producto = c5.text_input('Producto', value=str(r.get('producto') or ''))
+            linea = c6.selectbox('Línea', catalog('linea_sector'), index=idx_opt(catalog('linea_sector'), str(r.get('linea') or '')), key=f'edit_linea_{tabla}_{registro_id}')
+            c7, c8, c9 = st.columns(3)
+            lote = c7.text_input('Lote', value=str(r.get('lote') or ''))
+            tipo = c8.selectbox('Tipo', tipo_opts, index=idx_opt(tipo_opts, str(r.get('tipo') or '')), key=f'edit_tipo_{tabla}_{registro_id}')
+            particulas = c9.number_input('# de partículas halladas', min_value=0, value=int(r.get('particulas_halladas') or 0), step=1)
+            descripcion = st.text_area('Descripción del hallazgo', value=str(r.get('descripcion_hallazgo') or ''))
+            accion = st.text_area('Acción contingente', value=str(r.get('accion_contingente') or ''))
+            investigacion = st.text_area('Investigación del origen', value=str(r.get('investigacion_origen') or ''))
+            c10, c11 = st.columns(2)
+            analista = c10.selectbox('Analista que detecta', catalog('analista'), index=idx_opt(catalog('analista'), str(r.get('analista_detecta') or '')), key=f'edit_analista_{tabla}_{registro_id}')
+            supervisor = c11.selectbox('Supervisor responsable', catalog('supervisor'), index=idx_opt(catalog('supervisor'), str(r.get('supervisor_responsable') or '')), key=f'edit_supervisor_{tabla}_{registro_id}')
+            acciones_evitar = st.text_area('Acciones a realizar para evitar la incidencia', value=str(r.get('acciones_evitar_incidencia') or ''))
+            guardar = st.form_submit_button('Guardar cambios')
+        if guardar:
+            exec_sql(
+                f'''UPDATE {tabla} SET dia=?, mes=?, anio=?, nave=?, sector=?, equipo_hallazgo=?, item=?, producto=?, linea=?, lote=?, descripcion_hallazgo=?, tipo=?, particulas_halladas=?, accion_contingente=?, investigacion_origen=?, analista_detecta=?, supervisor_responsable=?, acciones_evitar_incidencia=? WHERE id=?''',
+                (fecha_registro.day, fecha_registro.month, fecha_registro.year, nave, sector, equipo, item, producto, linea, lote, descripcion, tipo, int(particulas), accion, investigacion, analista, supervisor, acciones_evitar, registro_id)
+            )
+            audit(st.session_state.auth['usuario'], accion_auditoria, f'ID {registro_id}')
+            st.success(f'Registro actualizado correctamente: Número {registro_id}')
+            st.rerun()
+
+    def editar_pnc(registro_id):
+        row_df = read_df('SELECT * FROM pnc_registros WHERE id=?', (registro_id,))
+        if row_df.empty:
+            st.warning('No se encontró el registro seleccionado.')
+            return
+        r = row_df.iloc[0]
+        st.markdown(f'### Editar PNC - Número {registro_id}')
+        with st.form(f'edit_pnc_{registro_id}'):
+            c1, c2, c3 = st.columns(3)
+            fecha = c1.date_input('Fecha', value=safe_date_from_text(r.get('fecha_apertura')), key=f'edit_pnc_fecha_{registro_id}')
+            linea = c1.selectbox('Línea/Sector', catalog('linea_sector'), index=idx_opt(catalog('linea_sector'), str(r.get('linea_sector') or '')), key=f'edit_pnc_linea_{registro_id}')
+            nave = c1.selectbox('Nave', catalog('nave'), index=idx_opt(catalog('nave'), str(r.get('nave') or '')), key=f'edit_pnc_nave_{registro_id}')
+            item = c2.text_input('ITEM', value=str(r.get('item') or ''))
+            desc = c2.text_input('Producto', value=str(r.get('descripcion_producto') or ''))
+            lote = c2.text_area('Lote', value=str(r.get('lote') or ''))
+            etapa = c3.selectbox('Etapa', catalog('etapa'), index=idx_opt(catalog('etapa'), str(r.get('etapa') or '')), key=f'edit_pnc_etapa_{registro_id}')
+            turno = c3.selectbox('Turno', catalog('turno'), index=idx_opt(catalog('turno'), str(r.get('turno') or '')), key=f'edit_pnc_turno_{registro_id}')
+            status = c3.selectbox('Status', catalog('status'), index=idx_opt(catalog('status'), str(r.get('status') or '')), key=f'edit_pnc_status_{registro_id}')
+            defecto = st.text_input('Defecto', value=str(r.get('defecto') or ''))
+            descripcion = st.text_area('Descripción del defecto', value=str(r.get('descripcion_defecto') or ''))
+            acciones = st.text_area('Acciones inmediatas', value=str(r.get('acciones_inmediatas') or ''))
+            c4, c5, c6 = st.columns(3)
+            sup = c4.selectbox('Supervisor', catalog('supervisor'), index=idx_opt(catalog('supervisor'), str(r.get('supervisor') or '')), key=f'edit_pnc_sup_{registro_id}')
+            ana = c4.selectbox('Analista', catalog('analista'), index=idx_opt(catalog('analista'), str(r.get('analista') or '')), key=f'edit_pnc_ana_{registro_id}')
+            resp = c5.selectbox('Responsable detecta', catalog('responsable_detecta'), index=idx_opt(catalog('responsable_detecta'), str(r.get('responsable_detecta') or '')), key=f'edit_pnc_resp_{registro_id}')
+            disp = c5.selectbox('Disposición', catalog('disposicion'), index=idx_opt(catalog('disposicion'), str(r.get('disposicion') or '')), key=f'edit_pnc_disp_{registro_id}')
+            fecha_final = c6.date_input('Fecha final', value=safe_date_from_text(r.get('fecha_final_tratamiento')), key=f'edit_pnc_final_{registro_id}') if status == 'CERRADO' else None
+            q1, q2, q3, q4 = st.columns(4)
+            obs = q1.number_input('Observada kg', min_value=0.0, value=float(r.get('cantidad_observada') or 0))
+            rep = q2.number_input('Reproceso kg', min_value=0.0, value=float(r.get('cantidad_reproceso') or 0))
+            dec = q3.number_input('Decomiso kg', min_value=0.0, value=float(r.get('cantidad_decomiso') or 0))
+            apr = q4.number_input('Aprobado 2da kg', min_value=0.0, value=float(r.get('cantidad_aprobado_segunda') or 0))
+            total = rep + dec + apr
+            mat = st.text_area('Material hallado / ME', value=str(r.get('material_hallado') or ''))
+            notas = st.text_area('Observaciones', value=str(r.get('observaciones') or ''))
+            guardar = st.form_submit_button('Guardar cambios')
+        if guardar:
+            exec_sql('''UPDATE pnc_registros SET fecha_apertura=?, linea_sector=?, nave=?, item=?, descripcion_producto=?, lote=?, etapa=?, turno=?, status=?, defecto=?, descripcion_defecto=?, acciones_inmediatas=?, supervisor=?, analista=?, responsable_detecta=?, disposicion=?, fecha_final_tratamiento=?, cantidad_observada=?, cantidad_reproceso=?, cantidad_decomiso=?, cantidad_aprobado_segunda=?, cantidad_total_pnc=?, material_hallado=?, observaciones=? WHERE id=?''',
+                     (fecha.isoformat(), linea, nave, item, desc, lote, etapa, turno, status, defecto, descripcion, acciones, sup, ana, resp, disp, fecha_final.isoformat() if fecha_final else None, obs, rep, dec, apr, total, mat, notas, registro_id))
+            audit(st.session_state.auth['usuario'], 'EDITAR_PNC', f'ID {registro_id}')
+            st.success(f'Registro actualizado correctamente: Número {registro_id}')
+            st.rerun()
+
+    tab_pnc, tab_me, tab_ddm = st.tabs(['PNC´s', 'Materia Extraña', 'Detector de metales y RX'])
+    with tab_pnc:
+        df = read_df('SELECT * FROM pnc_registros ORDER BY id ASC')
+        selected = mostrar_tabla(df, 'pnc')
+        st.download_button('Descargar PNC CSV', df.drop(columns=[c for c in ['folio'] if c in df.columns]).rename(columns={'id':'Número'}).to_csv(index=False).encode('utf-8-sig'), f"pnc_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv", 'text/csv') if not df.empty else None
+        if selected:
+            editar_pnc(selected)
+    with tab_me:
+        df = read_df('SELECT * FROM me_registros ORDER BY id ASC')
+        selected = mostrar_tabla(df, 'me')
+        st.download_button('Descargar Materia Extraña CSV', df.drop(columns=[c for c in ['numero'] if c in df.columns]).rename(columns={'id':'Número'}).to_csv(index=False).encode('utf-8-sig'), f"materia_extrana_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv", 'text/csv') if not df.empty else None
+        if selected:
+            editar_hallazgo('me_registros', selected, 'Materia Extraña', 'EDITAR_ME')
+    with tab_ddm:
+        df = read_df('SELECT * FROM ddm_rx_registros ORDER BY id ASC')
+        selected = mostrar_tabla(df, 'ddm_rx')
+        st.download_button('Descargar Detector de metales y RX CSV', df.drop(columns=[c for c in ['numero'] if c in df.columns]).rename(columns={'id':'Número'}).to_csv(index=False).encode('utf-8-sig'), f"ddm_rx_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv", 'text/csv') if not df.empty else None
+        if selected:
+            editar_hallazgo('ddm_rx_registros', selected, 'Detector de metales y RX', 'EDITAR_DDM_RX')
 def admin_required():
     if not is_dev(): st.warning('Solo el usuario administrador puede modificar catálogos.'); return False
     return True
