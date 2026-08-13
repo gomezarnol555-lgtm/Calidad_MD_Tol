@@ -1,3 +1,4 @@
+
 import streamlit as st
 import pandas as pd
 import sqlite3, hashlib, os, base64
@@ -43,6 +44,7 @@ def init_db():
     cur.execute("CREATE TABLE IF NOT EXISTS defectos(id INTEGER PRIMARY KEY AUTOINCREMENT, codigo TEXT UNIQUE, defecto TEXT, tipo_defecto TEXT, clasificacion TEXT, activo INTEGER DEFAULT 1)")
     cur.execute("""CREATE TABLE IF NOT EXISTS pnc_registros(id INTEGER PRIMARY KEY AUTOINCREMENT, folio TEXT UNIQUE, fecha_apertura TEXT, linea_sector TEXT, nave TEXT, item TEXT, descripcion_producto TEXT, cliente TEXT, familia TEXT, lote TEXT, etapa TEXT, codigo_defecto TEXT, defecto TEXT, tipo_defecto TEXT, clasificacion TEXT, turno TEXT, supervisor TEXT, analista TEXT, responsable_detecta TEXT, descripcion_defecto TEXT, acciones_inmediatas TEXT, disposicion TEXT, cantidad_observada REAL DEFAULT 0, cantidad_reproceso REAL DEFAULT 0, cantidad_decomiso REAL DEFAULT 0, cantidad_aprobado_segunda REAL DEFAULT 0, cantidad_total_pnc REAL DEFAULT 0, status TEXT DEFAULT 'ABIERTO', fecha_final_tratamiento TEXT, observaciones TEXT, material_hallado TEXT, creado_por TEXT, creado_en TEXT)""")
     cur.execute("""CREATE TABLE IF NOT EXISTS me_registros(id INTEGER PRIMARY KEY AUTOINCREMENT, numero TEXT UNIQUE, dia INTEGER, mes INTEGER, anio INTEGER, nave TEXT, sector TEXT, equipo_hallazgo TEXT, item TEXT, producto TEXT, linea TEXT, lote TEXT, descripcion_hallazgo TEXT, tipo TEXT, particulas_halladas INTEGER DEFAULT 0, accion_contingente TEXT, investigacion_origen TEXT, analista_detecta TEXT, supervisor_responsable TEXT, acciones_evitar_incidencia TEXT, creado_por TEXT, creado_en TEXT)""")
+    cur.execute("""CREATE TABLE IF NOT EXISTS ddm_rx_registros(id INTEGER PRIMARY KEY AUTOINCREMENT, numero TEXT UNIQUE, dia INTEGER, mes INTEGER, anio INTEGER, nave TEXT, sector TEXT, equipo_hallazgo TEXT, item TEXT, producto TEXT, linea TEXT, lote TEXT, descripcion_hallazgo TEXT, tipo TEXT, particulas_halladas INTEGER DEFAULT 0, accion_contingente TEXT, investigacion_origen TEXT, analista_detecta TEXT, supervisor_responsable TEXT, acciones_evitar_incidencia TEXT, creado_por TEXT, creado_en TEXT)""")
     cur.execute("CREATE TABLE IF NOT EXISTS adjuntos(id INTEGER PRIMARY KEY AUTOINCREMENT, registro_id INTEGER, folio TEXT, nombre_original TEXT, ruta_archivo TEXT, tipo_archivo TEXT, subido_por TEXT, subido_en TEXT)")
     cur.execute("CREATE TABLE IF NOT EXISTS auditoria(id INTEGER PRIMARY KEY AUTOINCREMENT, usuario TEXT, accion TEXT, detalle TEXT, fecha_hora TEXT)")
     for item,desc,cliente,familia in SEED_PRODUCTS: cur.execute("INSERT OR IGNORE INTO productos(item,descripcion,cliente,familia,activo) VALUES(?,?,?,?,1)",(item,desc,cliente,familia))
@@ -329,6 +331,36 @@ def styles(compact=False):
     .registro-click-title { color:#102A43; font-size:1.03rem; font-weight:950; margin-bottom:.4rem; }
     .registro-click-text { color:#667085; font-size:.84rem; line-height:1.35; font-weight:650; }
     .registro-click-action { color:#027A48; font-size:.78rem; font-weight:950; margin-top:.9rem; }
+
+    /* Recuadros de selección como botón único, sin recargar la app */
+    .registro-selector-safe { display:none; }
+    div[data-testid="stHorizontalBlock"]:has(.registro-selector-safe) .stButton button {
+        width:100% !important;
+        min-height:166px !important;
+        background:rgba(255,255,255,.96) !important;
+        border:1px solid #E2E8F0 !important;
+        border-radius:22px !important;
+        color:#102A43 !important;
+        font-weight:900 !important;
+        text-align:left !important;
+        justify-content:flex-start !important;
+        align-items:flex-start !important;
+        padding:1.08rem 1.12rem !important;
+        white-space:pre-line !important;
+        line-height:1.34 !important;
+        box-shadow:0 16px 36px rgba(15,23,42,.08) !important;
+        overflow:hidden !important;
+    }
+    div[data-testid="stHorizontalBlock"]:has(.registro-selector-safe) .stButton button:hover {
+        transform:translateY(-2px) !important;
+        border-color:#00A884 !important;
+        box-shadow:0 20px 42px rgba(15,23,42,.12),0 0 0 3px rgba(0,168,132,.10) !important;
+        color:#0B3440 !important;
+    }
+    div[data-testid="stHorizontalBlock"]:has(.registro-selector-safe) .stButton button:focus {
+        border-color:#00A884 !important;
+        box-shadow:0 0 0 3px rgba(0,168,132,.16) !important;
+    }
     </style>
     """, unsafe_allow_html=True)
 
@@ -415,119 +447,100 @@ def page_inicio():
         st.markdown('</div></div>',unsafe_allow_html=True)
 
 def page_registro():
-    def get_registro_tipo_from_url():
-        try:
-            val = st.query_params.get('registro_tipo', None)
-            if isinstance(val, list):
-                val = val[0] if val else None
-        except Exception:
-            try:
-                params = st.experimental_get_query_params()
-                val = params.get('registro_tipo', [None])[0]
-            except Exception:
-                val = None
-        return val if val in ['PNC', 'ME', 'DDM_RX'] else None
-
-    tipo_url = get_registro_tipo_from_url()
-    if tipo_url:
-        st.session_state.registro_tipo = tipo_url
     if 'registro_tipo' not in st.session_state:
         st.session_state.registro_tipo = 'PNC'
 
     st.markdown("""<div class="registro-hero"><div class="registro-hero-title">Nuevo registro</div><div class="registro-hero-subtitle">Selecciona el tipo de captura.</div></div>""", unsafe_allow_html=True)
+    st.markdown('<span class="registro-selector-safe"></span>', unsafe_allow_html=True)
 
-    def ventana_click(tipo, icono, titulo, texto, color):
-        active = ' registro-card-clickable-active' if st.session_state.registro_tipo == tipo else ''
-        check = ' ✓' if st.session_state.registro_tipo == tipo else ''
-        st.markdown(
-            f"""<a class="registro-card-link" href="?registro_tipo={tipo}" target="_self">
-                    <div class="registro-card-clickable{active}" style="--accent:{color}">
-                        <div class="registro-click-icon">{icono}</div>
-                        <div class="registro-click-title">{titulo}{check}</div>
-                        <div class="registro-click-text">{texto}</div>
-                        <div class="registro-click-action">Click para abrir</div>
-                    </div>
-                </a>""",
-            unsafe_allow_html=True
-        )
+    def selector_card(tipo, icono, titulo, texto):
+        selected = st.session_state.registro_tipo == tipo
+        mark = '  ✓' if selected else ''
+        label = f"{icono}  {titulo}{mark}\n\n{texto}\n\nClick para abrir"
+        if st.button(label, key=f'selector_registro_{tipo}'):
+            st.session_state.registro_tipo = tipo
+            st.rerun()
 
     c_pnc, c_me, c_ddm = st.columns(3, gap='large')
     with c_pnc:
-        ventana_click('PNC', '📝', "PNC´s", 'Producto no conforme.', '#00A884')
+        selector_card('PNC', '📝', "PNC´s", 'Producto no conforme.')
     with c_me:
-        ventana_click('ME', '🧲', 'Materia Extraña', 'Hallazgo de material ajeno.', '#3F7BFF')
+        selector_card('ME', '🧲', 'Materia Extraña', 'Hallazgo de material ajeno.')
     with c_ddm:
-        ventana_click('DDM_RX', '📦', 'DDM y RX', 'Producto segregado.', '#5850EC')
+        selector_card('DDM_RX', '📦', 'Detector de metales y RX', 'Producto segregado.')
 
-    if st.session_state.registro_tipo == 'ME':
-        st.markdown("""<div class="registro-floating-panel"><div class="registro-active-note">Opción seleccionada</div><div class="registro-panel-title">🧲 Materia Extraña</div><div class="registro-panel-subtitle">Completa la información y guarda el registro.</div>""", unsafe_allow_html=True)
+    def formulario_hallazgo(tabla, prefijo, titulo, subtitulo, accion_auditoria):
+        st.markdown(f"""<div class="registro-floating-panel"><div class="registro-active-note">Opción seleccionada</div><div class="registro-panel-title">{titulo}</div><div class="registro-panel-subtitle">{subtitulo}</div>""", unsafe_allow_html=True)
 
         prod = read_df('SELECT * FROM productos WHERE activo=1 ORDER BY descripcion')
         hoy = date.today()
-        df_me = read_df('SELECT numero FROM me_registros WHERE numero LIKE ? ORDER BY id DESC LIMIT 1', (f"ME-{hoy.year}-%",))
+        df_folio = read_df(f'SELECT numero FROM {tabla} WHERE numero LIKE ? ORDER BY id DESC LIMIT 1', (f"{prefijo}-{hoy.year}-%",))
         consecutivo = 1
-        if not df_me.empty:
+        if not df_folio.empty:
             try:
-                consecutivo = int(str(df_me.iloc[0]['numero']).split('-')[-1]) + 1
+                consecutivo = int(str(df_folio.iloc[0]['numero']).split('-')[-1]) + 1
             except Exception:
                 consecutivo = 1
-        numero_default = f"ME-{hoy.year}-{consecutivo:05d}"
+        numero_default = f"{prefijo}-{hoy.year}-{consecutivo:05d}"
 
-        with st.form('registro_materia_extrana'):
+        with st.form(f'form_{tabla}'):
             a1, a2, a3, a4 = st.columns(4)
             numero = a1.text_input('N°', value=numero_default)
-            dia = a2.number_input('Día', min_value=1, max_value=31, value=hoy.day, step=1)
-            mes = a3.number_input('Mes', min_value=1, max_value=12, value=hoy.month, step=1)
-            anio = a4.number_input('Año', min_value=2020, max_value=2100, value=hoy.year, step=1)
+            dia = a2.number_input('Día', min_value=1, max_value=31, value=hoy.day, step=1, key=f'dia_{tabla}')
+            mes = a3.number_input('Mes', min_value=1, max_value=12, value=hoy.month, step=1, key=f'mes_{tabla}')
+            anio = a4.number_input('Año', min_value=2020, max_value=2100, value=hoy.year, step=1, key=f'anio_{tabla}')
 
             b1, b2, b3 = st.columns(3)
-            nave = b1.selectbox('Nave', catalog('nave'))
-            sector = b2.selectbox('Sector', catalog('linea_sector'))
-            equipo_hallazgo = b3.text_input('Equipo en donde se tiene el hallazgo')
+            nave = b1.selectbox('Nave', catalog('nave'), key=f'nave_{tabla}')
+            sector = b2.selectbox('Sector', catalog('linea_sector'), key=f'sector_{tabla}')
+            equipo_hallazgo = b3.text_input('Equipo en donde se tiene el hallazgo', key=f'equipo_{tabla}')
 
             c1, c2, c3 = st.columns(3)
-            opt_prod = c1.selectbox('ITEM', [f'{r.item} | {r.descripcion}' for r in prod.itertuples()]) if not prod.empty else ''
-            item = opt_prod.split('|')[0].strip() if opt_prod else c1.text_input('ITEM manual')
+            opt_prod = c1.selectbox('ITEM', [f'{r.item} | {r.descripcion}' for r in prod.itertuples()], key=f'item_{tabla}') if not prod.empty else ''
+            item = opt_prod.split('|')[0].strip() if opt_prod else c1.text_input('ITEM manual', key=f'item_manual_{tabla}')
             prod_row = prod[prod['item'] == item].iloc[0] if not prod.empty and item in prod['item'].values else None
-            producto = str(prod_row['descripcion']) if prod_row is not None else c2.text_input('Producto')
-            c2.text_input('Producto', value=producto, disabled=True) if prod_row is not None else None
-            linea = c3.selectbox('Línea', catalog('linea_sector'))
+            producto_auto = str(prod_row['descripcion']) if prod_row is not None else ''
+            producto = c2.text_input('Producto', value=producto_auto, key=f'producto_{tabla}')
+            linea = c3.selectbox('Línea', catalog('linea_sector'), key=f'linea_{tabla}')
 
             d1, d2, d3 = st.columns(3)
-            lote = d1.text_input('Lote')
-            tipo = d2.selectbox('Tipo', ['Metal', 'Plástico duro', 'Plástico blando', 'Vidrio', 'Madera', 'Papel/Cartón', 'Cabello', 'Insecto', 'Otro'])
-            particulas = d3.number_input('# de partículas halladas', min_value=0, step=1)
+            lote = d1.text_input('Lote', key=f'lote_{tabla}')
+            tipo = d2.selectbox('Tipo', ['Metal', 'Plástico duro', 'Plástico blando', 'Vidrio', 'Madera', 'Papel/Cartón', 'Cabello', 'Insecto', 'Otro'], key=f'tipo_{tabla}')
+            particulas = d3.number_input('# de partículas halladas', min_value=0, step=1, key=f'particulas_{tabla}')
 
-            descripcion_hallazgo = st.text_area('Descripción del hallazgo')
-            accion_contingente = st.text_area('Acción contingente')
-            investigacion_origen = st.text_area('Investigación del origen')
+            descripcion_hallazgo = st.text_area('Descripción del hallazgo', key=f'desc_{tabla}')
+            accion_contingente = st.text_area('Acción contingente', key=f'accion_{tabla}')
+            investigacion_origen = st.text_area('Investigación del origen', key=f'investigacion_{tabla}')
 
             e1, e2 = st.columns(2)
-            analista_detecta = e1.selectbox('Analista que detecta', catalog('analista'))
-            supervisor_responsable = e2.selectbox('Supervisor responsable', catalog('supervisor'))
-            acciones_evitar = st.text_area('Acciones a realizar para evitar la incidencia')
+            analista_detecta = e1.selectbox('Analista que detecta', catalog('analista'), key=f'analista_{tabla}')
+            supervisor_responsable = e2.selectbox('Supervisor responsable', catalog('supervisor'), key=f'supervisor_{tabla}')
+            acciones_evitar = st.text_area('Acciones a realizar para evitar la incidencia', key=f'evitar_{tabla}')
 
-            guardar_me = st.form_submit_button('Guardar registro')
+            guardar = st.form_submit_button('Guardar registro')
 
-        if guardar_me:
+        if guardar:
             numero = numero.strip()
             if not numero:
                 st.error('Ingresa el N° del registro.')
             else:
-                existe = read_df('SELECT id FROM me_registros WHERE numero=?', (numero,))
+                existe = read_df(f'SELECT id FROM {tabla} WHERE numero=?', (numero,))
                 if not existe.empty:
                     st.error('Ya existe un registro con ese N°.')
                 else:
-                    exec_sql('INSERT INTO me_registros(numero,dia,mes,anio,nave,sector,equipo_hallazgo,item,producto,linea,lote,descripcion_hallazgo,tipo,particulas_halladas,accion_contingente,investigacion_origen,analista_detecta,supervisor_responsable,acciones_evitar_incidencia,creado_por,creado_en) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)', (numero, int(dia), int(mes), int(anio), nave, sector, equipo_hallazgo, item, producto, linea, lote, descripcion_hallazgo, tipo, int(particulas), accion_contingente, investigacion_origen, analista_detecta, supervisor_responsable, acciones_evitar, st.session_state.auth['usuario'], now_iso()))
-                    audit(st.session_state.auth['usuario'], 'CREAR_ME', numero)
+                    exec_sql(f'INSERT INTO {tabla}(numero,dia,mes,anio,nave,sector,equipo_hallazgo,item,producto,linea,lote,descripcion_hallazgo,tipo,particulas_halladas,accion_contingente,investigacion_origen,analista_detecta,supervisor_responsable,acciones_evitar_incidencia,creado_por,creado_en) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)', (numero, int(dia), int(mes), int(anio), nave, sector, equipo_hallazgo, item, producto, linea, lote, descripcion_hallazgo, tipo, int(particulas), accion_contingente, investigacion_origen, analista_detecta, supervisor_responsable, acciones_evitar, st.session_state.auth['usuario'], now_iso()))
+                    audit(st.session_state.auth['usuario'], accion_auditoria, numero)
                     st.success(f'Registro guardado correctamente: {numero}')
                     st.rerun()
 
         st.markdown('</div>', unsafe_allow_html=True)
+
+    if st.session_state.registro_tipo == 'ME':
+        formulario_hallazgo('me_registros', 'ME', '🧲 Materia Extraña', 'Completa la información y guarda el registro.', 'CREAR_ME')
         return
 
     if st.session_state.registro_tipo == 'DDM_RX':
-        st.markdown("""<div class="registro-floating-panel"><div class="registro-active-note">Opción seleccionada</div><div class="registro-panel-title">📦 DDM y RX</div><div class="registro-panel-subtitle">Aquí se capturará el producto segregado.</div><div class="registro-placeholder">Módulo listo para configurar.</div></div>""", unsafe_allow_html=True)
+        formulario_hallazgo('ddm_rx_registros', 'DDM-RX', '📦 Producto segregado por detector de metales y RX', 'Completa la información y guarda el registro.', 'CREAR_DDM_RX')
         return
 
     st.markdown("""<div class="registro-floating-panel"><div class="registro-active-note">Opción seleccionada</div><div class="registro-panel-title">📝 PNC´s</div><div class="registro-panel-subtitle">Completa la información y guarda el registro.</div>""", unsafe_allow_html=True)
