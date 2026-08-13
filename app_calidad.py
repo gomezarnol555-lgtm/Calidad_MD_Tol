@@ -1,4 +1,3 @@
-
 import streamlit as st
 import pandas as pd
 import sqlite3, hashlib, os, base64
@@ -247,120 +246,54 @@ def styles(compact=False):
         box-sizing:border-box !important;
     }
 
-    /* Ventanas flotantes minimalistas para Nuevo registro */
-    .registro-hero { background:linear-gradient(135deg,#FFFFFF 0%,#F7FAFC 62%,#EEFDF8 100%); border:1px solid #E2E8F0; border-radius:24px; padding:1.35rem 1.55rem; margin:0 0 1.05rem 0; box-shadow:0 14px 34px rgba(15,23,42,.07); }
-    .registro-hero-title { color:#0B3440; font-size:1.65rem; line-height:1.12; font-weight:950; letter-spacing:-.02em; margin:0 0 .35rem 0; }
-    .registro-hero-subtitle { color:#667085; font-size:.92rem; font-weight:650; margin:0; }
-    .registro-card { min-height:168px; background:rgba(255,255,255,.94); border:1px solid #E2E8F0; border-radius:22px; padding:1.15rem 1.15rem 1rem 1.15rem; box-shadow:0 16px 36px rgba(15,23,42,.08); position:relative; overflow:hidden; transition:all .18s ease; box-sizing:border-box; }
-    .registro-card:before { content:""; position:absolute; top:0; left:0; right:0; height:5px; background:var(--accent); }
-    .registro-card:hover { transform:translateY(-2px); box-shadow:0 20px 42px rgba(15,23,42,.12); border-color:#CBD5E1; }
-    .registro-card-active { border:2px solid var(--accent) !important; box-shadow:0 18px 44px rgba(0,168,132,.16) !important; }
-    .registro-card-icon { width:42px; height:42px; border-radius:14px; display:flex; align-items:center; justify-content:center; background:linear-gradient(135deg,#F8FAFC,#EEF2FF); font-size:1.25rem; margin-bottom:.7rem; }
-    .registro-card-title { color:#102A43; font-size:1rem; font-weight:950; margin-bottom:.35rem; }
-    .registro-card-text { color:#667085; font-size:.82rem; line-height:1.35; font-weight:650; min-height:42px; }
-    .registro-floating-panel { background:rgba(255,255,255,.96); border:1px solid #E2E8F0; border-radius:24px; padding:1.2rem 1.25rem 1.35rem 1.25rem; margin-top:1.15rem; box-shadow:0 18px 46px rgba(15,23,42,.10); overflow:hidden; }
-    .registro-panel-title { display:flex; align-items:center; gap:.65rem; color:#0B3440; font-size:1.25rem; font-weight:950; margin:0 0 .25rem 0; }
-    .registro-panel-subtitle { color:#667085; font-size:.86rem; font-weight:650; margin:0 0 1rem 0; }
-    .registro-placeholder { background:linear-gradient(135deg,#F8FAFC 0%,#FFFFFF 100%); border:1px dashed #CBD5E1; border-radius:18px; padding:1.4rem; color:#475467; font-weight:700; }
-    .registro-mini-pill { display:inline-flex; align-items:center; gap:.35rem; border-radius:999px; padding:.32rem .65rem; background:#ECFDF3; color:#027A48; font-size:.76rem; font-weight:900; margin-bottom:.8rem; }
-    div[data-testid="stHorizontalBlock"]:has(.registro-card) .stButton button { width:100% !important; border-radius:12px !important; border:1px solid #D0D7E2 !important; background:#FFFFFF !important; color:#0B3440 !important; font-weight:900 !important; min-height:42px !important; }
-    div[data-testid="stHorizontalBlock"]:has(.registro-card) .stButton button:hover { border-color:#00A884 !important; box-shadow:0 0 0 3px rgba(0,168,132,.12) !important; }
-
-    /* Ventanas flotantes clicables en Nuevo registro */
-    .registro-selector-marker { display:none; }
-    div[data-testid="stHorizontalBlock"]:has(.registro-selector-marker) .stButton button {
-        width:100% !important;
-        min-height:168px !important;
-        background:rgba(255,255,255,.96) !important;
-        border:1px solid #E2E8F0 !important;
-        border-radius:22px !important;
-        padding:1.05rem 1rem !important;
-        color:#102A43 !important;
-        font-weight:900 !important;
-        text-align:left !important;
-        justify-content:flex-start !important;
-        align-items:flex-start !important;
-        white-space:pre-line !important;
-        line-height:1.35 !important;
-        box-shadow:0 16px 36px rgba(15,23,42,.08) !important;
-        overflow:hidden !important;
-        position:relative !important;
-    }
-    div[data-testid="stHorizontalBlock"]:has(.registro-selector-marker) .stButton button:hover {
-        transform:translateY(-2px) !important;
-        border-color:#00A884 !important;
-        box-shadow:0 20px 42px rgba(15,23,42,.12), 0 0 0 3px rgba(0,168,132,.10) !important;
-        color:#0B3440 !important;
-    }
-    div[data-testid="stHorizontalBlock"]:has(.registro-selector-marker) .stButton button:focus {
-        border-color:#00A884 !important;
-        box-shadow:0 0 0 3px rgba(0,168,132,.16) !important;
-    }
-    .registro-active-note {
-        display:inline-flex;
-        align-items:center;
-        gap:.35rem;
-        border-radius:999px;
-        padding:.34rem .7rem;
-        background:#ECFDF3;
-        color:#027A48;
-        font-size:.78rem;
-        font-weight:950;
-        margin:.8rem 0 .2rem 0;
-    }
-
-    /* Tarjetas flotantes 100% clicables, sin botones separados */
-    .registro-card-link { text-decoration:none !important; display:block !important; }
-    .registro-card-clickable {
-        min-height:168px;
-        background:rgba(255,255,255,.96);
+    /* Nuevo registro: diseño anterior migrado sin afectar menú lateral */
+    .registro-landing-hero {
+        background:linear-gradient(135deg,#FFFFFF 0%,#F7FAFC 62%,#ECFDF8 100%);
         border:1px solid #E2E8F0;
-        border-radius:22px;
-        padding:1.1rem 1.1rem 1rem 1.1rem;
-        box-shadow:0 16px 36px rgba(15,23,42,.08);
-        color:#102A43;
-        position:relative;
-        overflow:hidden;
-        box-sizing:border-box;
-        transition:all .18s ease;
+        border-radius:24px;
+        padding:1.65rem 1.8rem;
+        margin:0 0 1.25rem 0;
+        box-shadow:0 14px 34px rgba(15,23,42,.07);
     }
-    .registro-card-clickable:before { content:""; position:absolute; top:0; left:0; right:0; height:5px; background:var(--accent); }
-    .registro-card-clickable:hover { transform:translateY(-2px); border-color:#00A884; box-shadow:0 20px 42px rgba(15,23,42,.12),0 0 0 3px rgba(0,168,132,.10); }
-    .registro-card-clickable-active { border:2px solid var(--accent) !important; box-shadow:0 18px 44px rgba(0,168,132,.16) !important; }
-    .registro-click-icon { width:42px; height:42px; border-radius:14px; display:flex; align-items:center; justify-content:center; background:linear-gradient(135deg,#F8FAFC,#EEF2FF); font-size:1.25rem; margin-bottom:.7rem; }
-    .registro-click-title { color:#102A43; font-size:1.03rem; font-weight:950; margin-bottom:.4rem; }
-    .registro-click-text { color:#667085; font-size:.84rem; line-height:1.35; font-weight:650; }
-    .registro-click-action { color:#027A48; font-size:.78rem; font-weight:950; margin-top:.9rem; }
-
-    /* Recuadros de selección como botón único, sin recargar la app */
-    .registro-selector-safe { display:none; }
-    div[data-testid="stHorizontalBlock"]:has(.registro-selector-safe) .stButton button {
+    .registro-landing-title { color:#0B3440; font-size:2rem; line-height:1.08; font-weight:950; letter-spacing:-.03em; margin:0 0 .55rem 0; }
+    .registro-landing-subtitle { color:#667085; font-size:1rem; font-weight:800; margin:0; }
+    .registro-card-slot { display:none; }
+    div[data-testid="column"]:has(.registro-card-slot) .stButton button {
         width:100% !important;
-        min-height:166px !important;
-        background:rgba(255,255,255,.96) !important;
+        min-height:178px !important;
+        background:#FFFFFF !important;
         border:1px solid #E2E8F0 !important;
         border-radius:22px !important;
         color:#102A43 !important;
-        font-weight:900 !important;
+        font-weight:850 !important;
         text-align:left !important;
         justify-content:flex-start !important;
         align-items:flex-start !important;
-        padding:1.08rem 1.12rem !important;
+        padding:1.25rem !important;
         white-space:pre-line !important;
-        line-height:1.34 !important;
+        line-height:1.45 !important;
         box-shadow:0 16px 36px rgba(15,23,42,.08) !important;
         overflow:hidden !important;
     }
-    div[data-testid="stHorizontalBlock"]:has(.registro-selector-safe) .stButton button:hover {
+    div[data-testid="column"]:has(.registro-card-slot) .stButton button:hover {
         transform:translateY(-2px) !important;
         border-color:#00A884 !important;
         box-shadow:0 20px 42px rgba(15,23,42,.12),0 0 0 3px rgba(0,168,132,.10) !important;
         color:#0B3440 !important;
     }
-    div[data-testid="stHorizontalBlock"]:has(.registro-selector-safe) .stButton button:focus {
-        border-color:#00A884 !important;
-        box-shadow:0 0 0 3px rgba(0,168,132,.16) !important;
+    .registro-full-panel {
+        width:100%;
+        background:#FFFFFF;
+        border:1px solid #E2E8F0;
+        border-radius:24px;
+        padding:1.45rem 1.55rem 1.65rem 1.55rem;
+        box-shadow:0 18px 46px rgba(15,23,42,.10);
+        box-sizing:border-box;
+        overflow:hidden;
     }
+    .registro-full-title { color:#0B3440; font-size:1.7rem; font-weight:950; letter-spacing:-.02em; margin:0 0 .25rem 0; }
+    .registro-full-subtitle { color:#667085; font-size:.95rem; font-weight:750; margin:0 0 1rem 0; }
+    .registro-pill { display:inline-flex; align-items:center; border-radius:999px; padding:.34rem .75rem; background:#ECFDF3; color:#027A48; font-size:.78rem; font-weight:950; margin-bottom:.85rem; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -448,29 +381,36 @@ def page_inicio():
 
 def page_registro():
     if 'registro_tipo' not in st.session_state:
-        st.session_state.registro_tipo = 'PNC'
+        st.session_state.registro_tipo = None
 
-    st.markdown("""<div class="registro-hero"><div class="registro-hero-title">Nuevo registro</div><div class="registro-hero-subtitle">Selecciona el tipo de captura.</div></div>""", unsafe_allow_html=True)
-    st.markdown('<span class="registro-selector-safe"></span>', unsafe_allow_html=True)
+    def abrir_registro(tipo):
+        st.session_state.registro_tipo = tipo
+        st.rerun()
 
-    def selector_card(tipo, icono, titulo, texto):
-        selected = st.session_state.registro_tipo == tipo
-        mark = '  ✓' if selected else ''
-        label = f"{icono}  {titulo}{mark}\n\n{texto}\n\nClick para abrir"
-        if st.button(label, key=f'selector_registro_{tipo}'):
-            st.session_state.registro_tipo = tipo
-            st.rerun()
+    def volver_selector():
+        st.session_state.registro_tipo = None
+        st.rerun()
 
-    c_pnc, c_me, c_ddm = st.columns(3, gap='large')
-    with c_pnc:
-        selector_card('PNC', '📝', "PNC´s", 'Producto no conforme.')
-    with c_me:
-        selector_card('ME', '🧲', 'Materia Extraña', 'Hallazgo de material ajeno.')
-    with c_ddm:
-        selector_card('DDM_RX', '📦', 'Detector de metales y RX', 'Producto segregado.')
+    def selector_inicial():
+        st.markdown("""<div class="registro-landing-hero"><div class="registro-landing-title">Nuevo registro</div><div class="registro-landing-subtitle">Selecciona el tipo de captura.</div></div>""", unsafe_allow_html=True)
+        c1, c2, c3 = st.columns(3, gap='large')
+        with c1:
+            st.markdown('<span class="registro-card-slot"></span>', unsafe_allow_html=True)
+            if st.button("📝 PNC´s\n\nProducto no conforme.\n\nClick para abrir", key='abrir_pnc_card'):
+                abrir_registro('PNC')
+        with c2:
+            st.markdown('<span class="registro-card-slot"></span>', unsafe_allow_html=True)
+            if st.button("🧲 Materia Extraña\n\nHallazgo de material ajeno.\n\nClick para abrir", key='abrir_me_card'):
+                abrir_registro('ME')
+        with c3:
+            st.markdown('<span class="registro-card-slot"></span>', unsafe_allow_html=True)
+            if st.button("📦 Detector de metales y RX\n\nProducto segregado.\n\nClick para abrir", key='abrir_ddm_rx_card'):
+                abrir_registro('DDM_RX')
 
-    def formulario_hallazgo(tabla, prefijo, titulo, subtitulo, accion_auditoria):
-        st.markdown(f"""<div class="registro-floating-panel"><div class="registro-active-note">Opción seleccionada</div><div class="registro-panel-title">{titulo}</div><div class="registro-panel-subtitle">{subtitulo}</div>""", unsafe_allow_html=True)
+    def formulario_hallazgo(tabla, prefijo, titulo, auditoria):
+        st.markdown(f"""<div class="registro-full-panel"><div class="registro-pill">Nuevo registro</div><div class="registro-full-title">{titulo}</div><div class="registro-full-subtitle">Completa la información y guarda el registro.</div>""", unsafe_allow_html=True)
+        if st.button('← Cambiar tipo de registro', key=f'volver_{tabla}'):
+            volver_selector()
 
         prod = read_df('SELECT * FROM productos WHERE activo=1 ORDER BY descripcion')
         hoy = date.today()
@@ -516,7 +456,6 @@ def page_registro():
             analista_detecta = e1.selectbox('Analista que detecta', catalog('analista'), key=f'analista_{tabla}')
             supervisor_responsable = e2.selectbox('Supervisor responsable', catalog('supervisor'), key=f'supervisor_{tabla}')
             acciones_evitar = st.text_area('Acciones a realizar para evitar la incidencia', key=f'evitar_{tabla}')
-
             guardar = st.form_submit_button('Guardar registro')
 
         if guardar:
@@ -529,44 +468,46 @@ def page_registro():
                     st.error('Ya existe un registro con ese N°.')
                 else:
                     exec_sql(f'INSERT INTO {tabla}(numero,dia,mes,anio,nave,sector,equipo_hallazgo,item,producto,linea,lote,descripcion_hallazgo,tipo,particulas_halladas,accion_contingente,investigacion_origen,analista_detecta,supervisor_responsable,acciones_evitar_incidencia,creado_por,creado_en) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)', (numero, int(dia), int(mes), int(anio), nave, sector, equipo_hallazgo, item, producto, linea, lote, descripcion_hallazgo, tipo, int(particulas), accion_contingente, investigacion_origen, analista_detecta, supervisor_responsable, acciones_evitar, st.session_state.auth['usuario'], now_iso()))
-                    audit(st.session_state.auth['usuario'], accion_auditoria, numero)
+                    audit(st.session_state.auth['usuario'], auditoria, numero)
                     st.success(f'Registro guardado correctamente: {numero}')
                     st.rerun()
-
         st.markdown('</div>', unsafe_allow_html=True)
 
-    if st.session_state.registro_tipo == 'ME':
-        formulario_hallazgo('me_registros', 'ME', '🧲 Materia Extraña', 'Completa la información y guarda el registro.', 'CREAR_ME')
-        return
+    def formulario_pnc():
+        st.markdown("""<div class="registro-full-panel"><div class="registro-pill">Nuevo registro</div><div class="registro-full-title">📝 PNC´s</div><div class="registro-full-subtitle">Completa la información y guarda el registro.</div>""", unsafe_allow_html=True)
+        if st.button('← Cambiar tipo de registro', key='volver_pnc'):
+            volver_selector()
 
-    if st.session_state.registro_tipo == 'DDM_RX':
-        formulario_hallazgo('ddm_rx_registros', 'DDM-RX', '📦 Producto segregado por detector de metales y RX', 'Completa la información y guarda el registro.', 'CREAR_DDM_RX')
-        return
+        prod=read_df('SELECT * FROM productos WHERE activo=1 ORDER BY descripcion'); defs=read_df('SELECT * FROM defectos WHERE activo=1 ORDER BY CAST(codigo AS INTEGER)')
+        with st.form('registro'):
+            c1,c2,c3=st.columns(3)
+            fecha=c1.date_input('Fecha',value=date.today()); linea=c1.selectbox('Línea/Sector',catalog('linea_sector')); nave=c1.selectbox('Nave',catalog('nave'))
+            opt=c2.selectbox('ITEM / Producto',[f'{r.item} | {r.descripcion}' for r in prod.itertuples()]) if not prod.empty else ''
+            item=opt.split('|')[0].strip() if opt else c2.text_input('ITEM')
+            row=prod[prod['item']==item].iloc[0] if not prod.empty and item in prod['item'].values else None
+            desc=str(row['descripcion']) if row is not None else c2.text_input('Descripción'); cliente=str(row['cliente']) if row is not None else ''; familia=str(row['familia']) if row is not None else ''
+            lote=c2.text_area('Lote'); etapa=c3.selectbox('Etapa',catalog('etapa')); turno=c3.selectbox('Turno',catalog('turno')); status=c3.selectbox('Status',catalog('status'))
+            optd=st.selectbox('Código / Defecto',[f'{r.codigo} | {r.defecto}' for r in defs.itertuples()]) if not defs.empty else ''
+            cod=optd.split('|')[0].strip() if optd else st.text_input('Código')
+            dr=defs[defs['codigo']==cod].iloc[0] if not defs.empty and cod in defs['codigo'].values else None
+            defecto=str(dr['defecto']) if dr is not None else ''; tipo=str(dr['tipo_defecto']) if dr is not None else ''; clas=str(dr['clasificacion']) if dr is not None else ''
+            descripcion=st.text_area('Descripción del defecto'); acciones=st.text_area('Acciones inmediatas',value='Se detiene línea, se segrega e identifica el producto.')
+            c4,c5,c6=st.columns(3); sup=c4.selectbox('Supervisor',catalog('supervisor')); ana=c4.selectbox('Analista',catalog('analista')); resp=c5.selectbox('Responsable detecta',catalog('responsable_detecta')); disp=c5.selectbox('Disposición',catalog('disposicion')); fecha_final=c6.date_input('Fecha final',value=date.today()) if status=='CERRADO' else None
+            q1,q2,q3,q4=st.columns(4); obs=q1.number_input('Observada kg',min_value=0.0); rep=q2.number_input('Reproceso kg',min_value=0.0); dec=q3.number_input('Decomiso kg',min_value=0.0); apr=q4.number_input('Aprobado 2da kg',min_value=0.0); total=rep+dec+apr
+            mat=st.text_area('Material hallado / ME'); notas=st.text_area('Observaciones'); files=st.file_uploader('Adjuntar evidencia',accept_multiple_files=True,type=['pdf','png','jpg','jpeg','xlsx','csv','txt','docx']); ok=st.form_submit_button('Guardar registro')
+        if ok:
+            folio=new_folio(); rid=exec_sql('INSERT INTO pnc_registros(folio,fecha_apertura,linea_sector,nave,item,descripcion_producto,cliente,familia,lote,etapa,codigo_defecto,defecto,tipo_defecto,clasificacion,turno,supervisor,analista,responsable_detecta,descripcion_defecto,acciones_inmediatas,disposicion,cantidad_observada,cantidad_reproceso,cantidad_decomiso,cantidad_aprobado_segunda,cantidad_total_pnc,status,fecha_final_tratamiento,observaciones,material_hallado,creado_por,creado_en) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',(folio,fecha.isoformat(),linea,nave,item,desc,cliente,familia,lote,etapa,cod,defecto,tipo,clas,turno,sup,ana,resp,descripcion,acciones,disp,obs,rep,dec,apr,total,status,fecha_final.isoformat() if fecha_final else None,notas,mat,st.session_state.auth['usuario'],now_iso()))
+            save_files(files,rid,folio,st.session_state.auth['usuario']); audit(st.session_state.auth['usuario'],'CREAR_PNC',folio); st.success(f'Registro guardado correctamente: {folio}')
+        st.markdown('</div>', unsafe_allow_html=True)
 
-    st.markdown("""<div class="registro-floating-panel"><div class="registro-active-note">Opción seleccionada</div><div class="registro-panel-title">📝 PNC´s</div><div class="registro-panel-subtitle">Completa la información y guarda el registro.</div>""", unsafe_allow_html=True)
-
-    prod=read_df('SELECT * FROM productos WHERE activo=1 ORDER BY descripcion'); defs=read_df('SELECT * FROM defectos WHERE activo=1 ORDER BY CAST(codigo AS INTEGER)')
-    with st.form('registro'):
-        c1,c2,c3=st.columns(3)
-        fecha=c1.date_input('Fecha',value=date.today()); linea=c1.selectbox('Línea/Sector',catalog('linea_sector')); nave=c1.selectbox('Nave',catalog('nave'))
-        opt=c2.selectbox('ITEM / Producto',[f'{r.item} | {r.descripcion}' for r in prod.itertuples()]) if not prod.empty else ''
-        item=opt.split('|')[0].strip() if opt else c2.text_input('ITEM')
-        row=prod[prod['item']==item].iloc[0] if not prod.empty and item in prod['item'].values else None
-        desc=str(row['descripcion']) if row is not None else c2.text_input('Descripción'); cliente=str(row['cliente']) if row is not None else ''; familia=str(row['familia']) if row is not None else ''
-        lote=c2.text_area('Lote'); etapa=c3.selectbox('Etapa',catalog('etapa')); turno=c3.selectbox('Turno',catalog('turno')); status=c3.selectbox('Status',catalog('status'))
-        optd=st.selectbox('Código / Defecto',[f'{r.codigo} | {r.defecto}' for r in defs.itertuples()]) if not defs.empty else ''
-        cod=optd.split('|')[0].strip() if optd else st.text_input('Código')
-        dr=defs[defs['codigo']==cod].iloc[0] if not defs.empty and cod in defs['codigo'].values else None
-        defecto=str(dr['defecto']) if dr is not None else ''; tipo=str(dr['tipo_defecto']) if dr is not None else ''; clas=str(dr['clasificacion']) if dr is not None else ''
-        descripcion=st.text_area('Descripción del defecto'); acciones=st.text_area('Acciones inmediatas',value='Se detiene línea, se segrega e identifica el producto.')
-        c4,c5,c6=st.columns(3); sup=c4.selectbox('Supervisor',catalog('supervisor')); ana=c4.selectbox('Analista',catalog('analista')); resp=c5.selectbox('Responsable detecta',catalog('responsable_detecta')); disp=c5.selectbox('Disposición',catalog('disposicion')); fecha_final=c6.date_input('Fecha final',value=date.today()) if status=='CERRADO' else None
-        q1,q2,q3,q4=st.columns(4); obs=q1.number_input('Observada kg',min_value=0.0); rep=q2.number_input('Reproceso kg',min_value=0.0); dec=q3.number_input('Decomiso kg',min_value=0.0); apr=q4.number_input('Aprobado 2da kg',min_value=0.0); total=rep+dec+apr
-        mat=st.text_area('Material hallado / ME'); notas=st.text_area('Observaciones'); files=st.file_uploader('Adjuntar evidencia',accept_multiple_files=True,type=['pdf','png','jpg','jpeg','xlsx','csv','txt','docx']); ok=st.form_submit_button('Guardar registro')
-    if ok:
-        folio=new_folio(); rid=exec_sql('INSERT INTO pnc_registros(folio,fecha_apertura,linea_sector,nave,item,descripcion_producto,cliente,familia,lote,etapa,codigo_defecto,defecto,tipo_defecto,clasificacion,turno,supervisor,analista,responsable_detecta,descripcion_defecto,acciones_inmediatas,disposicion,cantidad_observada,cantidad_reproceso,cantidad_decomiso,cantidad_aprobado_segunda,cantidad_total_pnc,status,fecha_final_tratamiento,observaciones,material_hallado,creado_por,creado_en) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',(folio,fecha.isoformat(),linea,nave,item,desc,cliente,familia,lote,etapa,cod,defecto,tipo,clas,turno,sup,ana,resp,descripcion,acciones,disp,obs,rep,dec,apr,total,status,fecha_final.isoformat() if fecha_final else None,notas,mat,st.session_state.auth['usuario'],now_iso()))
-        save_files(files,rid,folio,st.session_state.auth['usuario']); audit(st.session_state.auth['usuario'],'CREAR_PNC',folio); st.success(f'Registro guardado correctamente: {folio}')
-
-    st.markdown('</div>', unsafe_allow_html=True)
+    if st.session_state.registro_tipo is None:
+        selector_inicial()
+    elif st.session_state.registro_tipo == 'PNC':
+        formulario_pnc()
+    elif st.session_state.registro_tipo == 'ME':
+        formulario_hallazgo('me_registros', 'ME', '🧲 Materia Extraña', 'CREAR_ME')
+    elif st.session_state.registro_tipo == 'DDM_RX':
+        formulario_hallazgo('ddm_rx_registros', 'DDM-RX', '📦 Producto segregado por detector de metales y RX', 'CREAR_DDM_RX')
 def page_consulta():
     st.title('Consulta, seguimiento y descarga'); df=read_df('SELECT * FROM pnc_registros ORDER BY id DESC')
     if df.empty: st.info('No hay registros capturados.'); return
