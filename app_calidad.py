@@ -1,3 +1,4 @@
+
 import streamlit as st
 import pandas as pd
 import sqlite3, hashlib, os, base64
@@ -294,6 +295,92 @@ def styles(compact=False):
     .registro-full-title { color:#0B3440; font-size:1.7rem; font-weight:950; letter-spacing:-.02em; margin:0 0 .25rem 0; }
     .registro-full-subtitle { color:#667085; font-size:.95rem; font-weight:750; margin:0 0 1rem 0; }
     .registro-pill { display:inline-flex; align-items:center; border-radius:999px; padding:.34rem .75rem; background:#ECFDF3; color:#027A48; font-size:.78rem; font-weight:950; margin-bottom:.85rem; }
+
+    /* Nuevo registro v2: tarjetas y formularios corporativos, sin afectar menú lateral */
+    .registro-landing-hero {
+        background:radial-gradient(circle at 12% 18%,rgba(0,168,132,.14),transparent 30%),linear-gradient(135deg,#FFFFFF 0%,#F7FAFC 55%,#EAFBF7 100%) !important;
+        border:1px solid #DDE7F0 !important;
+        border-radius:28px !important;
+        padding:1.85rem 2rem !important;
+        margin:0 0 1.4rem 0 !important;
+        box-shadow:0 18px 46px rgba(15,23,42,.08) !important;
+        position:relative !important;
+        overflow:hidden !important;
+    }
+    .registro-landing-hero:after {
+        content:"";
+        position:absolute;
+        right:-60px;
+        top:-70px;
+        width:210px;
+        height:210px;
+        border-radius:50%;
+        background:linear-gradient(135deg,rgba(0,168,132,.18),rgba(63,123,255,.10));
+    }
+    .registro-landing-title { color:#062C36 !important; font-size:2.18rem !important; line-height:1.05 !important; font-weight:950 !important; letter-spacing:-.035em !important; margin:0 0 .55rem 0 !important; position:relative !important; z-index:1 !important; }
+    .registro-landing-subtitle { color:#667085 !important; font-size:1rem !important; font-weight:850 !important; margin:0 !important; position:relative !important; z-index:1 !important; }
+    div[data-testid="column"]:has(.registro-card-slot) .stButton button {
+        width:100% !important;
+        min-height:205px !important;
+        background:linear-gradient(180deg,#FFFFFF 0%,#F8FAFC 100%) !important;
+        border:1px solid #DDE6F0 !important;
+        border-radius:26px !important;
+        color:#102A43 !important;
+        font-weight:900 !important;
+        text-align:left !important;
+        justify-content:flex-start !important;
+        align-items:flex-start !important;
+        padding:1.35rem 1.45rem !important;
+        white-space:pre-line !important;
+        line-height:1.45 !important;
+        box-shadow:0 18px 42px rgba(15,23,42,.10) !important;
+        overflow:hidden !important;
+        position:relative !important;
+    }
+    div[data-testid="column"]:has(.registro-card-slot) .stButton button:hover {
+        transform:translateY(-4px) !important;
+        border-color:#00A884 !important;
+        background:linear-gradient(180deg,#FFFFFF 0%,#ECFDF8 100%) !important;
+        box-shadow:0 24px 54px rgba(15,23,42,.14),0 0 0 4px rgba(0,168,132,.13) !important;
+        color:#062C36 !important;
+    }
+    div[data-testid="column"]:has(.registro-card-slot) .stButton button:focus {
+        border-color:#00A884 !important;
+        box-shadow:0 0 0 4px rgba(0,168,132,.16),0 18px 42px rgba(15,23,42,.10) !important;
+    }
+    .registro-full-panel {
+        width:100% !important;
+        background:radial-gradient(circle at 8% 10%,rgba(0,168,132,.12),transparent 32%),linear-gradient(135deg,#FFFFFF 0%,#F8FAFC 58%,#ECFDF8 100%) !important;
+        border:1px solid #DDE7F0 !important;
+        border-radius:30px !important;
+        padding:1.7rem 1.85rem 1.9rem 1.85rem !important;
+        box-shadow:0 22px 56px rgba(15,23,42,.11) !important;
+        box-sizing:border-box !important;
+        overflow:hidden !important;
+        position:relative !important;
+        margin-bottom:1.1rem !important;
+    }
+    .registro-full-panel:after {
+        content:"";
+        position:absolute;
+        right:-54px;
+        top:-62px;
+        width:190px;
+        height:190px;
+        border-radius:50%;
+        background:linear-gradient(135deg,rgba(0,168,132,.16),rgba(88,80,236,.08));
+    }
+    .registro-full-title { color:#062C36 !important; font-size:2.05rem !important; font-weight:950 !important; letter-spacing:-.035em !important; margin:0 0 .35rem 0 !important; position:relative !important; z-index:1 !important; }
+    .registro-full-subtitle { color:#667085 !important; font-size:1rem !important; font-weight:850 !important; margin:0 0 1.2rem 0 !important; position:relative !important; z-index:1 !important; }
+    .registro-pill { display:inline-flex !important; align-items:center !important; border-radius:999px !important; padding:.38rem .85rem !important; background:#DCFCE7 !important; color:#027A48 !important; font-size:.8rem !important; font-weight:950 !important; margin-bottom:1rem !important; position:relative !important; z-index:1 !important; }
+    .registro-form-shell {
+        background:#FFFFFF;
+        border:1px solid #DDE7F0;
+        border-radius:26px;
+        padding:1.1rem 1.2rem;
+        box-shadow:0 18px 44px rgba(15,23,42,.08);
+        margin-top:.95rem;
+    }
     </style>
     """, unsafe_allow_html=True)
 
@@ -396,15 +483,15 @@ def page_registro():
         c1, c2, c3 = st.columns(3, gap='large')
         with c1:
             st.markdown('<span class="registro-card-slot"></span>', unsafe_allow_html=True)
-            if st.button("📝 PNC´s\n\nProducto no conforme.\n\nClick para abrir", key='abrir_pnc_card'):
+            if st.button("📝  PNC´s\n\nCaptura y seguimiento de producto no conforme.\n\nAbrir registro", key='abrir_pnc_card'):
                 abrir_registro('PNC')
         with c2:
             st.markdown('<span class="registro-card-slot"></span>', unsafe_allow_html=True)
-            if st.button("🧲 Materia Extraña\n\nHallazgo de material ajeno.\n\nClick para abrir", key='abrir_me_card'):
+            if st.button("🧲  Materia Extraña\n\nRegistro de hallazgos y acciones de contención.\n\nAbrir registro", key='abrir_me_card'):
                 abrir_registro('ME')
         with c3:
             st.markdown('<span class="registro-card-slot"></span>', unsafe_allow_html=True)
-            if st.button("📦 Detector de metales y RX\n\nProducto segregado.\n\nClick para abrir", key='abrir_ddm_rx_card'):
+            if st.button("📦  Detector de metales y RX\n\nControl de producto segregado por detección.\n\nAbrir registro", key='abrir_ddm_rx_card'):
                 abrir_registro('DDM_RX')
 
     def formulario_hallazgo(tabla, prefijo, titulo, auditoria):
@@ -412,6 +499,7 @@ def page_registro():
         if st.button('← Cambiar tipo de registro', key=f'volver_{tabla}'):
             volver_selector()
 
+        st.markdown('<div class="registro-form-shell">', unsafe_allow_html=True)
         prod = read_df('SELECT * FROM productos WHERE activo=1 ORDER BY descripcion')
         hoy = date.today()
         df_folio = read_df(f'SELECT numero FROM {tabla} WHERE numero LIKE ? ORDER BY id DESC LIMIT 1', (f"{prefijo}-{hoy.year}-%",))
@@ -424,11 +512,12 @@ def page_registro():
         numero_default = f"{prefijo}-{hoy.year}-{consecutivo:05d}"
 
         with st.form(f'form_{tabla}'):
-            a1, a2, a3, a4 = st.columns(4)
+            a1, a2 = st.columns([1, 1])
             numero = a1.text_input('N°', value=numero_default)
-            dia = a2.number_input('Día', min_value=1, max_value=31, value=hoy.day, step=1, key=f'dia_{tabla}')
-            mes = a3.number_input('Mes', min_value=1, max_value=12, value=hoy.month, step=1, key=f'mes_{tabla}')
-            anio = a4.number_input('Año', min_value=2020, max_value=2100, value=hoy.year, step=1, key=f'anio_{tabla}')
+            fecha_registro = a2.date_input('Fecha', value=hoy, key=f'fecha_{tabla}')
+            dia = fecha_registro.day
+            mes = fecha_registro.month
+            anio = fecha_registro.year
 
             b1, b2, b3 = st.columns(3)
             nave = b1.selectbox('Nave', catalog('nave'), key=f'nave_{tabla}')
@@ -472,12 +561,14 @@ def page_registro():
                     st.success(f'Registro guardado correctamente: {numero}')
                     st.rerun()
         st.markdown('</div>', unsafe_allow_html=True)
+        st.markdown('</div>', unsafe_allow_html=True)
 
     def formulario_pnc():
         st.markdown("""<div class="registro-full-panel"><div class="registro-pill">Nuevo registro</div><div class="registro-full-title">📝 PNC´s</div><div class="registro-full-subtitle">Completa la información y guarda el registro.</div>""", unsafe_allow_html=True)
         if st.button('← Cambiar tipo de registro', key='volver_pnc'):
             volver_selector()
 
+        st.markdown('<div class="registro-form-shell">', unsafe_allow_html=True)
         prod=read_df('SELECT * FROM productos WHERE activo=1 ORDER BY descripcion'); defs=read_df('SELECT * FROM defectos WHERE activo=1 ORDER BY CAST(codigo AS INTEGER)')
         with st.form('registro'):
             c1,c2,c3=st.columns(3)
@@ -498,6 +589,7 @@ def page_registro():
         if ok:
             folio=new_folio(); rid=exec_sql('INSERT INTO pnc_registros(folio,fecha_apertura,linea_sector,nave,item,descripcion_producto,cliente,familia,lote,etapa,codigo_defecto,defecto,tipo_defecto,clasificacion,turno,supervisor,analista,responsable_detecta,descripcion_defecto,acciones_inmediatas,disposicion,cantidad_observada,cantidad_reproceso,cantidad_decomiso,cantidad_aprobado_segunda,cantidad_total_pnc,status,fecha_final_tratamiento,observaciones,material_hallado,creado_por,creado_en) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',(folio,fecha.isoformat(),linea,nave,item,desc,cliente,familia,lote,etapa,cod,defecto,tipo,clas,turno,sup,ana,resp,descripcion,acciones,disp,obs,rep,dec,apr,total,status,fecha_final.isoformat() if fecha_final else None,notas,mat,st.session_state.auth['usuario'],now_iso()))
             save_files(files,rid,folio,st.session_state.auth['usuario']); audit(st.session_state.auth['usuario'],'CREAR_PNC',folio); st.success(f'Registro guardado correctamente: {folio}')
+        st.markdown('</div>', unsafe_allow_html=True)
         st.markdown('</div>', unsafe_allow_html=True)
 
     if st.session_state.registro_tipo is None:
