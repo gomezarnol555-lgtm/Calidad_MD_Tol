@@ -243,6 +243,25 @@ def styles(compact=False):
         padding-left:.25rem !important;
         box-sizing:border-box !important;
     }
+
+    /* Ventanas flotantes minimalistas para Nuevo registro */
+    .registro-hero { background:linear-gradient(135deg,#FFFFFF 0%,#F7FAFC 62%,#EEFDF8 100%); border:1px solid #E2E8F0; border-radius:24px; padding:1.35rem 1.55rem; margin:0 0 1.05rem 0; box-shadow:0 14px 34px rgba(15,23,42,.07); }
+    .registro-hero-title { color:#0B3440; font-size:1.65rem; line-height:1.12; font-weight:950; letter-spacing:-.02em; margin:0 0 .35rem 0; }
+    .registro-hero-subtitle { color:#667085; font-size:.92rem; font-weight:650; margin:0; }
+    .registro-card { min-height:168px; background:rgba(255,255,255,.94); border:1px solid #E2E8F0; border-radius:22px; padding:1.15rem 1.15rem 1rem 1.15rem; box-shadow:0 16px 36px rgba(15,23,42,.08); position:relative; overflow:hidden; transition:all .18s ease; box-sizing:border-box; }
+    .registro-card:before { content:""; position:absolute; top:0; left:0; right:0; height:5px; background:var(--accent); }
+    .registro-card:hover { transform:translateY(-2px); box-shadow:0 20px 42px rgba(15,23,42,.12); border-color:#CBD5E1; }
+    .registro-card-active { border:2px solid var(--accent) !important; box-shadow:0 18px 44px rgba(0,168,132,.16) !important; }
+    .registro-card-icon { width:42px; height:42px; border-radius:14px; display:flex; align-items:center; justify-content:center; background:linear-gradient(135deg,#F8FAFC,#EEF2FF); font-size:1.25rem; margin-bottom:.7rem; }
+    .registro-card-title { color:#102A43; font-size:1rem; font-weight:950; margin-bottom:.35rem; }
+    .registro-card-text { color:#667085; font-size:.82rem; line-height:1.35; font-weight:650; min-height:42px; }
+    .registro-floating-panel { background:rgba(255,255,255,.96); border:1px solid #E2E8F0; border-radius:24px; padding:1.2rem 1.25rem 1.35rem 1.25rem; margin-top:1.15rem; box-shadow:0 18px 46px rgba(15,23,42,.10); overflow:hidden; }
+    .registro-panel-title { display:flex; align-items:center; gap:.65rem; color:#0B3440; font-size:1.25rem; font-weight:950; margin:0 0 .25rem 0; }
+    .registro-panel-subtitle { color:#667085; font-size:.86rem; font-weight:650; margin:0 0 1rem 0; }
+    .registro-placeholder { background:linear-gradient(135deg,#F8FAFC 0%,#FFFFFF 100%); border:1px dashed #CBD5E1; border-radius:18px; padding:1.4rem; color:#475467; font-weight:700; }
+    .registro-mini-pill { display:inline-flex; align-items:center; gap:.35rem; border-radius:999px; padding:.32rem .65rem; background:#ECFDF3; color:#027A48; font-size:.76rem; font-weight:900; margin-bottom:.8rem; }
+    div[data-testid="stHorizontalBlock"]:has(.registro-card) .stButton button { width:100% !important; border-radius:12px !important; border:1px solid #D0D7E2 !important; background:#FFFFFF !important; color:#0B3440 !important; font-weight:900 !important; min-height:42px !important; }
+    div[data-testid="stHorizontalBlock"]:has(.registro-card) .stButton button:hover { border-color:#00A884 !important; box-shadow:0 0 0 3px rgba(0,168,132,.12) !important; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -329,7 +348,43 @@ def page_inicio():
         st.markdown('</div></div>',unsafe_allow_html=True)
 
 def page_registro():
-    st.title('Nuevo registro')
+    if 'registro_tipo' not in st.session_state:
+        st.session_state.registro_tipo = 'PNC'
+
+    st.markdown("""<div class="registro-hero"><div class="registro-hero-title">Nuevo registro</div><div class="registro-hero-subtitle">Selecciona el tipo de registro que deseas capturar. El registro PNC conserva la lógica actual de guardado, folio, catálogos, adjuntos y auditoría.</div></div>""", unsafe_allow_html=True)
+
+    def card(tipo, icono, titulo, texto, color, boton):
+        active = ' registro-card-active' if st.session_state.registro_tipo == tipo else ''
+        st.markdown(
+            f"""<div class="registro-card{active}" style="--accent:{color}">
+                    <div class="registro-card-icon">{icono}</div>
+                    <div class="registro-card-title">{titulo}</div>
+                    <div class="registro-card-text">{texto}</div>
+                </div>""",
+            unsafe_allow_html=True
+        )
+        if st.button(boton, key=f'btn_tipo_registro_{tipo}'):
+            st.session_state.registro_tipo = tipo
+            st.rerun()
+
+    c_pnc, c_me, c_ddm = st.columns(3, gap='large')
+    with c_pnc:
+        card('PNC','📝',"PNC´s",'Captura de producto no conforme con folio, catálogos, cantidades, evidencia y auditoría.','#00A884','Entrar a PNC´s')
+    with c_me:
+        card('ME','🧲','Registro de Materia Extraña','Acceso preparado para una captura independiente de hallazgos de materia extraña.','#3F7BFF','Entrar a Materia Extraña')
+    with c_ddm:
+        card('DDM_RX','📦','Producto segregado DDM y RX','Acceso preparado para control de producto segregado por DDM y RX.','#5850EC','Entrar a DDM y RX')
+
+    if st.session_state.registro_tipo == 'ME':
+        st.markdown("""<div class="registro-floating-panel"><div class="registro-panel-title">🧲 Registro de Materia Extraña</div><div class="registro-panel-subtitle">Ventana flotante habilitada para separar este flujo del PNC.</div><div class="registro-placeholder">Este módulo quedó preparado visualmente. No se conectó a una nueva tabla ni se alteró la lógica actual para evitar afectar el funcionamiento existente.</div></div>""", unsafe_allow_html=True)
+        return
+
+    if st.session_state.registro_tipo == 'DDM_RX':
+        st.markdown("""<div class="registro-floating-panel"><div class="registro-panel-title">📦 Registro de producto segregado por el DDM y RX</div><div class="registro-panel-subtitle">Ventana flotante habilitada para administrar este flujo como sección independiente.</div><div class="registro-placeholder">Este módulo quedó preparado visualmente. No se conectó a una nueva tabla ni se alteró la lógica actual para evitar afectar el funcionamiento existente.</div></div>""", unsafe_allow_html=True)
+        return
+
+    st.markdown("""<div class="registro-floating-panel"><div class="registro-mini-pill">✅ Formulario activo</div><div class="registro-panel-title">📝 Captura de PNC´s</div><div class="registro-panel-subtitle">Formulario original de Nuevo registro integrado dentro del recuadro flotante de PNC´s.</div>""", unsafe_allow_html=True)
+
     prod=read_df('SELECT * FROM productos WHERE activo=1 ORDER BY descripcion'); defs=read_df('SELECT * FROM defectos WHERE activo=1 ORDER BY CAST(codigo AS INTEGER)')
     with st.form('registro'):
         c1,c2,c3=st.columns(3)
@@ -351,6 +406,7 @@ def page_registro():
         folio=new_folio(); rid=exec_sql('INSERT INTO pnc_registros(folio,fecha_apertura,linea_sector,nave,item,descripcion_producto,cliente,familia,lote,etapa,codigo_defecto,defecto,tipo_defecto,clasificacion,turno,supervisor,analista,responsable_detecta,descripcion_defecto,acciones_inmediatas,disposicion,cantidad_observada,cantidad_reproceso,cantidad_decomiso,cantidad_aprobado_segunda,cantidad_total_pnc,status,fecha_final_tratamiento,observaciones,material_hallado,creado_por,creado_en) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',(folio,fecha.isoformat(),linea,nave,item,desc,cliente,familia,lote,etapa,cod,defecto,tipo,clas,turno,sup,ana,resp,descripcion,acciones,disp,obs,rep,dec,apr,total,status,fecha_final.isoformat() if fecha_final else None,notas,mat,st.session_state.auth['usuario'],now_iso()))
         save_files(files,rid,folio,st.session_state.auth['usuario']); audit(st.session_state.auth['usuario'],'CREAR_PNC',folio); st.success(f'Registro guardado correctamente: {folio}')
 
+    st.markdown('</div>', unsafe_allow_html=True)
 def page_consulta():
     st.title('Consulta, seguimiento y descarga'); df=read_df('SELECT * FROM pnc_registros ORDER BY id DESC')
     if df.empty: st.info('No hay registros capturados.'); return
