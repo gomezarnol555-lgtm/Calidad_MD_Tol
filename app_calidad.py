@@ -1,4 +1,3 @@
-
 import streamlit as st
 import pandas as pd
 import sqlite3, hashlib, os, base64
@@ -478,6 +477,15 @@ def page_registro():
         st.session_state.registro_tipo = None
         st.rerun()
 
+    def limpiar_campos_por_prefijo(prefijos):
+        for key in list(st.session_state.keys()):
+            if any(str(key).startswith(prefijo) for prefijo in prefijos):
+                del st.session_state[key]
+
+    flash = st.session_state.pop('flash_registro_guardado', None)
+    if flash:
+        st.success(flash)
+
     def selector_inicial():
         st.markdown("""<div class="registro-landing-hero"><div class="registro-landing-title">Nuevo registro</div><div class="registro-landing-subtitle">Selecciona el tipo de captura.</div></div>""", unsafe_allow_html=True)
         c1, c2, c3 = st.columns(3, gap='large')
@@ -549,7 +557,8 @@ def page_registro():
         if guardar:
             rid = exec_sql(f'INSERT INTO {tabla}(numero,dia,mes,anio,nave,sector,equipo_hallazgo,item,producto,linea,lote,descripcion_hallazgo,tipo,particulas_halladas,accion_contingente,investigacion_origen,analista_detecta,supervisor_responsable,acciones_evitar_incidencia,creado_por,creado_en) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)', (None, int(dia), int(mes), int(anio), nave, sector, equipo_hallazgo, item, producto, linea, lote, descripcion_hallazgo, tipo, int(particulas), accion_contingente, investigacion_origen, analista_detecta, supervisor_responsable, acciones_evitar, st.session_state.auth['usuario'], now_iso()))
             audit(st.session_state.auth['usuario'], auditoria, f'ID {rid}')
-            st.success(f'Registro guardado correctamente: Número {rid}')
+            limpiar_campos_por_prefijo([f'fecha_{tabla}', f'nave_{tabla}', f'sector_{tabla}', f'equipo_{tabla}', f'item_{tabla}', f'item_manual_{tabla}', f'producto_{tabla}', f'linea_{tabla}', f'lote_{tabla}', f'tipo_{tabla}', f'particulas_{tabla}', f'desc_{tabla}', f'accion_{tabla}', f'investigacion_{tabla}', f'analista_{tabla}', f'supervisor_{tabla}', f'evitar_{tabla}'])
+            st.session_state.flash_registro_guardado = f'Registro guardado correctamente: Número {rid}'
             st.rerun()
         st.markdown('</div>', unsafe_allow_html=True)
         st.markdown('</div>', unsafe_allow_html=True)
@@ -579,7 +588,9 @@ def page_registro():
             mat=st.text_area('Material hallado / ME'); notas=st.text_area('Observaciones'); files=st.file_uploader('Adjuntar evidencia',accept_multiple_files=True,type=['pdf','png','jpg','jpeg','xlsx','csv','txt','docx']); ok=st.form_submit_button('Guardar registro')
         if ok:
             folio=new_folio(); rid=exec_sql('INSERT INTO pnc_registros(folio,fecha_apertura,linea_sector,nave,item,descripcion_producto,cliente,familia,lote,etapa,codigo_defecto,defecto,tipo_defecto,clasificacion,turno,supervisor,analista,responsable_detecta,descripcion_defecto,acciones_inmediatas,disposicion,cantidad_observada,cantidad_reproceso,cantidad_decomiso,cantidad_aprobado_segunda,cantidad_total_pnc,status,fecha_final_tratamiento,observaciones,material_hallado,creado_por,creado_en) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',(folio,fecha.isoformat(),linea,nave,item,desc,cliente,familia,lote,etapa,cod,defecto,tipo,clas,turno,sup,ana,resp,descripcion,acciones,disp,obs,rep,dec,apr,total,status,fecha_final.isoformat() if fecha_final else None,notas,mat,st.session_state.auth['usuario'],now_iso()))
-            save_files(files,rid,folio,st.session_state.auth['usuario']); audit(st.session_state.auth['usuario'],'CREAR_PNC',folio); st.success(f'Registro guardado correctamente: {folio}')
+            save_files(files,rid,folio,st.session_state.auth['usuario']); audit(st.session_state.auth['usuario'],'CREAR_PNC',f'ID {rid}')
+            st.session_state.flash_registro_guardado = f'Registro guardado correctamente: Número {rid}'
+            st.rerun()
         st.markdown('</div>', unsafe_allow_html=True)
         st.markdown('</div>', unsafe_allow_html=True)
 
@@ -615,6 +626,9 @@ def page_consulta():
             st.info('No hay registros capturados.')
             return None
         vista = df.copy()
+        if all(c in vista.columns for c in ['dia', 'mes', 'anio']):
+            vista['Fecha'] = pd.to_datetime(dict(year=vista['anio'].fillna(1900).astype(int), month=vista['mes'].fillna(1).astype(int), day=vista['dia'].fillna(1).astype(int)), errors='coerce').dt.date
+            vista = vista.drop(columns=['dia', 'mes', 'anio'])
         for col in ['folio', 'numero']:
             if col in vista.columns:
                 vista = vista.drop(columns=[col])
@@ -740,19 +754,55 @@ def page_consulta():
         selected = mostrar_tabla(df, 'pnc')
         st.download_button('Descargar PNC CSV', df.drop(columns=[c for c in ['folio'] if c in df.columns]).rename(columns={'id':'Número'}).to_csv(index=False).encode('utf-8-sig'), f"pnc_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv", 'text/csv') if not df.empty else None
         if selected:
-            editar_pnc(selected)
+            st.markdown(f'### Registro seleccionado: Número {selected}')
+            col_editar, col_eliminar = st.columns(2)
+            with col_editar:
+                if st.button('Editar registro', key=f'edit_pnc_btn_{selected}'):
+                    st.session_state.accion_pnc = 'editar'
+            with col_eliminar:
+                if st.button('Eliminar registro', key=f'del_pnc_btn_{selected}'):
+                    exec_sql('DELETE FROM pnc_registros WHERE id=?', (selected,))
+                    audit(st.session_state.auth['usuario'], 'ELIMINAR_PNC', f'ID {selected}')
+                    st.success(f'Registro eliminado correctamente: Número {selected}')
+                    st.rerun()
+            if st.session_state.get('accion_pnc') == 'editar':
+                editar_pnc(selected)
     with tab_me:
         df = read_df('SELECT * FROM me_registros ORDER BY id ASC')
         selected = mostrar_tabla(df, 'me')
         st.download_button('Descargar Materia Extraña CSV', df.drop(columns=[c for c in ['numero'] if c in df.columns]).rename(columns={'id':'Número'}).to_csv(index=False).encode('utf-8-sig'), f"materia_extrana_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv", 'text/csv') if not df.empty else None
         if selected:
-            editar_hallazgo('me_registros', selected, 'Materia Extraña', 'EDITAR_ME')
+            st.markdown(f'### Registro seleccionado: Número {selected}')
+            col_editar, col_eliminar = st.columns(2)
+            with col_editar:
+                if st.button('Editar registro', key=f'edit_me_btn_{selected}'):
+                    st.session_state.accion_me = 'editar'
+            with col_eliminar:
+                if st.button('Eliminar registro', key=f'del_me_btn_{selected}'):
+                    exec_sql('DELETE FROM me_registros WHERE id=?', (selected,))
+                    audit(st.session_state.auth['usuario'], 'ELIMINAR_ME', f'ID {selected}')
+                    st.success(f'Registro eliminado correctamente: Número {selected}')
+                    st.rerun()
+            if st.session_state.get('accion_me') == 'editar':
+                editar_hallazgo('me_registros', selected, 'Materia Extraña', 'EDITAR_ME')
     with tab_ddm:
         df = read_df('SELECT * FROM ddm_rx_registros ORDER BY id ASC')
         selected = mostrar_tabla(df, 'ddm_rx')
         st.download_button('Descargar Detector de metales y RX CSV', df.drop(columns=[c for c in ['numero'] if c in df.columns]).rename(columns={'id':'Número'}).to_csv(index=False).encode('utf-8-sig'), f"ddm_rx_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv", 'text/csv') if not df.empty else None
         if selected:
-            editar_hallazgo('ddm_rx_registros', selected, 'Detector de metales y RX', 'EDITAR_DDM_RX')
+            st.markdown(f'### Registro seleccionado: Número {selected}')
+            col_editar, col_eliminar = st.columns(2)
+            with col_editar:
+                if st.button('Editar registro', key=f'edit_ddm_btn_{selected}'):
+                    st.session_state.accion_ddm_rx = 'editar'
+            with col_eliminar:
+                if st.button('Eliminar registro', key=f'del_ddm_btn_{selected}'):
+                    exec_sql('DELETE FROM ddm_rx_registros WHERE id=?', (selected,))
+                    audit(st.session_state.auth['usuario'], 'ELIMINAR_DDM_RX', f'ID {selected}')
+                    st.success(f'Registro eliminado correctamente: Número {selected}')
+                    st.rerun()
+            if st.session_state.get('accion_ddm_rx') == 'editar':
+                editar_hallazgo('ddm_rx_registros', selected, 'Detector de metales y RX', 'EDITAR_DDM_RX')
 def admin_required():
     if not is_dev(): st.warning('Solo el usuario administrador puede modificar catálogos.'); return False
     return True
