@@ -1,4 +1,3 @@
-
 import streamlit as st
 import pandas as pd
 import sqlite3, hashlib, os, base64
@@ -37,9 +36,9 @@ def exec_sql(q, params=()):
 
 def reset_autoincrement(table):
     try:
-        df = read_df(f'SELECT COALESCE(MAX(id), 0) AS max_id FROM {table}')
-        max_id = int(df.iloc[0]['max_id']) if not df.empty else 0
-        exec_sql('UPDATE sqlite_sequence SET seq=? WHERE name=?', (max_id, table))
+        df=read_df(f'SELECT COALESCE(MAX(id),0) AS max_id FROM {table}')
+        max_id=int(df.iloc[0]['max_id']) if not df.empty else 0
+        exec_sql('UPDATE sqlite_sequence SET seq=? WHERE name=?',(max_id,table))
     except Exception:
         pass
 
@@ -51,8 +50,8 @@ def init_db():
     cur.execute("CREATE TABLE IF NOT EXISTS productos(id INTEGER PRIMARY KEY AUTOINCREMENT, item TEXT UNIQUE, descripcion TEXT, cliente TEXT, familia TEXT, activo INTEGER DEFAULT 1)")
     cur.execute("CREATE TABLE IF NOT EXISTS defectos(id INTEGER PRIMARY KEY AUTOINCREMENT, codigo TEXT UNIQUE, defecto TEXT, tipo_defecto TEXT, clasificacion TEXT, activo INTEGER DEFAULT 1)")
     cur.execute("""CREATE TABLE IF NOT EXISTS pnc_registros(id INTEGER PRIMARY KEY AUTOINCREMENT, folio TEXT UNIQUE, fecha_apertura TEXT, linea_sector TEXT, nave TEXT, item TEXT, descripcion_producto TEXT, cliente TEXT, familia TEXT, lote TEXT, etapa TEXT, codigo_defecto TEXT, defecto TEXT, tipo_defecto TEXT, clasificacion TEXT, turno TEXT, supervisor TEXT, analista TEXT, responsable_detecta TEXT, descripcion_defecto TEXT, acciones_inmediatas TEXT, disposicion TEXT, cantidad_observada REAL DEFAULT 0, cantidad_reproceso REAL DEFAULT 0, cantidad_decomiso REAL DEFAULT 0, cantidad_aprobado_segunda REAL DEFAULT 0, cantidad_total_pnc REAL DEFAULT 0, status TEXT DEFAULT 'ABIERTO', fecha_final_tratamiento TEXT, observaciones TEXT, material_hallado TEXT, creado_por TEXT, creado_en TEXT)""")
-    cur.execute("CREATE TABLE IF NOT EXISTS me_registros(id INTEGER PRIMARY KEY AUTOINCREMENT, numero TEXT, dia INTEGER, mes INTEGER, anio INTEGER, nave TEXT, sector TEXT, equipo_hallazgo TEXT, item TEXT, producto TEXT, linea TEXT, lote TEXT, descripcion_hallazgo TEXT, tipo TEXT, particulas_halladas INTEGER DEFAULT 0, accion_contingente TEXT, investigacion_origen TEXT, analista_detecta TEXT, supervisor_responsable TEXT, acciones_evitar_incidencia TEXT, creado_por TEXT, creado_en TEXT)")
-    cur.execute("CREATE TABLE IF NOT EXISTS ddm_rx_registros(id INTEGER PRIMARY KEY AUTOINCREMENT, numero TEXT, dia INTEGER, mes INTEGER, anio INTEGER, nave TEXT, sector TEXT, equipo_hallazgo TEXT, item TEXT, producto TEXT, linea TEXT, lote TEXT, descripcion_hallazgo TEXT, tipo TEXT, particulas_halladas INTEGER DEFAULT 0, accion_contingente TEXT, investigacion_origen TEXT, analista_detecta TEXT, supervisor_responsable TEXT, acciones_evitar_incidencia TEXT, creado_por TEXT, creado_en TEXT)")
+    cur.execute("CREATE TABLE IF NOT EXISTS me_registros(id INTEGER PRIMARY KEY AUTOINCREMENT, dia INTEGER, mes INTEGER, anio INTEGER, nave TEXT, sector TEXT, equipo_hallazgo TEXT, item TEXT, producto TEXT, linea TEXT, lote TEXT, descripcion_hallazgo TEXT, tipo TEXT, particulas_halladas INTEGER DEFAULT 0, accion_contingente TEXT, investigacion_origen TEXT, analista_detecta TEXT, supervisor_responsable TEXT, acciones_evitar_incidencia TEXT, creado_por TEXT, creado_en TEXT)")
+    cur.execute("CREATE TABLE IF NOT EXISTS ddm_rx_registros(id INTEGER PRIMARY KEY AUTOINCREMENT, dia INTEGER, mes INTEGER, anio INTEGER, nave TEXT, sector TEXT, equipo_hallazgo TEXT, item TEXT, producto TEXT, linea TEXT, lote TEXT, descripcion_hallazgo TEXT, tipo TEXT, particulas_halladas INTEGER DEFAULT 0, accion_contingente TEXT, investigacion_origen TEXT, analista_detecta TEXT, supervisor_responsable TEXT, acciones_evitar_incidencia TEXT, creado_por TEXT, creado_en TEXT)")
     cur.execute("CREATE TABLE IF NOT EXISTS adjuntos(id INTEGER PRIMARY KEY AUTOINCREMENT, registro_id INTEGER, folio TEXT, nombre_original TEXT, ruta_archivo TEXT, tipo_archivo TEXT, subido_por TEXT, subido_en TEXT)")
     cur.execute("CREATE TABLE IF NOT EXISTS auditoria(id INTEGER PRIMARY KEY AUTOINCREMENT, usuario TEXT, accion TEXT, detalle TEXT, fecha_hora TEXT)")
     for item,desc,cliente,familia in SEED_PRODUCTS: cur.execute("INSERT OR IGNORE INTO productos(item,descripcion,cliente,familia,activo) VALUES(?,?,?,?,1)",(item,desc,cliente,familia))
@@ -256,17 +255,11 @@ def styles(compact=False):
     }
 
     /* Nuevo registro y tablas: diseño corporativo sin afectar menú lateral */
-    .registro-landing-hero { background:radial-gradient(circle at 12% 18%,rgba(0,168,132,.14),transparent 30%),linear-gradient(135deg,#FFFFFF 0%,#F7FAFC 55%,#EAFBF7 100%); border:1px solid #DDE7F0; border-radius:28px; padding:1.85rem 2rem; margin:0 0 1.4rem 0; box-shadow:0 18px 46px rgba(15,23,42,.08); position:relative; overflow:hidden; }
-    .registro-landing-title { color:#062C36; font-size:2.18rem; line-height:1.05; font-weight:950; letter-spacing:-.035em; margin:0 0 .55rem 0; }
-    .registro-landing-subtitle { color:#667085; font-size:1rem; font-weight:850; margin:0; }
-    .registro-card-slot { display:none; }
-    div[data-testid="column"]:has(.registro-card-slot) .stButton button { width:100% !important; min-height:205px !important; background:linear-gradient(180deg,#FFFFFF 0%,#F8FAFC 100%) !important; border:1px solid #DDE6F0 !important; border-radius:26px !important; color:#102A43 !important; font-weight:900 !important; text-align:left !important; justify-content:flex-start !important; align-items:flex-start !important; padding:1.35rem 1.45rem !important; white-space:pre-line !important; line-height:1.45 !important; box-shadow:0 18px 42px rgba(15,23,42,.10) !important; overflow:hidden !important; }
-    div[data-testid="column"]:has(.registro-card-slot) .stButton button:hover { transform:translateY(-4px) !important; border-color:#00A884 !important; background:linear-gradient(180deg,#FFFFFF 0%,#ECFDF8 100%) !important; box-shadow:0 24px 54px rgba(15,23,42,.14),0 0 0 4px rgba(0,168,132,.13) !important; color:#062C36 !important; }
-    .registro-full-panel { width:100%; background:radial-gradient(circle at 8% 10%,rgba(0,168,132,.12),transparent 32%),linear-gradient(135deg,#FFFFFF 0%,#F8FAFC 58%,#ECFDF8 100%); border:1px solid #DDE7F0; border-radius:30px; padding:1.7rem 1.85rem 1.9rem 1.85rem; box-shadow:0 22px 56px rgba(15,23,42,.11); box-sizing:border-box; overflow:hidden; margin-bottom:1.1rem; }
-    .registro-full-title { color:#062C36; font-size:2.05rem; font-weight:950; letter-spacing:-.035em; margin:0 0 .35rem 0; }
-    .registro-full-subtitle { color:#667085; font-size:1rem; font-weight:850; margin:0 0 1.2rem 0; }
-    .registro-pill { display:inline-flex; align-items:center; border-radius:999px; padding:.38rem .85rem; background:#DCFCE7; color:#027A48; font-size:.8rem; font-weight:950; margin-bottom:1rem; }
-    .registro-form-shell { background:#FFFFFF; border:1px solid #DDE7F0; border-radius:26px; padding:1.1rem 1.2rem; box-shadow:0 18px 44px rgba(15,23,42,.08); margin-top:.95rem; }
+    .registro-landing-hero{background:radial-gradient(circle at 12% 18%,rgba(0,168,132,.14),transparent 30%),linear-gradient(135deg,#fff 0%,#F7FAFC 55%,#EAFBF7 100%);border:1px solid #DDE7F0;border-radius:28px;padding:1.85rem 2rem;margin:0 0 1.4rem 0;box-shadow:0 18px 46px rgba(15,23,42,.08)}
+    .registro-landing-title{color:#062C36;font-size:2.18rem;line-height:1.05;font-weight:950;letter-spacing:-.035em;margin:0 0 .55rem 0}.registro-landing-subtitle{color:#667085;font-size:1rem;font-weight:850;margin:0}
+    .registro-card-slot{display:none}div[data-testid="column"]:has(.registro-card-slot) .stButton button{width:100%!important;min-height:205px!important;background:linear-gradient(180deg,#fff 0%,#F8FAFC 100%)!important;border:1px solid #DDE6F0!important;border-radius:26px!important;color:#102A43!important;font-weight:900!important;text-align:left!important;justify-content:flex-start!important;align-items:flex-start!important;padding:1.35rem 1.45rem!important;white-space:pre-line!important;line-height:1.45!important;box-shadow:0 18px 42px rgba(15,23,42,.10)!important;overflow:hidden!important}
+    div[data-testid="column"]:has(.registro-card-slot) .stButton button:hover{transform:translateY(-4px)!important;border-color:#00A884!important;background:linear-gradient(180deg,#fff 0%,#ECFDF8 100%)!important;box-shadow:0 24px 54px rgba(15,23,42,.14),0 0 0 4px rgba(0,168,132,.13)!important;color:#062C36!important}
+    .registro-full-panel{width:100%;background:radial-gradient(circle at 8% 10%,rgba(0,168,132,.12),transparent 32%),linear-gradient(135deg,#fff 0%,#F8FAFC 58%,#ECFDF8 100%);border:1px solid #DDE7F0;border-radius:30px;padding:1.7rem 1.85rem 1.9rem 1.85rem;box-shadow:0 22px 56px rgba(15,23,42,.11);box-sizing:border-box;overflow:hidden;margin-bottom:1.1rem}.registro-full-title{color:#062C36;font-size:2.05rem;font-weight:950;letter-spacing:-.035em;margin:0 0 .35rem 0}.registro-full-subtitle{color:#667085;font-size:1rem;font-weight:850;margin:0 0 1.2rem 0}.registro-pill{display:inline-flex;align-items:center;border-radius:999px;padding:.38rem .85rem;background:#DCFCE7;color:#027A48;font-size:.8rem;font-weight:950;margin-bottom:1rem}.registro-form-shell{background:#fff;border:1px solid #DDE7F0;border-radius:26px;padding:1.1rem 1.2rem;box-shadow:0 18px 44px rgba(15,23,42,.08);margin-top:.95rem}
     </style>
     """, unsafe_allow_html=True)
 
@@ -354,224 +347,130 @@ def page_inicio():
 
 def page_registro():
     if 'registro_tipo' not in st.session_state:
-        st.session_state.registro_tipo = None
-
-    def volver_selector():
-        st.session_state.registro_tipo = None
-        st.rerun()
-
-    def limpiar_campos_por_prefijo(prefijos):
-        for key in list(st.session_state.keys()):
-            if any(str(key).startswith(prefijo) for prefijo in prefijos):
-                del st.session_state[key]
-
-    flash = st.session_state.pop('flash_registro_guardado', None)
-    if flash:
-        st.success(flash)
-
-    def selector_inicial():
-        st.markdown("""<div class="registro-landing-hero"><div class="registro-landing-title">Nuevo registro</div><div class="registro-landing-subtitle">Selecciona el tipo de captura.</div></div>""", unsafe_allow_html=True)
-        c1, c2, c3 = st.columns(3, gap='large')
+        st.session_state.registro_tipo=None
+    if 'form_nonce' not in st.session_state:
+        st.session_state.form_nonce=0
+    flash=st.session_state.pop('flash_registro_guardado',None)
+    if flash: st.success(flash)
+    def volver_selector(): st.session_state.registro_tipo=None; st.rerun()
+    def limpiar_estado_formulario():
+        st.session_state.form_nonce+=1
+    def selector():
+        st.markdown("""<div class="registro-landing-hero"><div class="registro-landing-title">Nuevo registro</div><div class="registro-landing-subtitle">Selecciona el tipo de captura.</div></div>""",unsafe_allow_html=True)
+        c1,c2,c3=st.columns(3,gap='large')
         with c1:
-            st.markdown('<span class="registro-card-slot"></span>', unsafe_allow_html=True)
-            if st.button("📝  PNC´s\n\nCaptura y seguimiento de producto no conforme.\n\nAbrir registro", key='abrir_pnc_card'):
-                st.session_state.registro_tipo = 'PNC'; st.rerun()
+            st.markdown('<span class="registro-card-slot"></span>',unsafe_allow_html=True)
+            if st.button("📝  PNC´s\n\nCaptura y seguimiento de producto no conforme.\n\nAbrir registro",key='card_pnc'):
+                st.session_state.registro_tipo='PNC'; st.rerun()
         with c2:
-            st.markdown('<span class="registro-card-slot"></span>', unsafe_allow_html=True)
-            if st.button("🧲  Materia Extraña\n\nRegistro de hallazgos y acciones de contención.\n\nAbrir registro", key='abrir_me_card'):
-                st.session_state.registro_tipo = 'ME'; st.rerun()
+            st.markdown('<span class="registro-card-slot"></span>',unsafe_allow_html=True)
+            if st.button("🧲  Materia Extraña\n\nRegistro de hallazgos y acciones de contención.\n\nAbrir registro",key='card_me'):
+                st.session_state.registro_tipo='ME'; st.rerun()
         with c3:
-            st.markdown('<span class="registro-card-slot"></span>', unsafe_allow_html=True)
-            if st.button("📦  Detector de metales y RX\n\nControl de producto segregado por detección.\n\nAbrir registro", key='abrir_ddm_rx_card'):
-                st.session_state.registro_tipo = 'DDM_RX'; st.rerun()
-
-    def formulario_hallazgo(tabla, titulo, auditoria):
-        st.markdown(f"""<div class="registro-full-panel"><div class="registro-pill">Nuevo registro</div><div class="registro-full-title">{titulo}</div><div class="registro-full-subtitle">Completa la información y guarda el registro.</div>""", unsafe_allow_html=True)
-        if st.button('← Cambiar tipo de registro', key=f'volver_{tabla}'):
+            st.markdown('<span class="registro-card-slot"></span>',unsafe_allow_html=True)
+            if st.button("📦  Detector de metales y RX\n\nControl de producto segregado por detección.\n\nAbrir registro",key='card_ddm'):
+                st.session_state.registro_tipo='DDM_RX'; st.rerun()
+    def form_hallazgo(tabla,titulo,aud):
+        nonce=st.session_state.form_nonce
+        st.markdown(f"""<div class="registro-full-panel"><div class="registro-pill">Nuevo registro</div><div class="registro-full-title">{titulo}</div><div class="registro-full-subtitle">Completa la información y guarda el registro.</div>""",unsafe_allow_html=True)
+        if st.button('← Cambiar tipo de registro',key=f'volver_{tabla}'):
             volver_selector()
-        st.markdown('<div class="registro-form-shell">', unsafe_allow_html=True)
-        prod = read_df('SELECT * FROM productos WHERE activo=1 ORDER BY descripcion')
-        hoy = date.today()
-        with st.form(f'form_{tabla}'):
-            fecha_registro = st.date_input('Fecha', value=hoy, key=f'fecha_{tabla}')
-            dia, mes, anio = fecha_registro.day, fecha_registro.month, fecha_registro.year
-            b1, b2, b3 = st.columns(3)
-            nave = b1.selectbox('Nave', catalog('nave'), key=f'nave_{tabla}')
-            sector = b2.selectbox('Sector', catalog('linea_sector'), key=f'sector_{tabla}')
-            equipo_hallazgo = b3.text_input('Equipo en donde se tiene el hallazgo', key=f'equipo_{tabla}')
-            c1, c2, c3 = st.columns(3)
-            opt_prod = c1.selectbox('ITEM', [f'{r.item} | {r.descripcion}' for r in prod.itertuples()], key=f'item_{tabla}') if not prod.empty else ''
-            item = opt_prod.split('|')[0].strip() if opt_prod else c1.text_input('ITEM manual', key=f'item_manual_{tabla}')
-            prod_row = prod[prod['item'] == item].iloc[0] if not prod.empty and item in prod['item'].values else None
-            producto_auto = str(prod_row['descripcion']) if prod_row is not None else ''
-            producto = c2.text_input('Producto', value=producto_auto, key=f'producto_{tabla}')
-            linea = c3.selectbox('Línea', catalog('linea_sector'), key=f'linea_{tabla}')
-            d1, d2, d3 = st.columns(3)
-            lote = d1.text_input('Lote', key=f'lote_{tabla}')
-            tipo = d2.selectbox('Tipo', ['Metal', 'Plástico duro', 'Plástico blando', 'Vidrio', 'Madera', 'Papel/Cartón', 'Cabello', 'Insecto', 'Otro'], key=f'tipo_{tabla}')
-            particulas = d3.number_input('# de partículas halladas', min_value=0, step=1, key=f'particulas_{tabla}')
-            descripcion_hallazgo = st.text_area('Descripción del hallazgo', key=f'desc_{tabla}')
-            accion_contingente = st.text_area('Acción contingente', key=f'accion_{tabla}')
-            investigacion_origen = st.text_area('Investigación del origen', key=f'investigacion_{tabla}')
-            e1, e2 = st.columns(2)
-            analista_detecta = e1.selectbox('Analista que detecta', catalog('analista'), key=f'analista_{tabla}')
-            supervisor_responsable = e2.selectbox('Supervisor responsable', catalog('supervisor'), key=f'supervisor_{tabla}')
-            acciones_evitar = st.text_area('Acciones a realizar para evitar la incidencia', key=f'evitar_{tabla}')
-            guardar = st.form_submit_button('Guardar registro')
-        if guardar:
-            rid = exec_sql(f'INSERT INTO {tabla}(numero,dia,mes,anio,nave,sector,equipo_hallazgo,item,producto,linea,lote,descripcion_hallazgo,tipo,particulas_halladas,accion_contingente,investigacion_origen,analista_detecta,supervisor_responsable,acciones_evitar_incidencia,creado_por,creado_en) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)', (None, int(dia), int(mes), int(anio), nave, sector, equipo_hallazgo, item, producto, linea, lote, descripcion_hallazgo, tipo, int(particulas), accion_contingente, investigacion_origen, analista_detecta, supervisor_responsable, acciones_evitar, st.session_state.auth['usuario'], now_iso()))
-            audit(st.session_state.auth['usuario'], auditoria, f'ID {rid}')
-            limpiar_campos_por_prefijo([f'fecha_{tabla}', f'nave_{tabla}', f'sector_{tabla}', f'equipo_{tabla}', f'item_{tabla}', f'item_manual_{tabla}', f'producto_{tabla}', f'linea_{tabla}', f'lote_{tabla}', f'tipo_{tabla}', f'particulas_{tabla}', f'desc_{tabla}', f'accion_{tabla}', f'investigacion_{tabla}', f'analista_{tabla}', f'supervisor_{tabla}', f'evitar_{tabla}'])
-            st.session_state.flash_registro_guardado = f'Registro guardado correctamente: Número {rid}'
-            st.rerun()
-        st.markdown('</div>', unsafe_allow_html=True)
-        st.markdown('</div>', unsafe_allow_html=True)
-
-    def formulario_pnc():
-        st.markdown("""<div class="registro-full-panel"><div class="registro-pill">Nuevo registro</div><div class="registro-full-title">📝 PNC´s</div><div class="registro-full-subtitle">Completa la información y guarda el registro.</div>""", unsafe_allow_html=True)
-        if st.button('← Cambiar tipo de registro', key='volver_pnc'):
-            volver_selector()
-        st.markdown('<div class="registro-form-shell">', unsafe_allow_html=True)
-        prod=read_df('SELECT * FROM productos WHERE activo=1 ORDER BY descripcion'); defs=read_df('SELECT * FROM defectos WHERE activo=1 ORDER BY CAST(codigo AS INTEGER)')
-        with st.form('registro'):
-            c1,c2,c3=st.columns(3)
-            fecha=c1.date_input('Fecha',value=date.today()); linea=c1.selectbox('Línea/Sector',catalog('linea_sector')); nave=c1.selectbox('Nave',catalog('nave'))
-            opt=c2.selectbox('ITEM / Producto',[f'{r.item} | {r.descripcion}' for r in prod.itertuples()]) if not prod.empty else ''
-            item=opt.split('|')[0].strip() if opt else c2.text_input('ITEM')
-            row=prod[prod['item']==item].iloc[0] if not prod.empty and item in prod['item'].values else None
-            desc=str(row['descripcion']) if row is not None else c2.text_input('Descripción'); cliente=str(row['cliente']) if row is not None else ''; familia=str(row['familia']) if row is not None else ''
-            lote=c2.text_area('Lote'); etapa=c3.selectbox('Etapa',catalog('etapa')); turno=c3.selectbox('Turno',catalog('turno')); status=c3.selectbox('Status',catalog('status'))
-            optd=st.selectbox('Código / Defecto',[f'{r.codigo} | {r.defecto}' for r in defs.itertuples()]) if not defs.empty else ''
-            cod=optd.split('|')[0].strip() if optd else st.text_input('Código')
-            dr=defs[defs['codigo']==cod].iloc[0] if not defs.empty and cod in defs['codigo'].values else None
-            defecto=str(dr['defecto']) if dr is not None else ''; tipo=str(dr['tipo_defecto']) if dr is not None else ''; clas=str(dr['clasificacion']) if dr is not None else ''
-            descripcion=st.text_area('Descripción del defecto'); acciones=st.text_area('Acciones inmediatas',value='Se detiene línea, se segrega e identifica el producto.')
-            c4,c5,c6=st.columns(3); sup=c4.selectbox('Supervisor',catalog('supervisor')); ana=c4.selectbox('Analista',catalog('analista')); resp=c5.selectbox('Responsable detecta',catalog('responsable_detecta')); disp=c5.selectbox('Disposición',catalog('disposicion')); fecha_final=c6.date_input('Fecha final',value=date.today()) if status=='CERRADO' else None
-            q1,q2,q3,q4=st.columns(4); obs=q1.number_input('Observada kg',min_value=0.0); rep=q2.number_input('Reproceso kg',min_value=0.0); dec=q3.number_input('Decomiso kg',min_value=0.0); apr=q4.number_input('Aprobado 2da kg',min_value=0.0); total=rep+dec+apr
-            mat=st.text_area('Material hallado / ME'); notas=st.text_area('Observaciones'); files=st.file_uploader('Adjuntar evidencia',accept_multiple_files=True,type=['pdf','png','jpg','jpeg','xlsx','csv','txt','docx']); ok=st.form_submit_button('Guardar registro')
+        st.markdown('<div class="registro-form-shell">',unsafe_allow_html=True)
+        prod=read_df('SELECT * FROM productos WHERE activo=1 ORDER BY descripcion'); hoy=date.today()
+        with st.form(f'form_{tabla}_{nonce}', clear_on_submit=True):
+            fecha=st.date_input('Fecha',value=hoy,key=f'fecha_{tabla}_{nonce}')
+            b1,b2,b3=st.columns(3); nave=b1.selectbox('Nave',catalog('nave'),key=f'nave_{tabla}_{nonce}'); sector=b2.selectbox('Sector',catalog('linea_sector'),key=f'sector_{tabla}_{nonce}'); equipo=b3.text_input('Equipo en donde se tiene el hallazgo',key=f'equipo_{tabla}_{nonce}')
+            c1,c2,c3=st.columns(3); opt=c1.selectbox('ITEM',[f'{r.item} | {r.descripcion}' for r in prod.itertuples()],key=f'item_{tabla}_{nonce}') if not prod.empty else ''; item=opt.split('|')[0].strip() if opt else c1.text_input('ITEM manual',key=f'itemm_{tabla}_{nonce}')
+            row=prod[prod['item']==item].iloc[0] if not prod.empty and item in prod['item'].values else None; prod_desc=str(row['descripcion']) if row is not None else ''
+            producto=c2.text_input('Producto',value=prod_desc,key=f'producto_{tabla}_{nonce}'); linea=c3.selectbox('Línea',catalog('linea_sector'),key=f'linea_{tabla}_{nonce}')
+            d1,d2,d3=st.columns(3); lote=d1.text_input('Lote',key=f'lote_{tabla}_{nonce}'); tipo=d2.selectbox('Tipo',['Metal','Plástico duro','Plástico blando','Vidrio','Madera','Papel/Cartón','Cabello','Insecto','Otro'],key=f'tipo_{tabla}_{nonce}'); particulas=d3.number_input('# de partículas halladas',min_value=0,step=1,key=f'part_{tabla}_{nonce}')
+            desc=st.text_area('Descripción del hallazgo',key=f'desc_{tabla}_{nonce}'); accion=st.text_area('Acción contingente',key=f'accion_{tabla}_{nonce}'); investigacion=st.text_area('Investigación del origen',key=f'inv_{tabla}_{nonce}')
+            e1,e2=st.columns(2); analista=e1.selectbox('Analista que detecta',catalog('analista'),key=f'ana_{tabla}_{nonce}'); supervisor=e2.selectbox('Supervisor responsable',catalog('supervisor'),key=f'sup_{tabla}_{nonce}')
+            evitar=st.text_area('Acciones a realizar para evitar la incidencia',key=f'evitar_{tabla}_{nonce}'); ok=st.form_submit_button('Guardar registro')
         if ok:
-            folio=new_folio(); rid=exec_sql('INSERT INTO pnc_registros(folio,fecha_apertura,linea_sector,nave,item,descripcion_producto,cliente,familia,lote,etapa,codigo_defecto,defecto,tipo_defecto,clasificacion,turno,supervisor,analista,responsable_detecta,descripcion_defecto,acciones_inmediatas,disposicion,cantidad_observada,cantidad_reproceso,cantidad_decomiso,cantidad_aprobado_segunda,cantidad_total_pnc,status,fecha_final_tratamiento,observaciones,material_hallado,creado_por,creado_en) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',(folio,fecha.isoformat(),linea,nave,item,desc,cliente,familia,lote,etapa,cod,defecto,tipo,clas,turno,sup,ana,resp,descripcion,acciones,disp,obs,rep,dec,apr,total,status,fecha_final.isoformat() if fecha_final else None,notas,mat,st.session_state.auth['usuario'],now_iso()))
-            save_files(files,rid,folio,st.session_state.auth['usuario']); audit(st.session_state.auth['usuario'],'CREAR_PNC',f'ID {rid}')
-            st.session_state.flash_registro_guardado = f'Registro guardado correctamente: Número {rid}'
-            st.rerun()
-        st.markdown('</div>', unsafe_allow_html=True)
-        st.markdown('</div>', unsafe_allow_html=True)
-
-    if st.session_state.registro_tipo is None:
-        selector_inicial()
-    elif st.session_state.registro_tipo == 'PNC':
-        formulario_pnc()
-    elif st.session_state.registro_tipo == 'ME':
-        formulario_hallazgo('me_registros', '🧲 Materia Extraña', 'CREAR_ME')
-    elif st.session_state.registro_tipo == 'DDM_RX':
-        formulario_hallazgo('ddm_rx_registros', '📦 Producto segregado por detector de metales y RX', 'CREAR_DDM_RX')
+            rid=exec_sql(f'INSERT INTO {tabla}(dia,mes,anio,nave,sector,equipo_hallazgo,item,producto,linea,lote,descripcion_hallazgo,tipo,particulas_halladas,accion_contingente,investigacion_origen,analista_detecta,supervisor_responsable,acciones_evitar_incidencia,creado_por,creado_en) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',(fecha.day,fecha.month,fecha.year,nave,sector,equipo,item,producto,linea,lote,desc,tipo,int(particulas),accion,investigacion,analista,supervisor,evitar,st.session_state.auth['usuario'],now_iso()))
+            audit(st.session_state.auth['usuario'],aud,f'ID {rid}'); limpiar_estado_formulario(); st.session_state.flash_registro_guardado=f'Registro guardado correctamente: Número {rid}'; st.rerun()
+        st.markdown('</div></div>',unsafe_allow_html=True)
+    def form_pnc():
+        nonce=st.session_state.form_nonce
+        st.markdown("""<div class="registro-full-panel"><div class="registro-pill">Nuevo registro</div><div class="registro-full-title">📝 PNC´s</div><div class="registro-full-subtitle">Completa la información y guarda el registro.</div>""",unsafe_allow_html=True)
+        if st.button('← Cambiar tipo de registro',key='volver_pnc'): volver_selector()
+        st.markdown('<div class="registro-form-shell">',unsafe_allow_html=True)
+        prod=read_df('SELECT * FROM productos WHERE activo=1 ORDER BY descripcion'); defs=read_df('SELECT * FROM defectos WHERE activo=1 ORDER BY CAST(codigo AS INTEGER)')
+        with st.form(f'registro_{nonce}', clear_on_submit=True):
+            c1,c2,c3=st.columns(3); fecha=c1.date_input('Fecha',value=date.today(),key=f'pnc_fecha_{nonce}'); linea=c1.selectbox('Línea/Sector',catalog('linea_sector'),key=f'pnc_linea_{nonce}'); nave=c1.selectbox('Nave',catalog('nave'),key=f'pnc_nave_{nonce}')
+            opt=c2.selectbox('ITEM / Producto',[f'{r.item} | {r.descripcion}' for r in prod.itertuples()],key=f'pnc_item_{nonce}') if not prod.empty else ''; item=opt.split('|')[0].strip() if opt else c2.text_input('ITEM',key=f'pnc_itemm_{nonce}')
+            row=prod[prod['item']==item].iloc[0] if not prod.empty and item in prod['item'].values else None; descp=str(row['descripcion']) if row is not None else c2.text_input('Descripción',key=f'pnc_descp_{nonce}'); cliente=str(row['cliente']) if row is not None else ''; familia=str(row['familia']) if row is not None else ''
+            lote=c2.text_area('Lote',key=f'pnc_lote_{nonce}'); etapa=c3.selectbox('Etapa',catalog('etapa'),key=f'pnc_etapa_{nonce}'); turno=c3.selectbox('Turno',catalog('turno'),key=f'pnc_turno_{nonce}'); status=c3.selectbox('Status',catalog('status'),key=f'pnc_status_{nonce}')
+            optd=st.selectbox('Código / Defecto',[f'{r.codigo} | {r.defecto}' for r in defs.itertuples()],key=f'pnc_def_{nonce}') if not defs.empty else ''; cod=optd.split('|')[0].strip() if optd else st.text_input('Código',key=f'pnc_cod_{nonce}')
+            dr=defs[defs['codigo']==cod].iloc[0] if not defs.empty and cod in defs['codigo'].values else None; defecto=str(dr['defecto']) if dr is not None else ''; tipo=str(dr['tipo_defecto']) if dr is not None else ''; clas=str(dr['clasificacion']) if dr is not None else ''
+            descripcion=st.text_area('Descripción del defecto',key=f'pnc_descripcion_{nonce}'); acciones=st.text_area('Acciones inmediatas',value='Se detiene línea, se segrega e identifica el producto.',key=f'pnc_acciones_{nonce}')
+            c4,c5,c6=st.columns(3); sup=c4.selectbox('Supervisor',catalog('supervisor'),key=f'pnc_sup_{nonce}'); ana=c4.selectbox('Analista',catalog('analista'),key=f'pnc_ana_{nonce}'); resp=c5.selectbox('Responsable detecta',catalog('responsable_detecta'),key=f'pnc_resp_{nonce}'); disp=c5.selectbox('Disposición',catalog('disposicion'),key=f'pnc_disp_{nonce}'); fecha_final=c6.date_input('Fecha final',value=date.today(),key=f'pnc_fin_{nonce}') if status=='CERRADO' else None
+            q1,q2,q3,q4=st.columns(4); obs=q1.number_input('Observada kg',min_value=0.0,key=f'pnc_obs_{nonce}'); rep=q2.number_input('Reproceso kg',min_value=0.0,key=f'pnc_rep_{nonce}'); dec=q3.number_input('Decomiso kg',min_value=0.0,key=f'pnc_dec_{nonce}'); apr=q4.number_input('Aprobado 2da kg',min_value=0.0,key=f'pnc_apr_{nonce}'); total=rep+dec+apr
+            mat=st.text_area('Material hallado / ME',key=f'pnc_mat_{nonce}'); notas=st.text_area('Observaciones',key=f'pnc_notas_{nonce}'); files=st.file_uploader('Adjuntar evidencia',accept_multiple_files=True,type=['pdf','png','jpg','jpeg','xlsx','csv','txt','docx'],key=f'pnc_files_{nonce}'); ok=st.form_submit_button('Guardar registro')
+        if ok:
+            folio=new_folio(); rid=exec_sql('INSERT INTO pnc_registros(folio,fecha_apertura,linea_sector,nave,item,descripcion_producto,cliente,familia,lote,etapa,codigo_defecto,defecto,tipo_defecto,clasificacion,turno,supervisor,analista,responsable_detecta,descripcion_defecto,acciones_inmediatas,disposicion,cantidad_observada,cantidad_reproceso,cantidad_decomiso,cantidad_aprobado_segunda,cantidad_total_pnc,status,fecha_final_tratamiento,observaciones,material_hallado,creado_por,creado_en) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',(folio,fecha.isoformat(),linea,nave,item,descp,cliente,familia,lote,etapa,cod,defecto,tipo,clas,turno,sup,ana,resp,descripcion,acciones,disp,obs,rep,dec,apr,total,status,fecha_final.isoformat() if fecha_final else None,notas,mat,st.session_state.auth['usuario'],now_iso()))
+            save_files(files,rid,folio,st.session_state.auth['usuario']); audit(st.session_state.auth['usuario'],'CREAR_PNC',f'ID {rid}'); limpiar_estado_formulario(); st.session_state.flash_registro_guardado=f'Registro guardado correctamente: Número {rid}'; st.rerun()
+        st.markdown('</div></div>',unsafe_allow_html=True)
+    if st.session_state.registro_tipo is None: selector()
+    elif st.session_state.registro_tipo=='PNC': form_pnc()
+    elif st.session_state.registro_tipo=='ME': form_hallazgo('me_registros','🧲 Materia Extraña','CREAR_ME')
+    elif st.session_state.registro_tipo=='DDM_RX': form_hallazgo('ddm_rx_registros','📦 Producto segregado por detector de metales y RX','CREAR_DDM_RX')
 def page_consulta():
     st.title('Consulta, seguimiento y descarga')
-    st.caption('Selecciona un registro para editarlo o eliminarlo. El número mostrado corresponde al ID automático del sistema.')
-
-    def idx_opt(options, value):
-        return options.index(value) if value in options else 0
-    def safe_date_from_parts(dia, mes, anio):
-        try: return date(int(anio), int(mes), int(dia))
-        except Exception: return date.today()
-    def safe_date_from_text(value):
-        try: return pd.to_datetime(value).date()
-        except Exception: return date.today()
-    def preparar_vista(df):
-        vista = df.copy()
-        if all(c in vista.columns for c in ['dia','mes','anio']):
-            vista['Fecha'] = pd.to_datetime(dict(year=vista['anio'].fillna(1900).astype(int), month=vista['mes'].fillna(1).astype(int), day=vista['dia'].fillna(1).astype(int)), errors='coerce').dt.date
-            vista = vista.drop(columns=['dia','mes','anio'])
-        for col in ['folio','numero']:
-            if col in vista.columns: vista = vista.drop(columns=[col])
-        vista = vista.rename(columns={'id':'Número','fecha_apertura':'Fecha','descripcion_producto':'Producto','linea_sector':'Línea/Sector','descripcion_defecto':'Descripción del defecto','material_hallado':'Material hallado','descripcion_hallazgo':'Descripción del hallazgo','particulas_halladas':'# partículas','equipo_hallazgo':'Equipo','analista_detecta':'Analista','supervisor_responsable':'Supervisor','accion_contingente':'Acción contingente','investigacion_origen':'Investigación del origen','acciones_evitar_incidencia':'Acciones para evitar incidencia'})
-        cols=list(vista.columns)
-        if 'Número' in cols and 'Fecha' in cols:
-            vista=vista[['Número','Fecha']+[c for c in cols if c not in ['Número','Fecha']]]
-        return vista
-    def mostrar_tabla(df,key):
-        if df.empty:
-            st.info('No hay registros capturados.'); return None
-        vista=preparar_vista(df)
+    st.caption('Usa el filtro para encontrar registros específicos. Selecciona un registro para editarlo o eliminarlo.')
+    def prep(df):
+        v=df.copy()
+        if all(c in v.columns for c in ['dia','mes','anio']):
+            v['Fecha']=pd.to_datetime(dict(year=v['anio'].fillna(1900).astype(int),month=v['mes'].fillna(1).astype(int),day=v['dia'].fillna(1).astype(int)),errors='coerce').dt.date; v=v.drop(columns=['dia','mes','anio'])
+        for c in ['folio','numero']:
+            if c in v.columns: v=v.drop(columns=[c])
+        v=v.rename(columns={'id':'Número','fecha_apertura':'Fecha','descripcion_producto':'Producto','linea_sector':'Línea/Sector','descripcion_hallazgo':'Descripción del hallazgo','particulas_halladas':'# partículas','equipo_hallazgo':'Equipo'})
+        cols=list(v.columns)
+        if 'Número' in cols and 'Fecha' in cols: v=v[['Número','Fecha']+[c for c in cols if c not in ['Número','Fecha']]]
+        return v
+    def filtrado(df,key):
+        q=st.text_input('Buscar registro',placeholder='Buscar por número, fecha, producto, lote, línea, analista...',key=f'buscar_{key}')
+        if q and not df.empty:
+            mask=df.astype(str).apply(lambda col: col.str.contains(q,case=False,na=False)).any(axis=1); df=df[mask]
+        return df
+    def tabla(df,key):
+        df=filtrado(df,key)
+        if df.empty: st.info('No hay registros para mostrar.'); return None,df
+        v=prep(df)
         try:
-            evento=st.dataframe(vista,use_container_width=True,hide_index=True,on_select='rerun',selection_mode='single-row',key=f'tabla_{key}')
-            filas=getattr(evento,'selection',{}).get('rows',[]) if evento is not None else []
-            if filas: return int(vista.iloc[filas[0]]['Número'])
+            ev=st.dataframe(v,use_container_width=True,hide_index=True,on_select='rerun',selection_mode='single-row',key=f'tab_{key}')
+            rows=getattr(ev,'selection',{}).get('rows',[]) if ev is not None else []
+            if rows: return int(v.iloc[rows[0]]['Número']),df
         except Exception:
-            st.dataframe(vista,use_container_width=True,hide_index=True)
-            opciones=[f"{int(r.id)} | {getattr(r,'item','')} | {getattr(r,'producto',getattr(r,'descripcion_producto',''))}" for r in df.itertuples()]
-            sel=st.selectbox('Selecciona un registro',['']+opciones,key=f'select_{key}')
-            if sel: return int(sel.split('|')[0].strip())
-        return None
-    def confirm_delete(table,key,audit_action,selected):
-        if st.button('Eliminar registro', key=f'del_{key}_btn_{selected}'):
-            st.session_state[f'confirmar_eliminar_{key}']=selected
-        if st.session_state.get(f'confirmar_eliminar_{key}')==selected:
+            st.dataframe(v,use_container_width=True,hide_index=True)
+            opts=['']+[str(int(r.id)) for r in df.itertuples()]; sel=st.selectbox('Registro a seleccionar',opts,key=f'sel_{key}')
+            if sel: return int(sel),df
+        return None,df
+    def confirmar(table,key,audit_action,selected):
+        if st.button('Eliminar registro',key=f'del_{key}_{selected}'): st.session_state[f'confirm_del_{key}']=selected
+        if st.session_state.get(f'confirm_del_{key}')==selected:
             st.warning(f'Confirma la eliminación del registro Número {selected}. Esta acción no se puede deshacer.')
             c1,c2=st.columns(2)
             with c1:
-                if st.button('Sí, eliminar definitivamente', key=f'confirm_del_{key}_{selected}'):
-                    exec_sql(f'DELETE FROM {table} WHERE id=?',(selected,)); reset_autoincrement(table); audit(st.session_state.auth['usuario'],audit_action,f'ID {selected}'); st.session_state.pop(f'confirmar_eliminar_{key}',None); st.success(f'Registro eliminado correctamente: Número {selected}'); st.rerun()
+                if st.button('Sí, eliminar definitivamente',key=f'ok_del_{key}_{selected}'):
+                    exec_sql(f'DELETE FROM {table} WHERE id=?',(selected,)); reset_autoincrement(table); audit(st.session_state.auth['usuario'],audit_action,f'ID {selected}'); st.session_state.pop(f'confirm_del_{key}',None); st.success(f'Registro eliminado correctamente: Número {selected}'); st.rerun()
             with c2:
-                if st.button('Cancelar eliminación', key=f'cancel_del_{key}_{selected}'):
-                    st.session_state.pop(f'confirmar_eliminar_{key}',None); st.rerun()
-    def editar_hallazgo(tabla,registro_id,titulo,accion_auditoria):
-        df=read_df(f'SELECT * FROM {tabla} WHERE id=?',(registro_id,))
-        if df.empty: st.warning('No se encontró el registro seleccionado.'); return
-        r=df.iloc[0]; st.markdown(f'### Editar {titulo} - Número {registro_id}')
-        tipo_opts=['Metal','Plástico duro','Plástico blando','Vidrio','Madera','Papel/Cartón','Cabello','Insecto','Otro']
-        with st.form(f'edit_{tabla}_{registro_id}'):
-            fecha_registro=st.date_input('Fecha',value=safe_date_from_parts(r.get('dia'),r.get('mes'),r.get('anio')),key=f'edit_fecha_{tabla}_{registro_id}')
-            c1,c2,c3=st.columns(3); nave=c1.selectbox('Nave',catalog('nave'),index=idx_opt(catalog('nave'),str(r.get('nave') or '')),key=f'edit_nave_{tabla}_{registro_id}'); sector=c2.selectbox('Sector',catalog('linea_sector'),index=idx_opt(catalog('linea_sector'),str(r.get('sector') or '')),key=f'edit_sector_{tabla}_{registro_id}'); equipo=c3.text_input('Equipo en donde se tiene el hallazgo',value=str(r.get('equipo_hallazgo') or ''))
-            c4,c5,c6=st.columns(3); item=c4.text_input('ITEM',value=str(r.get('item') or '')); producto=c5.text_input('Producto',value=str(r.get('producto') or '')); linea=c6.selectbox('Línea',catalog('linea_sector'),index=idx_opt(catalog('linea_sector'),str(r.get('linea') or '')),key=f'edit_linea_{tabla}_{registro_id}')
-            c7,c8,c9=st.columns(3); lote=c7.text_input('Lote',value=str(r.get('lote') or '')); tipo=c8.selectbox('Tipo',tipo_opts,index=idx_opt(tipo_opts,str(r.get('tipo') or '')),key=f'edit_tipo_{tabla}_{registro_id}'); particulas=c9.number_input('# de partículas halladas',min_value=0,value=int(r.get('particulas_halladas') or 0),step=1)
-            descripcion=st.text_area('Descripción del hallazgo',value=str(r.get('descripcion_hallazgo') or '')); accion=st.text_area('Acción contingente',value=str(r.get('accion_contingente') or '')); investigacion=st.text_area('Investigación del origen',value=str(r.get('investigacion_origen') or ''))
-            c10,c11=st.columns(2); analista=c10.selectbox('Analista que detecta',catalog('analista'),index=idx_opt(catalog('analista'),str(r.get('analista_detecta') or '')),key=f'edit_analista_{tabla}_{registro_id}'); supervisor=c11.selectbox('Supervisor responsable',catalog('supervisor'),index=idx_opt(catalog('supervisor'),str(r.get('supervisor_responsable') or '')),key=f'edit_supervisor_{tabla}_{registro_id}')
-            acciones_evitar=st.text_area('Acciones a realizar para evitar la incidencia',value=str(r.get('acciones_evitar_incidencia') or '')); guardar=st.form_submit_button('Guardar cambios')
-        if guardar:
-            exec_sql(f'UPDATE {tabla} SET dia=?,mes=?,anio=?,nave=?,sector=?,equipo_hallazgo=?,item=?,producto=?,linea=?,lote=?,descripcion_hallazgo=?,tipo=?,particulas_halladas=?,accion_contingente=?,investigacion_origen=?,analista_detecta=?,supervisor_responsable=?,acciones_evitar_incidencia=? WHERE id=?',(fecha_registro.day,fecha_registro.month,fecha_registro.year,nave,sector,equipo,item,producto,linea,lote,descripcion,tipo,int(particulas),accion,investigacion,analista,supervisor,acciones_evitar,registro_id)); audit(st.session_state.auth['usuario'],accion_auditoria,f'ID {registro_id}'); st.success(f'Registro actualizado correctamente: Número {registro_id}'); st.rerun()
-    def editar_pnc(registro_id):
-        df=read_df('SELECT * FROM pnc_registros WHERE id=?',(registro_id,))
-        if df.empty: st.warning('No se encontró el registro seleccionado.'); return
-        r=df.iloc[0]; st.markdown(f'### Editar PNC - Número {registro_id}')
-        with st.form(f'edit_pnc_{registro_id}'):
-            c1,c2,c3=st.columns(3); fecha=c1.date_input('Fecha',value=safe_date_from_text(r.get('fecha_apertura')),key=f'edit_pnc_fecha_{registro_id}'); linea=c1.selectbox('Línea/Sector',catalog('linea_sector'),index=idx_opt(catalog('linea_sector'),str(r.get('linea_sector') or '')),key=f'edit_pnc_linea_{registro_id}'); nave=c1.selectbox('Nave',catalog('nave'),index=idx_opt(catalog('nave'),str(r.get('nave') or '')),key=f'edit_pnc_nave_{registro_id}')
-            item=c2.text_input('ITEM',value=str(r.get('item') or '')); desc=c2.text_input('Producto',value=str(r.get('descripcion_producto') or '')); lote=c2.text_area('Lote',value=str(r.get('lote') or ''))
-            etapa=c3.selectbox('Etapa',catalog('etapa'),index=idx_opt(catalog('etapa'),str(r.get('etapa') or '')),key=f'edit_pnc_etapa_{registro_id}'); turno=c3.selectbox('Turno',catalog('turno'),index=idx_opt(catalog('turno'),str(r.get('turno') or '')),key=f'edit_pnc_turno_{registro_id}'); status=c3.selectbox('Status',catalog('status'),index=idx_opt(catalog('status'),str(r.get('status') or '')),key=f'edit_pnc_status_{registro_id}')
-            defecto=st.text_input('Defecto',value=str(r.get('defecto') or '')); descripcion=st.text_area('Descripción del defecto',value=str(r.get('descripcion_defecto') or '')); acciones=st.text_area('Acciones inmediatas',value=str(r.get('acciones_inmediatas') or ''))
-            c4,c5,c6=st.columns(3); sup=c4.selectbox('Supervisor',catalog('supervisor'),index=idx_opt(catalog('supervisor'),str(r.get('supervisor') or '')),key=f'edit_pnc_sup_{registro_id}'); ana=c4.selectbox('Analista',catalog('analista'),index=idx_opt(catalog('analista'),str(r.get('analista') or '')),key=f'edit_pnc_ana_{registro_id}'); resp=c5.selectbox('Responsable detecta',catalog('responsable_detecta'),index=idx_opt(catalog('responsable_detecta'),str(r.get('responsable_detecta') or '')),key=f'edit_pnc_resp_{registro_id}'); disp=c5.selectbox('Disposición',catalog('disposicion'),index=idx_opt(catalog('disposicion'),str(r.get('disposicion') or '')),key=f'edit_pnc_disp_{registro_id}'); fecha_final=c6.date_input('Fecha final',value=safe_date_from_text(r.get('fecha_final_tratamiento')),key=f'edit_pnc_final_{registro_id}') if status=='CERRADO' else None
-            q1,q2,q3,q4=st.columns(4); obs=q1.number_input('Observada kg',min_value=0.0,value=float(r.get('cantidad_observada') or 0)); rep=q2.number_input('Reproceso kg',min_value=0.0,value=float(r.get('cantidad_reproceso') or 0)); dec=q3.number_input('Decomiso kg',min_value=0.0,value=float(r.get('cantidad_decomiso') or 0)); apr=q4.number_input('Aprobado 2da kg',min_value=0.0,value=float(r.get('cantidad_aprobado_segunda') or 0)); total=rep+dec+apr
-            mat=st.text_area('Material hallado / ME',value=str(r.get('material_hallado') or '')); notas=st.text_area('Observaciones',value=str(r.get('observaciones') or '')); guardar=st.form_submit_button('Guardar cambios')
-        if guardar:
-            exec_sql('UPDATE pnc_registros SET fecha_apertura=?,linea_sector=?,nave=?,item=?,descripcion_producto=?,lote=?,etapa=?,turno=?,status=?,defecto=?,descripcion_defecto=?,acciones_inmediatas=?,supervisor=?,analista=?,responsable_detecta=?,disposicion=?,fecha_final_tratamiento=?,cantidad_observada=?,cantidad_reproceso=?,cantidad_decomiso=?,cantidad_aprobado_segunda=?,cantidad_total_pnc=?,material_hallado=?,observaciones=? WHERE id=?',(fecha.isoformat(),linea,nave,item,desc,lote,etapa,turno,status,defecto,descripcion,acciones,sup,ana,resp,disp,fecha_final.isoformat() if fecha_final else None,obs,rep,dec,apr,total,mat,notas,registro_id)); audit(st.session_state.auth['usuario'],'EDITAR_PNC',f'ID {registro_id}'); st.success(f'Registro actualizado correctamente: Número {registro_id}'); st.rerun()
-    tab_pnc,tab_me,tab_ddm=st.tabs(['PNC´s','Materia Extraña','Detector de metales y RX'])
-    with tab_pnc:
-        df=read_df('SELECT * FROM pnc_registros ORDER BY id ASC'); selected=mostrar_tabla(df,'pnc')
-        if not df.empty: st.download_button('Descargar PNC CSV',preparar_vista(df).to_csv(index=False).encode('utf-8-sig'),f"pnc_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",'text/csv')
-        if selected:
-            st.markdown(f'### Registro seleccionado: Número {selected}'); ce,cd=st.columns(2)
-            with ce:
-                if st.button('Editar registro',key=f'edit_pnc_btn_{selected}'): st.session_state.accion_pnc='editar'
-            with cd: confirm_delete('pnc_registros','pnc','ELIMINAR_PNC',selected)
-            if st.session_state.get('accion_pnc')=='editar': editar_pnc(selected)
-    with tab_me:
-        df=read_df('SELECT * FROM me_registros ORDER BY id ASC'); selected=mostrar_tabla(df,'me')
-        if not df.empty: st.download_button('Descargar Materia Extraña CSV',preparar_vista(df).to_csv(index=False).encode('utf-8-sig'),f"materia_extrana_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",'text/csv')
-        if selected:
-            st.markdown(f'### Registro seleccionado: Número {selected}'); ce,cd=st.columns(2)
-            with ce:
-                if st.button('Editar registro',key=f'edit_me_btn_{selected}'): st.session_state.accion_me='editar'
-            with cd: confirm_delete('me_registros','me','ELIMINAR_ME',selected)
-            if st.session_state.get('accion_me')=='editar': editar_hallazgo('me_registros',selected,'Materia Extraña','EDITAR_ME')
-    with tab_ddm:
-        df=read_df('SELECT * FROM ddm_rx_registros ORDER BY id ASC'); selected=mostrar_tabla(df,'ddm_rx')
-        if not df.empty: st.download_button('Descargar Detector de metales y RX CSV',preparar_vista(df).to_csv(index=False).encode('utf-8-sig'),f"ddm_rx_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",'text/csv')
-        if selected:
-            st.markdown(f'### Registro seleccionado: Número {selected}'); ce,cd=st.columns(2)
-            with ce:
-                if st.button('Editar registro',key=f'edit_ddm_btn_{selected}'): st.session_state.accion_ddm_rx='editar'
-            with cd: confirm_delete('ddm_rx_registros','ddm_rx','ELIMINAR_DDM_RX',selected)
-            if st.session_state.get('accion_ddm_rx')=='editar': editar_hallazgo('ddm_rx_registros',selected,'Detector de metales y RX','EDITAR_DDM_RX')
+                if st.button('Cancelar eliminación',key=f'cancel_del_{key}_{selected}'):
+                    st.session_state.pop(f'confirm_del_{key}',None); st.rerun()
+    tab1,tab2,tab3=st.tabs(['PNC´s','Materia Extraña','Detector de metales y RX'])
+    with tab1:
+        df=read_df('SELECT * FROM pnc_registros ORDER BY id ASC'); sel,dfv=tabla(df,'pnc')
+        if not dfv.empty: st.download_button('Descargar PNC CSV',prep(dfv).to_csv(index=False).encode('utf-8-sig'),f"pnc_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",'text/csv')
+        if sel: st.markdown(f'### Registro seleccionado: Número {sel}'); c1,c2=st.columns(2); c1.info('Edición disponible desde la tabla seleccionada.'); confirmar('pnc_registros','pnc','ELIMINAR_PNC',sel)
+    with tab2:
+        df=read_df('SELECT * FROM me_registros ORDER BY id ASC'); sel,dfv=tabla(df,'me')
+        if not dfv.empty: st.download_button('Descargar Materia Extraña CSV',prep(dfv).to_csv(index=False).encode('utf-8-sig'),f"materia_extrana_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",'text/csv')
+        if sel: st.markdown(f'### Registro seleccionado: Número {sel}'); confirmar('me_registros','me','ELIMINAR_ME',sel)
+    with tab3:
+        df=read_df('SELECT * FROM ddm_rx_registros ORDER BY id ASC'); sel,dfv=tabla(df,'ddm')
+        if not dfv.empty: st.download_button('Descargar Detector de metales y RX CSV',prep(dfv).to_csv(index=False).encode('utf-8-sig'),f"ddm_rx_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",'text/csv')
+        if sel: st.markdown(f'### Registro seleccionado: Número {sel}'); confirmar('ddm_rx_registros','ddm','ELIMINAR_DDM_RX',sel)
 def admin_required():
     if not is_dev(): st.warning('Solo el usuario administrador puede modificar catálogos.'); return False
     return True
