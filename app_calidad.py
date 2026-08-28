@@ -948,6 +948,11 @@ def page_entrega_turno():
                 obs=cols[3].text_input('Observaciones',key=f'et23_o_{nave}_{gi}_{li}_{n}',label_visibility='collapsed')
                 filas.append((grupo,linea,producto,float(horas),float(carga),obs,len(filas)))
             st.markdown('<div style="height:.7rem"></div>',unsafe_allow_html=True)
+        seguimientos=[];st.markdown('### Seguimientos')
+        for bi,bloque in enumerate(['Seguimiento a Contaminaciones','Seguimiento a PNC´S','Limpiezas','Seguimiento a ORDENES DE FALLO','GIRO / JUNTA DE EQUIPO']):
+            with st.expander(bloque,expanded=bi<2):
+                base=pd.DataFrame([{'Registro #':'','Hoja física':'','Carga electrónica':'','Correo':'','Descripción del seguimiento':''} for _ in range(3)])
+                ed=st.data_editor(base,num_rows='dynamic',use_container_width=True,hide_index=True,key=f'et23_s_{nave}_{bi}_{n}',column_config={'Hoja física':st.column_config.SelectboxColumn(options=['','Sí','No','N/A']),'Carga electrónica':st.column_config.SelectboxColumn(options=['','Sí','No','N/A']),'Correo':st.column_config.SelectboxColumn(options=['','Sí','No','N/A'])});seguimientos.append((bloque,ed))
         titulo_analisis=f'Análisis de laboratorio {nave}'
         st.markdown(f'<div style="background:{color_lineas};color:white;padding:.72rem .95rem;border-radius:12px;font-weight:950;margin-top:1rem">{titulo_analisis}</div>',unsafe_allow_html=True)
         encabezado=st.columns([1.2,2,1.5,1,2])
@@ -959,11 +964,6 @@ def page_entrega_turno():
         resultados=[]
         for ai,(grupo,linea,tipo_analisis) in enumerate(analisis):
             cc=st.columns([1.2,2,1.5,1,2]);cc[0].text_input('Grupo',grupo,disabled=True,key=f'et23_ag_{nave}_{ai}_{n}',label_visibility='collapsed');cc[1].text_input('Línea',linea,disabled=True,key=f'et23_al_{nave}_{ai}_{n}',label_visibility='collapsed');cc[2].text_input('Análisis',tipo_analisis,disabled=True,key=f'et23_at_{nave}_{ai}_{n}',label_visibility='collapsed');resultado=cc[3].text_input('Resultado',key=f'et23_ar_{nave}_{ai}_{n}',label_visibility='collapsed');obs=cc[4].text_input('Observaciones',key=f'et23_ao_{nave}_{ai}_{n}',label_visibility='collapsed');resultados.append((grupo,linea,tipo_analisis,resultado,obs))
-        seguimientos=[];st.markdown('### Seguimientos')
-        for bi,bloque in enumerate(['Seguimiento a Contaminaciones','Seguimiento a PNC´S','Limpiezas','Seguimiento a ORDENES DE FALLO','GIRO / JUNTA DE EQUIPO']):
-            with st.expander(bloque,expanded=bi<2):
-                base=pd.DataFrame([{'Registro #':'','Hoja física':'','Carga electrónica':'','Correo':'','Descripción del seguimiento':''} for _ in range(3)])
-                ed=st.data_editor(base,num_rows='dynamic',use_container_width=True,hide_index=True,key=f'et23_s_{nave}_{bi}_{n}',column_config={'Hoja física':st.column_config.SelectboxColumn(options=['','Sí','No','N/A']),'Carga electrónica':st.column_config.SelectboxColumn(options=['','Sí','No','N/A']),'Correo':st.column_config.SelectboxColumn(options=['','Sí','No','N/A'])});seguimientos.append((bloque,ed))
         total_h=sum(x[3] for x in filas);total_c=sum(x[4] for x in filas)
         m1,m2=st.columns(2);m1.metric('TOTAL DE CARGA DE DATOS',f'{total_c:.2f}');m2.metric(f'TOTAL DE HORAS TRABAJADAS DE LA LÍNEA {"NV2" if nave=="Nave 2" else "NV3"}',f'{total_h:.2f}')
         if st.button('Guardar entrega de turno',type='primary',key=f'et23_g_{nave}_{n}'):
