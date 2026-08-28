@@ -1,3 +1,4 @@
+
 import streamlit as st
 import pandas as pd
 import sqlite3, hashlib, os, base64, threading
@@ -900,7 +901,76 @@ def page_entrega_turno():
         return
     nave=st.session_state.entrega_nave
     if st.button('← Cambiar nave',key='entrega_volver'): st.session_state.entrega_nave=None; st.rerun()
-    if nave!='Nave 1': st.info(f'La ventana {nave} está preparada para incorporar su formato específico.'); return
+    if nave in ['Nave 2','Nave 3']:
+        n=st.session_state.entrega_nonce
+        st.markdown(f'<div class="registro-full-panel"><div class="registro-pill">{referencia}</div><div class="registro-full-title">ENTREGA DE TURNO CALIDAD PROCESOS</div><div class="registro-full-subtitle">NAVE 2 Y 3 · Captura correspondiente a {nave}</div>',unsafe_allow_html=True)
+        a,b,c=st.columns([2,1,1])
+        analista=a.selectbox('ANALISTA *',opt_blank(catalog('analista')),key=f'et23_a_{nave}_{n}')
+        fecha=b.date_input('Fecha *',date.today(),key=f'et23_f_{nave}_{n}')
+        turno=c.selectbox('Turno *',opt_blank(catalog('turno')),key=f'et23_t_{nave}_{n}')
+        proceso_nave2={
+          'BUTTER':['MD-CAR.SUAVE-DEPOSITADO','Nagema 1 (7g)','MD-CAR.SUAVES-NAGEMA 1 7G','MD-CAR.SUAVES-NAGEMA 2 7G','MD-CAR.SUAVES-NAGEMA 3 7G','MD-CAR.SUAVES-NAGEMA 4 7G'],
+          'CARAMELO':['MD - Car. Duros - TROQUEL','MD - Car. Duros - Flow pack1','MD - Car. Duros - Flow pack2','MD - Car. Duros - Flow pack3','MD - Car. Duros - Flow pack4','MD - Car. Duros - Flow pack5','MD - Car. Duros - NAGEMA 1','MD - Car. Duros - NAGEMA 2','MD - Car. Duros - NAGEMA 3','MD - Car. Duros - NAGEMA 4','MD - Car. Duros - NAGEMA 5'],
+          'PALETA EUROMEC':['MD-TROQUEL DE PALETAS EUROMEC','MD ENVOLVEDORA PALETA EUROMEC'],
+          'PALETA BATCH':['MD - PALETA- TROQUEL1','MD-PALETA-AQUARIUS BUNCHWRAPPED ENVOLTURA','MD-PALETA-AQUARIUS BUNCHWRAPPED ENVASADO'],
+          'PALETA BOLA CONTINUA':['MD - PALETA- TROQUEL 2','MD - PALETA- AQUARIUS 1','MD - PALETA- AQUARIUS 2','MD - PALETA- AQUARIUS 3','MD - PALETA- AQUARIUS 4','MD - PALETA- AQUARIUS 5','MD-PALETA-CARUGIL','MD-PALETA-MC PACK PALETA BOLA 1','MD-PALETA-MC PACK PALETA BOLA 2'],
+          'ENVASADO / ENVOLTURA':['MD - ENVAFLEX - PALETA','MD-ENVASADORA TNA','MD - FLOW PACK VARIOS STICK 1','MD - FLOW PACK VARIOS'],
+          'ENVASADO NV3':['GD 1','GD 2','GD 3','GD 4','GD 5','GD 6','GD 7','Encajillado GD´s']}
+        proceso_nave3={
+          'EMBOLADO DE HUEVITO':['Emboladora 1 (AUTOMÁTICA)','Emboladora 2','Emboladora 3','Emboladora 4','Emboladora 5','Emboladora 6 (BOSH)'],
+          'TROQUEL DE POOSH':['ENVASADO HIGH DREAM','ENVASADO VITROLEROS C2','PFM','PFM Multiformato','Flow Pack Bosch','Yamato de Poosh','Encajillado GD´s','MBP 700'],
+          'COCINA DE HUEVITO':['Paila para jarabe','Paila para engomado','Paila fundición de grasa','Cuarto de jarabes'],
+          'RECUBIERTO':['H1','H2','B1','L1','L2','L3','L4','L5','L6','L7','L8','L9']}
+        procesos=proceso_nave2 if nave=='Nave 2' else proceso_nave3
+        filas=[]
+        st.markdown('### Líneas y procesos')
+        st.caption('Producto es un solo campo libre dentro de cada proceso. Los controles − y + avanzan de uno en uno y permiten escribir decimales.')
+        for gi,(grupo,lineas) in enumerate(procesos.items()):
+            st.markdown(f'<div style="background:#007E45;color:white;padding:.55rem .8rem;border-radius:12px 12px 0 0;font-weight:900">{grupo}</div>',unsafe_allow_html=True)
+            producto=st.text_input('Productos / Item / descripción',key=f'et23_prod_{nave}_{gi}_{n}',placeholder='Escritura libre')
+            h=st.columns([2.2,1,1,2.2]);h[0].markdown('**Línea**');h[1].markdown('**Horas / cargas liberadas**');h[2].markdown('**Carga al SPAC**');h[3].markdown('**Observaciones**')
+            for li,linea in enumerate(lineas):
+                cols=st.columns([2.2,1,1,2.2])
+                cols[0].text_input('Línea',linea,disabled=True,key=f'et23_l_{nave}_{gi}_{li}_{n}',label_visibility='collapsed')
+                horas=cols[1].number_input('Horas',0.0,step=1.0,format='%.2f',key=f'et23_h_{nave}_{gi}_{li}_{n}',label_visibility='collapsed')
+                carga=cols[2].number_input('Carga',0.0,step=1.0,format='%.2f',key=f'et23_c_{nave}_{gi}_{li}_{n}',label_visibility='collapsed')
+                obs=cols[3].text_input('Observaciones',key=f'et23_o_{nave}_{gi}_{li}_{n}',label_visibility='collapsed')
+                filas.append((grupo,linea,producto,float(horas),float(carga),obs,len(filas)))
+            st.markdown('<div style="height:.7rem"></div>',unsafe_allow_html=True)
+        st.markdown('### Análisis de laboratorio')
+        if nave=='Nave 2':
+            analisis=[('CARAMELO','MD - CONFITADO - TANQUE1 COOLMIX','Almíbar °BX / Dextrosa'),('CARAMELO','MD - Car. Duros - COCINA','% Humedad / Acidez / Dextrosa'),('BUTTER','MD - Car. Duros - COOLMIX','Almíbar °BX / Dextrosa'),('BUTTER','MD-CAR. SUAVE - COCINA','% Humedad'),('PALETA','MD - CONFITADO - TANQUE2 COOLMIX','Almíbar °BX / Dextrosa'),('PALETA','MD - PALETA- COCINA1','% Humedad / Dextrosa'),('PALETA','MD - PALETA- COCINA2','% Humedad / Dextrosa')]
+        else:
+            analisis=[('FISICOQUÍMICOS','HUEVITO','% Humedad'),('FISICOQUÍMICOS','POOSH','% Humedad'),('FISICOQUÍMICOS','POOSH','°BX / pH')]
+        resultados=[]
+        for ai,(grupo,linea,tipo_analisis) in enumerate(analisis):
+            cc=st.columns([1.2,2,1.5,1,2]);cc[0].text_input('Grupo',grupo,disabled=True,key=f'et23_ag_{nave}_{ai}_{n}',label_visibility='collapsed');cc[1].text_input('Línea',linea,disabled=True,key=f'et23_al_{nave}_{ai}_{n}',label_visibility='collapsed');cc[2].text_input('Análisis',tipo_analisis,disabled=True,key=f'et23_at_{nave}_{ai}_{n}',label_visibility='collapsed');resultado=cc[3].text_input('Resultado',key=f'et23_ar_{nave}_{ai}_{n}',label_visibility='collapsed');obs=cc[4].text_input('Observaciones',key=f'et23_ao_{nave}_{ai}_{n}',label_visibility='collapsed');resultados.append((grupo,linea,tipo_analisis,resultado,obs))
+        seguimientos=[];st.markdown('### Seguimientos')
+        for bi,bloque in enumerate(['Seguimiento a Contaminaciones','Seguimiento a PNC´S','Limpiezas','Seguimiento a ORDENES DE FALLO','GIRO / JUNTA DE EQUIPO']):
+            with st.expander(bloque,expanded=bi<2):
+                base=pd.DataFrame([{'Registro #':'','Hoja física':'','Carga electrónica':'','Correo':'','Descripción del seguimiento':''} for _ in range(3)])
+                ed=st.data_editor(base,num_rows='dynamic',use_container_width=True,hide_index=True,key=f'et23_s_{nave}_{bi}_{n}',column_config={'Hoja física':st.column_config.SelectboxColumn(options=['','Sí','No','N/A']),'Carga electrónica':st.column_config.SelectboxColumn(options=['','Sí','No','N/A']),'Correo':st.column_config.SelectboxColumn(options=['','Sí','No','N/A'])});seguimientos.append((bloque,ed))
+        total_h=sum(x[3] for x in filas);total_c=sum(x[4] for x in filas)
+        m1,m2=st.columns(2);m1.metric('TOTAL DE CARGA DE DATOS',f'{total_c:.2f}');m2.metric(f'TOTAL DE HORAS TRABAJADAS DE LA LÍNEA {"NV2" if nave=="Nave 2" else "NV3"}',f'{total_h:.2f}')
+        if st.button('Guardar entrega de turno',type='primary',key=f'et23_g_{nave}_{n}'):
+            faltan=[]
+            if not analista:faltan.append('Analista')
+            if not turno:faltan.append('Turno')
+            if faltan:st.error('Completa: '+', '.join(faltan)+'.')
+            else:
+                eid=exec_sql('INSERT INTO entregas_turno(nave,fecha,analista,turno,referencia,total_carga_datos,total_horas_trabajadas,creado_por,creado_en) VALUES(?,?,?,?,?,?,?,?,?)',(nave,fecha.isoformat(),analista,turno,referencia,total_c,total_h,st.session_state.auth['usuario'],now_iso()))
+                for grupo,linea,producto,horas,carga,obs,orden in filas:
+                    if producto.strip() or horas or carga or obs.strip():exec_sql('INSERT INTO entregas_turno_lineas(entrega_id,grupo,linea,producto_descripcion,horas_trabajadas,carga_spac,observaciones,orden_fila) VALUES(?,?,?,?,?,?,?,?)',(eid,grupo,linea,producto.strip(),horas,carga,obs.strip(),orden))
+                base_orden=len(filas)
+                for j,(grupo,linea,tipo_analisis,resultado,obs) in enumerate(resultados):
+                    if resultado.strip() or obs.strip():exec_sql('INSERT INTO entregas_turno_lineas(entrega_id,grupo,linea,producto_descripcion,horas_trabajadas,carga_spac,observaciones,orden_fila) VALUES(?,?,?,?,?,?,?,?)',(eid,'ANÁLISIS '+grupo,linea,tipo_analisis,0,0,(resultado+' | '+obs).strip(' |'),base_orden+j))
+                for bloque,df in seguimientos:
+                    for orden,row in df.iterrows():
+                        vals=[str(row.get(c,'') or '') for c in ['Registro #','Hoja física','Carga electrónica','Correo','Descripción del seguimiento']]
+                        if any(v.strip() for v in vals):exec_sql('INSERT INTO entregas_turno_seguimientos(entrega_id,bloque,registro_numero,hoja_fisica,carga_electronica,correo,descripcion_seguimiento,orden_fila) VALUES(?,?,?,?,?,?,?,?)',(eid,bloque,*vals,int(orden)))
+                audit(st.session_state.auth['usuario'],'CREAR_ENTREGA_TURNO',f'{nave} | ID {eid}');st.session_state.entrega_nonce+=1;st.success(f'Entrega guardada: Número {eid}');st.rerun()
+        st.markdown('</div>',unsafe_allow_html=True)
+        return
     n=st.session_state.entrega_nonce
     st.markdown(f'<div class="registro-full-panel"><div class="registro-pill">{referencia}</div><div class="registro-full-title">ENTREGA DE TURNO CALIDAD PROCESOS</div><div class="registro-full-subtitle">NAVE 1</div>',unsafe_allow_html=True)
     a,b,c=st.columns([2,1,1]); analista=a.selectbox('ANALISTA *',opt_blank(catalog('analista')),key=f'et_a_{n}'); fecha=b.date_input('Fecha *',date.today(),key=f'et_f_{n}'); turno=c.selectbox('Turno *',opt_blank(catalog('turno')),key=f'et_t_{n}')
