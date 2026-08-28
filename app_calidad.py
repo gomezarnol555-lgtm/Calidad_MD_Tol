@@ -1,3 +1,4 @@
+
 import streamlit as st
 import pandas as pd
 import sqlite3, hashlib, os, base64
@@ -413,20 +414,27 @@ def page_registro():
             item=opt.split('|')[0].strip() if opt else ''
             row=prod[prod['item']==item].iloc[0] if item and item in prod['item'].values else None
             producto=str(row['descripcion']) if row is not None else ''
+            cliente=str(row['cliente']) if row is not None else ''
             familia=str(row['familia']) if row is not None else ''
             lote=b.text_input('Lote *',key=f'lote_{tabla}_{nonce}')
             etapa=c.selectbox('Etapa *',opt_blank(catalog('etapa')),key=f'etapa_{tabla}_{nonce}')
             a,b,c=st.columns(3)
-            a.text_input('Producto',value=producto,disabled=True,key=f'producto_{tabla}_{nonce}')
-            b.text_input('Familia',value=familia,disabled=True,key=f'familia_{tabla}_{nonce}')
-            linea_sector=c.selectbox('Línea/Sector *',opt_blank(catalog('linea_sector')),key=f'linea_{tabla}_{nonce}')
+            a.text_input('Descripción',value=producto,disabled=True,key=f'producto_{tabla}_{nonce}')
+            b.text_input('Cliente',value=cliente,disabled=True,key=f'cliente_{tabla}_{nonce}')
+            c.text_input('Familia',value=familia,disabled=True,key=f'familia_{tabla}_{nonce}')
+            linea_sector=st.selectbox('Línea/Sector *',opt_blank(catalog('linea_sector')),key=f'linea_{tabla}_{nonce}')
             a,b,c=st.columns(3)
             optd=a.selectbox('Código / Defecto *',opt_defs,key=f'codigo_{tabla}_{nonce}')
             codigo=optd.split('|')[0].strip() if optd else ''
             dr=defs[defs['codigo']==codigo].iloc[0] if codigo and codigo in defs['codigo'].values else None
+            defecto=str(dr['defecto']) if dr is not None else ''
+            tipo_defecto=str(dr['tipo_defecto']) if dr is not None else ''
             categoria=str(dr['clasificacion']) if dr is not None else ''
-            b.text_input('Categoría inicial *',value=categoria,disabled=True,key=f'categoria_{tabla}_{nonce}')
-            turno=c.selectbox('Turno *',opt_blank(catalog('turno')),key=f'turno_{tabla}_{nonce}')
+            b.text_input('Defecto',value=defecto,disabled=True,key=f'defecto_{tabla}_{nonce}')
+            c.text_input('Tipo de defecto',value=tipo_defecto,disabled=True,key=f'tipo_defecto_{tabla}_{nonce}')
+            x1,x2=st.columns(2)
+            x1.text_input('Clasificación *',value=categoria,disabled=True,key=f'categoria_{tabla}_{nonce}')
+            turno=x2.selectbox('Turno *',opt_blank(catalog('turno')),key=f'turno_{tabla}_{nonce}')
             a,b,c=st.columns(3)
             supervisor=a.selectbox('Supervisor (Responsable) *',opt_blank(catalog('supervisor')),key=f'sup_{tabla}_{nonce}')
             analista=b.selectbox('Analista (Persona que detecta) *',opt_blank(catalog('analista')),key=f'ana_{tabla}_{nonce}')
@@ -445,7 +453,7 @@ def page_registro():
             evitar=st.text_area('Acciones a realizar para evitar la incidencia',key=f'evitar_{tabla}_{nonce}')
             ok=st.form_submit_button('Guardar registro')
         if ok:
-            obligatorios={'Línea/Sector':linea_sector,'Nave':nave,'ITEM':item,'Producto':producto,'Familia':familia,'Lote':lote,'Etapa':etapa,'Código':codigo,'Semana':semana,'Turno':turno,'Fecha':fecha,'Supervisor':supervisor,'Analista':analista,'Responsable de detectar el PNC':responsable,'Descripción del defecto':descripcion,'Acciones inmediatas':acciones,'Disposición':disposicion,'Cantidad observada':cantidad,'Status':status,'Categoría inicial':categoria}
+            obligatorios={'Línea/Sector':linea_sector,'Nave':nave,'ITEM':item,'Descripción':producto,'Cliente':cliente,'Familia':familia,'Lote':lote,'Etapa':etapa,'Código':codigo,'Defecto':defecto,'Tipo de defecto':tipo_defecto,'Semana':semana,'Turno':turno,'Fecha':fecha,'Supervisor':supervisor,'Analista':analista,'Responsable de detectar el PNC':responsable,'Descripción del defecto':descripcion,'Acciones inmediatas':acciones,'Disposición':disposicion,'Cantidad observada':cantidad,'Status':status,'Categoría inicial':categoria}
             faltantes=[k for k,v in obligatorios.items() if v is None or (isinstance(v,str) and not v.strip()) or (k=='Cantidad observada' and float(v)<=0)]
             if faltantes:
                 st.error('Completa los siguientes campos obligatorios: '+', '.join(faltantes)+'.')
@@ -471,15 +479,19 @@ def page_registro():
             opt=a.selectbox('ITEM / Producto *',opt_prod,key=f'pnc_item_{nonce}')
             item=opt.split('|')[0].strip() if opt else ''
             row=prod[prod['item']==item].iloc[0] if item and item in prod['item'].values else None
-            descp=str(row['descripcion']) if row is not None else ''; cliente=str(row['cliente']) if row is not None else ''; familia=str(row['familia']) if row is not None else ''; linea=familia
+            descp=str(row['descripcion']) if row is not None else ''; cliente=str(row['cliente']) if row is not None else ''; familia=str(row['familia']) if row is not None else ''
             lote=b.text_area('Lote *',key=f'pnc_lote_{nonce}'); etapa=c.selectbox('Etapa *',opt_blank(catalog('etapa')),key=f'pnc_etapa_{nonce}')
             a,b,c=st.columns(3)
-            a.text_input('Producto',value=descp,disabled=True,key=f'pnc_prod_{nonce}'); b.text_input('Línea/Sector *',value=linea,disabled=True,key=f'pnc_linea_{nonce}'); c.text_input('Familia',value=familia,disabled=True,key=f'pnc_familia_{nonce}')
+            a.text_input('Descripción',value=descp,disabled=True,key=f'pnc_prod_{nonce}'); b.text_input('Cliente',value=cliente,disabled=True,key=f'pnc_cliente_{nonce}'); c.text_input('Familia',value=familia,disabled=True,key=f'pnc_familia_{nonce}')
+            linea=st.selectbox('Línea/Sector *',opt_blank(catalog('linea_sector')),key=f'pnc_linea_{nonce}')
             a,b,c=st.columns(3)
             turno=a.selectbox('Turno *',opt_blank(catalog('turno')),key=f'pnc_turno_{nonce}'); status=b.selectbox('Status *',opt_blank(catalog('status')),key=f'pnc_status_{nonce}'); optd=c.selectbox('Código / Defecto *',opt_defs,key=f'pnc_def_{nonce}')
             cod=optd.split('|')[0].strip() if optd else ''; dr=defs[defs['codigo']==cod].iloc[0] if cod and cod in defs['codigo'].values else None
             defecto=str(dr['defecto']) if dr is not None else ''; tipo=str(dr['tipo_defecto']) if dr is not None else ''; clas=str(dr['clasificacion']) if dr is not None else ''
-            st.text_input('Categoría inicial *',value=clas,disabled=True,key=f'pnc_categoria_{nonce}')
+            d1,d2,d3=st.columns(3)
+            d1.text_input('Defecto',value=defecto,disabled=True,key=f'pnc_defecto_auto_{nonce}')
+            d2.text_input('Tipo de defecto',value=tipo,disabled=True,key=f'pnc_tipo_auto_{nonce}')
+            d3.text_input('Clasificación *',value=clas,disabled=True,key=f'pnc_categoria_{nonce}')
             descripcion=st.text_area('Descripción del defecto *',key=f'pnc_desc_{nonce}'); acciones=st.text_area('Acciones inmediatas *',key=f'pnc_accion_{nonce}')
             a,b,c=st.columns(3)
             sup=a.selectbox('Supervisor (Responsable) *',opt_blank(catalog('supervisor')),key=f'pnc_sup_{nonce}'); ana=b.selectbox('Analista (Persona que detecta) *',opt_blank(catalog('analista')),key=f'pnc_ana_{nonce}'); resp=c.selectbox('Responsable de detectar el PNC *',opt_blank(catalog('responsable_detecta')),key=f'pnc_resp_{nonce}')
@@ -489,7 +501,7 @@ def page_registro():
             mat=st.text_area('Material hallado / ME',key=f'pnc_mat_{nonce}'); notas=st.text_area('Observaciones',key=f'pnc_notas_{nonce}'); files=st.file_uploader('Adjuntar evidencia',accept_multiple_files=True,type=['pdf','png','jpg','jpeg','xlsx','csv','txt','docx'],key=f'pnc_files_{nonce}')
             ok=st.form_submit_button('Guardar registro')
         if ok:
-            obligatorios={'Línea/Sector':linea,'Nave':nave,'ITEM':item,'Lote':lote,'Etapa':etapa,'Código':cod,'Semana':semana,'Turno':turno,'Fecha':fecha,'Supervisor':sup,'Analista':ana,'Responsable de detectar el PNC':resp,'Descripción del defecto':descripcion,'Acciones inmediatas':acciones,'Disposición':disp,'Cantidad observada':obs,'Status':status,'Categoría inicial':clas}
+            obligatorios={'Línea/Sector':linea,'Nave':nave,'ITEM':item,'Descripción':descp,'Cliente':cliente,'Familia':familia,'Lote':lote,'Etapa':etapa,'Código':cod,'Defecto':defecto,'Tipo de defecto':tipo,'Semana':semana,'Turno':turno,'Fecha':fecha,'Supervisor':sup,'Analista':ana,'Responsable de detectar el PNC':resp,'Descripción del defecto':descripcion,'Acciones inmediatas':acciones,'Disposición':disp,'Cantidad observada':obs,'Status':status,'Categoría inicial':clas}
             faltantes=[k for k,v in obligatorios.items() if v is None or (isinstance(v,str) and not v.strip()) or (k=='Cantidad observada' and float(v)<=0)]
             if faltantes:
                 st.error('Completa los siguientes campos obligatorios: '+', '.join(faltantes)+'.')
