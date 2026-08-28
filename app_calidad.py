@@ -1,4 +1,3 @@
-
 import streamlit as st
 import pandas as pd
 import sqlite3, hashlib, os, base64
@@ -404,7 +403,7 @@ def page_registro():
         defs=read_df('SELECT * FROM defectos WHERE activo=1 ORDER BY CAST(codigo AS INTEGER)')
         opt_prod=['']+[f'{r.item} | {r.descripcion}' for r in prod.itertuples()]
         opt_defs=['']+[f'{r.codigo} | {r.defecto}' for r in defs.itertuples()]
-        with st.form(f'form_{tabla}_{nonce}',clear_on_submit=True):
+        with st.container():
             a,b,c=st.columns(3)
             fecha=a.date_input('Fecha *',value=date.today(),key=f'fecha_{tabla}_{nonce}')
             semana=b.number_input('Semana *',min_value=1,max_value=53,value=int(date.today().isocalendar().week),step=1,key=f'semana_{tabla}_{nonce}')
@@ -451,7 +450,7 @@ def page_registro():
             particulas=c.number_input('# de partículas halladas',min_value=0,step=1,key=f'part_{tabla}_{nonce}')
             investigacion=st.text_area('Investigación del origen',key=f'inv_{tabla}_{nonce}')
             evitar=st.text_area('Acciones a realizar para evitar la incidencia',key=f'evitar_{tabla}_{nonce}')
-            ok=st.form_submit_button('Guardar registro')
+            ok=st.button('Guardar registro',key=f'guardar_{tabla}_{nonce}',type='primary')
         if ok:
             obligatorios={'Línea/Sector':linea_sector,'Nave':nave,'ITEM':item,'Descripción':producto,'Cliente':cliente,'Familia':familia,'Lote':lote,'Etapa':etapa,'Código':codigo,'Defecto':defecto,'Tipo de defecto':tipo_defecto,'Semana':semana,'Turno':turno,'Fecha':fecha,'Supervisor':supervisor,'Analista':analista,'Responsable de detectar el PNC':responsable,'Descripción del defecto':descripcion,'Acciones inmediatas':acciones,'Disposición':disposicion,'Cantidad observada':cantidad,'Status':status,'Categoría inicial':categoria}
             faltantes=[k for k,v in obligatorios.items() if v is None or (isinstance(v,str) and not v.strip()) or (k=='Cantidad observada' and float(v)<=0)]
@@ -470,7 +469,7 @@ def page_registro():
         st.markdown('<div class="registro-form-shell">',unsafe_allow_html=True)
         prod=read_df('SELECT * FROM productos WHERE activo=1 ORDER BY descripcion'); defs=read_df('SELECT * FROM defectos WHERE activo=1 ORDER BY CAST(codigo AS INTEGER)')
         opt_prod=['']+[f'{r.item} | {r.descripcion}' for r in prod.itertuples()]; opt_defs=['']+[f'{r.codigo} | {r.defecto}' for r in defs.itertuples()]
-        with st.form(f'registro_{nonce}',clear_on_submit=True):
+        with st.container():
             a,b,c=st.columns(3)
             fecha=a.date_input('Fecha *',value=date.today(),key=f'pnc_fecha_{nonce}')
             semana=b.number_input('Semana *',min_value=1,max_value=53,value=int(date.today().isocalendar().week),step=1,key=f'pnc_semana_{nonce}')
@@ -499,7 +498,7 @@ def page_registro():
             disp=a.selectbox('Disposición *',opt_blank(catalog('disposicion')),key=f'pnc_disp_{nonce}'); obs=b.number_input('Cantidad observada (kg) *',min_value=0.0,step=0.1,key=f'pnc_obs_{nonce}'); fecha_final=c.date_input('Fecha final',value=date.today(),key=f'pnc_final_{nonce}') if status=='CERRADO' else None
             q1,q2,q3=st.columns(3); rep=q1.number_input('Reproceso kg',min_value=0.0,key=f'pnc_rep_{nonce}'); dec=q2.number_input('Decomiso kg',min_value=0.0,key=f'pnc_dec_{nonce}'); apr=q3.number_input('Aprobado 2da kg',min_value=0.0,key=f'pnc_apr_{nonce}'); total=rep+dec+apr
             mat=st.text_area('Material hallado / ME',key=f'pnc_mat_{nonce}'); notas=st.text_area('Observaciones',key=f'pnc_notas_{nonce}'); files=st.file_uploader('Adjuntar evidencia',accept_multiple_files=True,type=['pdf','png','jpg','jpeg','xlsx','csv','txt','docx'],key=f'pnc_files_{nonce}')
-            ok=st.form_submit_button('Guardar registro')
+            ok=st.button('Guardar registro',key=f'guardar_pnc_{nonce}',type='primary')
         if ok:
             obligatorios={'Línea/Sector':linea,'Nave':nave,'ITEM':item,'Descripción':descp,'Cliente':cliente,'Familia':familia,'Lote':lote,'Etapa':etapa,'Código':cod,'Defecto':defecto,'Tipo de defecto':tipo,'Semana':semana,'Turno':turno,'Fecha':fecha,'Supervisor':sup,'Analista':ana,'Responsable de detectar el PNC':resp,'Descripción del defecto':descripcion,'Acciones inmediatas':acciones,'Disposición':disp,'Cantidad observada':obs,'Status':status,'Categoría inicial':clas}
             faltantes=[k for k,v in obligatorios.items() if v is None or (isinstance(v,str) and not v.strip()) or (k=='Cantidad observada' and float(v)<=0)]
@@ -559,19 +558,54 @@ def page_consulta():
             with c2:
                 if st.button('Cancelar eliminación',key=f'cancel_del_{key}_{selected}'):
                     st.session_state.pop(f'confirm_del_{key}',None); st.rerun()
+    def edit_record(table_name,key,selected):
+        row=read_df(f'SELECT * FROM {table_name} WHERE id=?',(selected,))
+        if row.empty:
+            st.warning('El registro seleccionado ya no está disponible.')
+            return
+        with st.expander('✏️ Editar o completar registro',expanded=True):
+            st.caption('Modifica cualquier campo y guarda los cambios. El número del registro permanece sin cambios.')
+            editable=row.drop(columns=['id'],errors='ignore').copy()
+            for col in editable.columns:
+                if editable[col].dtype == object:
+                    editable[col]=editable[col].fillna('')
+            edited=st.data_editor(editable,use_container_width=True,hide_index=True,num_rows='fixed',key=f'editor_{key}_{selected}')
+            if st.button('Guardar cambios',key=f'guardar_edicion_{key}_{selected}',type='primary'):
+                columns=list(edited.columns); values=[]
+                for col in columns:
+                    value=edited.iloc[0][col]
+                    if pd.isna(value): value=None
+                    elif hasattr(value,'item'):
+                        try: value=value.item()
+                        except Exception: pass
+                    values.append(value)
+                assignments=', '.join([f'"{col}"=?' for col in columns])
+                exec_sql(f'UPDATE {table_name} SET {assignments} WHERE id=?',tuple(values)+(selected,))
+                audit(st.session_state.auth['usuario'],'EDITAR_REGISTRO',f'Tabla {table_name} | ID {selected}')
+                st.success(f'Registro actualizado correctamente: Número {selected}')
+                st.rerun()
     t1,t2,t3=st.tabs(['PNC´s','Materia Extraña','Detector de metales y RX'])
     with t1:
         df=read_df('SELECT * FROM pnc_registros ORDER BY id ASC'); selected,shown=table(df,'pnc')
         if not shown.empty: st.download_button('Descargar PNC CSV',prep(shown).to_csv(index=False).encode('utf-8-sig'),f"pnc_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",'text/csv')
-        if selected: st.markdown(f'### Registro seleccionado: Número {selected}'); delete_confirm('pnc_registros','pnc','ELIMINAR_PNC',selected)
+        if selected:
+            st.markdown(f'### Registro seleccionado: Número {selected}')
+            edit_record('pnc_registros','pnc',selected)
+            delete_confirm('pnc_registros','pnc','ELIMINAR_PNC',selected)
     with t2:
         df=read_df('SELECT * FROM me_registros ORDER BY id ASC'); selected,shown=table(df,'me')
         if not shown.empty: st.download_button('Descargar Materia Extraña CSV',prep(shown).to_csv(index=False).encode('utf-8-sig'),f"materia_extrana_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",'text/csv')
-        if selected: st.markdown(f'### Registro seleccionado: Número {selected}'); delete_confirm('me_registros','me','ELIMINAR_ME',selected)
+        if selected:
+            st.markdown(f'### Registro seleccionado: Número {selected}')
+            edit_record('me_registros','me',selected)
+            delete_confirm('me_registros','me','ELIMINAR_ME',selected)
     with t3:
         df=read_df('SELECT * FROM ddm_rx_registros ORDER BY id ASC'); selected,shown=table(df,'ddm')
         if not shown.empty: st.download_button('Descargar Detector de metales y RX CSV',prep(shown).to_csv(index=False).encode('utf-8-sig'),f"ddm_rx_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",'text/csv')
-        if selected: st.markdown(f'### Registro seleccionado: Número {selected}'); delete_confirm('ddm_rx_registros','ddm','ELIMINAR_DDM_RX',selected)
+        if selected:
+            st.markdown(f'### Registro seleccionado: Número {selected}')
+            edit_record('ddm_rx_registros','ddm',selected)
+            delete_confirm('ddm_rx_registros','ddm','ELIMINAR_DDM_RX',selected)
 def admin_required():
     if not is_dev(): st.warning('Solo el usuario administrador puede modificar catálogos.'); return False
     return True
