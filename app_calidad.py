@@ -1,6 +1,9 @@
 import streamlit as st
 import pandas as pd
-import sqlite3, hashlib, os, base64
+import sqlite3, hashlib, os, base64, threading, json
+from openpyxl import Workbook, load_workbook
+from openpyxl.styles import Font, PatternFill, Alignment
+from openpyxl.utils import get_column_letter
 from datetime import datetime, date
 from pathlib import Path
 from uuid import uuid4
@@ -8,6 +11,8 @@ from uuid import uuid4
 APP_NAME = "Calidad MD | PNC y ME"
 DB_PATH = "calidad.db"
 UPLOAD_DIR = Path("evidencias_calidad")
+EXCEL_PATH = Path("calidad_registros.xlsx")
+_EXCEL_LOCK = threading.RLock()
 FORCE_RESET_ADMIN = True
 ADMIN_USER = "admin"
 ADMIN_PASS = "Cambiar123!"
@@ -32,7 +37,43 @@ def read_df(q, params=()):
     try: return pd.read_sql_query(q,c,params=params)
     finally: c.close()
 def exec_sql(q, params=()):
-    c=conn(); cur=c.cursor(); cur.execute(q,params); c.commit(); lid=cur.lastrowid; c.close(); return lid
+    c=conn(); cur=c.cursor(); cur.execute(q,params); c.commit(); lid=cur.lastrowid; c.close()
+    q_upper=str(q).upper()
+    tablas_excel=['PNC_REGISTROS','ME_REGISTROS','DDM_RX_REGISTROS','MUESTRAS_10_MESES','MUESTRAS_12_MESES_ALERGENO','MUESTRAS_12_MESES_DUVALIN','MUESTRAS_12_MESES_NAVE2','MUESTRAS_15_MESES','MUESTRAS_18_MESES','MUESTRAS_24_MESES','ENTREGAS_TURNO','ENTREGAS_TURNO_LINEAS','ENTREGAS_TURNO_SEGUIMIENTOS']
+    if any(t in q_upper for t in tablas_excel) and any(a in q_upper for a in ['INSERT','UPDATE','DELETE']):
+        try: sync_excel_desde_db()
+        except Exception as e: st.session_state['excel_sync_error']=str(e)
+    return lid
+
+def sync_excel_desde_db():
+    """Replica las diez tablas operativas en un único libro, una hoja por tabla."""
+    hojas={
+        'PNC':'pnc_registros','Materia Extraña':'me_registros','Detector Metales RX':'ddm_rx_registros',
+        '10 Meses':'muestras_10_meses','12 Meses Alérgeno':'muestras_12_meses_alergeno',
+        '12 Meses Duvalin':'muestras_12_meses_duvalin','12 Meses Nave 2':'muestras_12_meses_nave2',
+        '15 Meses':'muestras_15_meses','18 Meses':'muestras_18_meses','24 Meses':'muestras_24_meses',
+        'Entrega Turno':'entregas_turno','Entrega Lineas':'entregas_turno_lineas','Entrega Seguimientos':'entregas_turno_seguimientos'
+    }
+    with _EXCEL_LOCK:
+        wb=load_workbook(EXCEL_PATH) if EXCEL_PATH.exists() else Workbook()
+        if 'Sheet' in wb.sheetnames and len(wb.sheetnames)==1: wb.remove(wb['Sheet'])
+        for nombre,tabla in hojas.items():
+            df=read_df(f'SELECT * FROM {tabla} ORDER BY id ASC')
+            ws=wb[nombre] if nombre in wb.sheetnames else wb.create_sheet(nombre)
+            ws.delete_rows(1,ws.max_row)
+            headers=list(df.columns)
+            if not headers:
+                # Obtiene encabezados aun cuando no existan registros.
+                c=conn(); headers=[r[1] for r in c.execute(f'PRAGMA table_info({tabla})').fetchall()]; c.close()
+            for col,h in enumerate(headers,1):
+                cell=ws.cell(1,col,h); cell.font=Font(bold=True,color='FFFFFF'); cell.fill=PatternFill('solid',fgColor='062C36'); cell.alignment=Alignment(horizontal='center')
+            for r_idx,row in enumerate(df.itertuples(index=False,name=None),2):
+                for c_idx,value in enumerate(row,1): ws.cell(r_idx,c_idx,value)
+            ws.freeze_panes='A2'; ws.auto_filter.ref=f'A1:{get_column_letter(max(1,len(headers)))}{max(1,ws.max_row)}'
+            for i,h in enumerate(headers,1):
+                max_len=max([len(str(h))]+[len(str(ws.cell(r,i).value or '')) for r in range(2,min(ws.max_row,200)+1)])
+                ws.column_dimensions[get_column_letter(i)].width=min(max(max_len+2,12),45)
+        wb.save(EXCEL_PATH)
 
 def reset_autoincrement(table):
     try:
@@ -60,33 +101,81 @@ def init_db():
     cur.execute("CREATE TABLE IF NOT EXISTS me_registros(id INTEGER PRIMARY KEY AUTOINCREMENT, dia INTEGER, mes INTEGER, anio INTEGER, nave TEXT, linea_sector TEXT, familia TEXT, equipo_hallazgo TEXT, item TEXT, producto TEXT, lote TEXT, descripcion_hallazgo TEXT, tipo TEXT, particulas_halladas INTEGER DEFAULT 0, accion_contingente TEXT, investigacion_origen TEXT, analista_detecta TEXT, supervisor_responsable TEXT, acciones_evitar_incidencia TEXT, creado_por TEXT, creado_en TEXT)")
     cur.execute("CREATE TABLE IF NOT EXISTS ddm_rx_registros(id INTEGER PRIMARY KEY AUTOINCREMENT, dia INTEGER, mes INTEGER, anio INTEGER, nave TEXT, linea_sector TEXT, familia TEXT, equipo_hallazgo TEXT, item TEXT, producto TEXT, lote TEXT, descripcion_hallazgo TEXT, tipo TEXT, particulas_halladas INTEGER DEFAULT 0, accion_contingente TEXT, investigacion_origen TEXT, analista_detecta TEXT, supervisor_responsable TEXT, acciones_evitar_incidencia TEXT, creado_por TEXT, creado_en TEXT)")
     for tbl in ['me_registros','ddm_rx_registros']:
-        for col in ['linea_sector','familia']:
-            try: cur.execute(f'ALTER TABLE {tbl} ADD COLUMN {col} TEXT')
-            except Exception: pass
-    cur.execute("""CREATE TABLE IF NOT EXISTS entregas_turno(
+        columnas_nuevas = {
+            'linea_sector': 'TEXT', 'familia': 'TEXT', 'etapa': 'TEXT',
+            'codigo_defecto': 'TEXT', 'semana': 'INTEGER', 'turno': 'TEXT',
+            'responsable_detecta': 'TEXT', 'acciones_inmediatas': 'TEXT',
+            'disposicion': 'TEXT', 'cantidad_observada': 'REAL DEFAULT 0',
+            'status': 'TEXT', 'categoria_inicial': 'TEXT'
+        }
+        for col, tipo_sql in columnas_nuevas.items():
+            try: cur.execute(f'ALTER TABLE {tbl} ADD COLUMN {col} {tipo_sql}')
+            except sqlite3.OperationalError: pass
+    try: cur.execute('ALTER TABLE pnc_registros ADD COLUMN semana INTEGER')
+    except sqlite3.OperationalError: pass
+    for col in ['categoria_inicial_pnc','categoria_final_pnc']:
+        try: cur.execute(f'ALTER TABLE pnc_registros ADD COLUMN {col} TEXT')
+        except sqlite3.OperationalError: pass
+    cur.execute("""CREATE TABLE IF NOT EXISTS muestras_retencion(
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        nave TEXT NOT NULL,
-        fecha TEXT NOT NULL,
-        turno TEXT NOT NULL,
-        analista TEXT NOT NULL,
-        seguimiento_contaminaciones TEXT,
-        seguimiento_pnc TEXT,
-        limpiezas TEXT,
-        ordenes_fallo TEXT,
-        giro_junta_equipo TEXT,
+        periodo_codigo TEXT NOT NULL,
+        periodo_nombre TEXT NOT NULL,
+        item TEXT NOT NULL,
+        descripcion TEXT NOT NULL,
+        lote TEXT NOT NULL,
+        destino TEXT NOT NULL,
+        numero_muestras REAL NOT NULL DEFAULT 0,
+        numero_corrugado REAL NOT NULL DEFAULT 0,
+        responsable TEXT NOT NULL,
+        observaciones TEXT,
         creado_por TEXT,
         creado_en TEXT,
         actualizado_por TEXT,
         actualizado_en TEXT
     )""")
-    cur.execute("""CREATE TABLE IF NOT EXISTS entregas_turno_detalle(
+    # Tablas independientes para cada periodo de muestras de retención.
+    cur.execute("CREATE TABLE IF NOT EXISTS muestras_10_meses(id INTEGER PRIMARY KEY AUTOINCREMENT, item TEXT NOT NULL, descripcion TEXT NOT NULL, lote TEXT NOT NULL, destino TEXT NOT NULL, numero_muestras REAL NOT NULL DEFAULT 0, numero_corrugado REAL NOT NULL DEFAULT 0, responsable TEXT NOT NULL, observaciones TEXT, creado_por TEXT, creado_en TEXT, actualizado_por TEXT, actualizado_en TEXT)")
+    cur.execute("CREATE TABLE IF NOT EXISTS muestras_12_meses_alergeno(id INTEGER PRIMARY KEY AUTOINCREMENT, item TEXT NOT NULL, descripcion TEXT NOT NULL, lote TEXT NOT NULL, destino TEXT NOT NULL, numero_muestras REAL NOT NULL DEFAULT 0, numero_corrugado REAL NOT NULL DEFAULT 0, responsable TEXT NOT NULL, observaciones TEXT, creado_por TEXT, creado_en TEXT, actualizado_por TEXT, actualizado_en TEXT)")
+    cur.execute("CREATE TABLE IF NOT EXISTS muestras_12_meses_duvalin(id INTEGER PRIMARY KEY AUTOINCREMENT, item TEXT NOT NULL, descripcion TEXT NOT NULL, lote TEXT NOT NULL, destino TEXT NOT NULL, numero_muestras REAL NOT NULL DEFAULT 0, numero_corrugado REAL NOT NULL DEFAULT 0, responsable TEXT NOT NULL, observaciones TEXT, creado_por TEXT, creado_en TEXT, actualizado_por TEXT, actualizado_en TEXT)")
+    cur.execute("CREATE TABLE IF NOT EXISTS muestras_12_meses_nave2(id INTEGER PRIMARY KEY AUTOINCREMENT, item TEXT NOT NULL, descripcion TEXT NOT NULL, lote TEXT NOT NULL, destino TEXT NOT NULL, numero_muestras REAL NOT NULL DEFAULT 0, numero_corrugado REAL NOT NULL DEFAULT 0, responsable TEXT NOT NULL, observaciones TEXT, creado_por TEXT, creado_en TEXT, actualizado_por TEXT, actualizado_en TEXT)")
+    cur.execute("CREATE TABLE IF NOT EXISTS muestras_15_meses(id INTEGER PRIMARY KEY AUTOINCREMENT, item TEXT NOT NULL, descripcion TEXT NOT NULL, lote TEXT NOT NULL, destino TEXT NOT NULL, numero_muestras REAL NOT NULL DEFAULT 0, numero_corrugado REAL NOT NULL DEFAULT 0, responsable TEXT NOT NULL, observaciones TEXT, creado_por TEXT, creado_en TEXT, actualizado_por TEXT, actualizado_en TEXT)")
+    cur.execute("CREATE TABLE IF NOT EXISTS muestras_18_meses(id INTEGER PRIMARY KEY AUTOINCREMENT, item TEXT NOT NULL, descripcion TEXT NOT NULL, lote TEXT NOT NULL, destino TEXT NOT NULL, numero_muestras REAL NOT NULL DEFAULT 0, numero_corrugado REAL NOT NULL DEFAULT 0, responsable TEXT NOT NULL, observaciones TEXT, creado_por TEXT, creado_en TEXT, actualizado_por TEXT, actualizado_en TEXT)")
+    cur.execute("CREATE TABLE IF NOT EXISTS muestras_24_meses(id INTEGER PRIMARY KEY AUTOINCREMENT, item TEXT NOT NULL, descripcion TEXT NOT NULL, lote TEXT NOT NULL, destino TEXT NOT NULL, numero_muestras REAL NOT NULL DEFAULT 0, numero_corrugado REAL NOT NULL DEFAULT 0, responsable TEXT NOT NULL, observaciones TEXT, creado_por TEXT, creado_en TEXT, actualizado_por TEXT, actualizado_en TEXT)")
+    cur.execute("""CREATE TABLE IF NOT EXISTS entregas_turno(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        nave TEXT NOT NULL,
+        fecha TEXT NOT NULL,
+        analista TEXT NOT NULL,
+        turno TEXT NOT NULL,
+        referencia TEXT NOT NULL DEFAULT 'RE-CAL01-2301-00002-2013 Rev. 1',
+        total_carga_datos REAL DEFAULT 0,
+        total_horas_trabajadas REAL DEFAULT 0,
+        creado_por TEXT,
+        creado_en TEXT,
+        actualizado_por TEXT,
+        actualizado_en TEXT
+    )""")
+    cur.execute("""CREATE TABLE IF NOT EXISTS entregas_turno_lineas(
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         entrega_id INTEGER NOT NULL,
+        grupo TEXT,
         linea TEXT NOT NULL,
         producto_descripcion TEXT,
         horas_trabajadas REAL DEFAULT 0,
-        carga_apoyo TEXT,
+        carga_spac REAL DEFAULT 0,
         observaciones TEXT,
+        orden_fila INTEGER DEFAULT 0,
+        FOREIGN KEY(entrega_id) REFERENCES entregas_turno(id) ON DELETE CASCADE
+    )""")
+    cur.execute("""CREATE TABLE IF NOT EXISTS entregas_turno_seguimientos(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        entrega_id INTEGER NOT NULL,
+        bloque TEXT NOT NULL,
+        registro_numero TEXT,
+        hoja_fisica TEXT,
+        carga_electronica TEXT,
+        correo TEXT,
+        descripcion_seguimiento TEXT,
         orden_fila INTEGER DEFAULT 0,
         FOREIGN KEY(entrega_id) REFERENCES entregas_turno(id) ON DELETE CASCADE
     )""")
@@ -339,6 +428,7 @@ def left_menu():
     menu_button('Inicio','🏠 Inicio','🏠')
     menu_button('Nuevo registro','📝 Nuevo registro','📝')
     menu_button('Consulta y descarga','📊 Consulta y descarga','📊')
+    menu_button('Muestras de retención','🧪 Muestras de retención','🧪')
     menu_button('Entrega de turno','🔄 Entrega de turno','🔄')
     if is_dev():
         menu_button('Catálogos','🧩 Catálogos','🧩')
@@ -414,103 +504,123 @@ def page_registro():
                 st.session_state.registro_tipo='DDM_RX'; st.rerun()
     def form_hallazgo(tabla,titulo,audit_action):
         nonce=st.session_state.form_nonce
-        st.markdown(f"""<div class="registro-full-panel"><div class="registro-pill">Nuevo registro</div><div class="registro-full-title">{titulo}</div><div class="registro-full-subtitle">Completa la información y guarda el registro.</div>""",unsafe_allow_html=True)
+        st.markdown(f"""<div class="registro-full-panel"><div class="registro-pill">Nuevo registro</div><div class="registro-full-title">{titulo}</div><div class="registro-full-subtitle">Los campos marcados con * son obligatorios.</div>""",unsafe_allow_html=True)
         if st.button('← Cambiar tipo de registro',key=f'volver_{tabla}'):
             volver_selector()
         st.markdown('<div class="registro-form-shell">',unsafe_allow_html=True)
         prod=read_df('SELECT * FROM productos WHERE activo=1 ORDER BY descripcion')
+        defs=read_df('SELECT * FROM defectos WHERE activo=1 ORDER BY CAST(codigo AS INTEGER)')
         opt_prod=['']+[f'{r.item} | {r.descripcion}' for r in prod.itertuples()]
-        with st.form(f'form_{tabla}_{nonce}', clear_on_submit=True):
-            fecha=st.date_input('Fecha',value=date.today(),key=f'fecha_{tabla}_{nonce}')
-            x1,x2,x3=st.columns(3)
-            nave=x1.selectbox('Nave',opt_blank(catalog('nave')),key=f'nave_{tabla}_{nonce}')
-            equipo=x2.text_input('Equipo en donde se tiene el hallazgo',key=f'equipo_{tabla}_{nonce}')
-            opt=x3.selectbox('ITEM',opt_prod,key=f'item_{tabla}_{nonce}')
+        opt_defs=['']+[f'{r.codigo} | {r.defecto}' for r in defs.itertuples()]
+        with st.container():
+            a,b,c=st.columns(3)
+            fecha=a.date_input('Fecha *',value=date.today(),key=f'fecha_{tabla}_{nonce}')
+            semana=b.number_input('Semana *',min_value=1,max_value=53,value=int(date.today().isocalendar().week),step=1,key=f'semana_{tabla}_{nonce}')
+            nave=c.selectbox('Nave *',opt_blank(catalog('nave')),key=f'nave_{tabla}_{nonce}')
+            a,b,c=st.columns(3)
+            opt=a.selectbox('ITEM *',opt_prod,key=f'item_{tabla}_{nonce}')
             item=opt.split('|')[0].strip() if opt else ''
-            row=prod[prod['item']==item].iloc[0] if item and not prod.empty and item in prod['item'].values else None
+            row=prod[prod['item']==item].iloc[0] if item and item in prod['item'].values else None
             producto=str(row['descripcion']) if row is not None else ''
-            linea_sector=str(row['familia']) if row is not None else ''
+            cliente=str(row['cliente']) if row is not None else ''
             familia=str(row['familia']) if row is not None else ''
-            y1,y2,y3=st.columns(3)
-            y1.text_input('Producto',value=producto,key=f'producto_{tabla}_{nonce}',disabled=True)
-            y2.text_input('Línea/Sector',value=linea_sector,key=f'linea_{tabla}_{nonce}',disabled=True)
-            y3.text_input('Familia',value=familia,key=f'familia_{tabla}_{nonce}',disabled=True)
-            z1,z2,z3=st.columns(3)
-            lote=z1.text_input('Lote',key=f'lote_{tabla}_{nonce}')
-            tipo=z2.selectbox('Tipo',opt_blank(['Metal','Plástico duro','Plástico blando','Vidrio','Madera','Papel/Cartón','Cabello','Insecto','Otro']),key=f'tipo_{tabla}_{nonce}')
-            particulas=z3.number_input('# de partículas halladas',min_value=0,step=1,key=f'part_{tabla}_{nonce}')
-            desc=st.text_area('Descripción del hallazgo',key=f'desc_{tabla}_{nonce}')
-            accion=st.text_area('Acción contingente',key=f'accion_{tabla}_{nonce}')
+            lote=b.text_input('Lote *',key=f'lote_{tabla}_{nonce}')
+            etapa=c.selectbox('Etapa *',opt_blank(catalog('etapa')),key=f'etapa_{tabla}_{nonce}')
+            a,b,c=st.columns(3)
+            a.text_input('Descripción',value=producto,disabled=True)
+            b.text_input('Cliente',value=cliente,disabled=True)
+            c.text_input('Familia',value=familia,disabled=True)
+            linea_sector=st.selectbox('Línea/Sector *',opt_blank(catalog('linea_sector')),key=f'linea_{tabla}_{nonce}')
+            a,b,c=st.columns(3)
+            optd=a.selectbox('Código / Defecto *',opt_defs,key=f'codigo_{tabla}_{nonce}')
+            codigo=optd.split('|')[0].strip() if optd else ''
+            dr=defs[defs['codigo']==codigo].iloc[0] if codigo and codigo in defs['codigo'].values else None
+            defecto=str(dr['defecto']) if dr is not None else ''
+            tipo_defecto=str(dr['tipo_defecto']) if dr is not None else ''
+            categoria=str(dr['clasificacion']) if dr is not None else ''
+            b.text_input('Defecto',value=defecto,disabled=True)
+            c.text_input('Tipo de defecto',value=tipo_defecto,disabled=True)
+            x1,x2=st.columns(2)
+            x1.text_input('Clasificación *',value=categoria,disabled=True)
+            turno=x2.selectbox('Turno *',opt_blank(catalog('turno')),key=f'turno_{tabla}_{nonce}')
+            a,b,c=st.columns(3)
+            supervisor=a.selectbox('Supervisor (Responsable) *',opt_blank(catalog('supervisor')),key=f'sup_{tabla}_{nonce}')
+            analista=b.selectbox('Analista (Persona que detecta) *',opt_blank(catalog('analista')),key=f'ana_{tabla}_{nonce}')
+            responsable=c.selectbox('Responsable de detectar el PNC *',opt_blank(catalog('responsable_detecta')),key=f'resp_{tabla}_{nonce}')
+            descripcion=st.text_area('Descripción del defecto *',key=f'desc_{tabla}_{nonce}')
+            acciones=st.text_area('Acciones inmediatas *',key=f'accion_{tabla}_{nonce}')
+            a,b,c=st.columns(3)
+            disposicion=a.selectbox('Disposición *',opt_blank(catalog('disposicion')),key=f'disp_{tabla}_{nonce}')
+            cantidad=b.number_input('Cantidad observada (kg) *',min_value=0.0,step=1.0,format='%.2f',key=f'cantidad_{tabla}_{nonce}')
+            status=c.selectbox('Status *',opt_blank(catalog('status')),key=f'status_{tabla}_{nonce}')
+            a,b,c=st.columns(3)
+            equipo=a.text_input('Equipo en donde se tiene el hallazgo',key=f'equipo_{tabla}_{nonce}')
+            tipo=b.selectbox('Tipo',opt_blank(['Metal','Plástico duro','Plástico blando','Vidrio','Madera','Papel/Cartón','Cabello','Insecto','Otro']),key=f'tipo_{tabla}_{nonce}')
+            particulas=c.number_input('# de partículas halladas',min_value=0,step=1,key=f'part_{tabla}_{nonce}')
             investigacion=st.text_area('Investigación del origen',key=f'inv_{tabla}_{nonce}')
-            q1,q2=st.columns(2)
-            analista=q1.selectbox('Analista que detecta',opt_blank(catalog('analista')),key=f'ana_{tabla}_{nonce}')
-            supervisor=q2.selectbox('Supervisor responsable',opt_blank(catalog('supervisor')),key=f'sup_{tabla}_{nonce}')
             evitar=st.text_area('Acciones a realizar para evitar la incidencia',key=f'evitar_{tabla}_{nonce}')
-            ok=st.form_submit_button('Guardar registro')
+            ok=st.button('Guardar registro',key=f'guardar_{tabla}_{nonce}',type='primary')
         if ok:
-            rid=exec_sql(f'INSERT INTO {tabla}(dia,mes,anio,nave,linea_sector,familia,equipo_hallazgo,item,producto,lote,descripcion_hallazgo,tipo,particulas_halladas,accion_contingente,investigacion_origen,analista_detecta,supervisor_responsable,acciones_evitar_incidencia,creado_por,creado_en) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',(fecha.day,fecha.month,fecha.year,nave,linea_sector,familia,equipo,item,producto,lote,desc,tipo,int(particulas),accion,investigacion,analista,supervisor,evitar,st.session_state.auth['usuario'],now_iso()))
-            audit(st.session_state.auth['usuario'],audit_action,f'ID {rid}')
-            limpiar_form()
-            st.session_state.flash_registro_guardado=f'Registro guardado correctamente: Número {rid}'
-            st.rerun()
+            obligatorios={'Línea/Sector':linea_sector,'Nave':nave,'ITEM':item,'Descripción':producto,'Cliente':cliente,'Familia':familia,'Lote':lote,'Etapa':etapa,'Código':codigo,'Defecto':defecto,'Tipo de defecto':tipo_defecto,'Semana':semana,'Turno':turno,'Fecha':fecha,'Supervisor':supervisor,'Analista':analista,'Responsable de detectar el PNC':responsable,'Descripción del defecto':descripcion,'Acciones inmediatas':acciones,'Disposición':disposicion,'Cantidad observada':cantidad,'Status':status,'Categoría inicial':categoria}
+            faltantes=[k for k,v in obligatorios.items() if v is None or (isinstance(v,str) and not v.strip()) or (k=='Cantidad observada' and float(v)<=0)]
+            if faltantes:
+                st.error('Completa los siguientes campos obligatorios: '+', '.join(faltantes)+'.')
+            else:
+                rid=exec_sql(f'INSERT INTO {tabla}(dia,mes,anio,nave,linea_sector,familia,equipo_hallazgo,item,producto,lote,descripcion_hallazgo,tipo,particulas_halladas,accion_contingente,investigacion_origen,analista_detecta,supervisor_responsable,acciones_evitar_incidencia,creado_por,creado_en,etapa,codigo_defecto,semana,turno,responsable_detecta,acciones_inmediatas,disposicion,cantidad_observada,status,categoria_inicial) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',(fecha.day,fecha.month,fecha.year,nave,linea_sector,familia,equipo,item,producto,lote,descripcion,tipo,int(particulas),acciones,investigacion,analista,supervisor,evitar,st.session_state.auth['usuario'],now_iso(),etapa,codigo,int(semana),turno,responsable,acciones,disposicion,float(cantidad),status,categoria))
+                audit(st.session_state.auth['usuario'],audit_action,f'ID {rid}')
+                limpiar_form(); st.session_state.flash_registro_guardado=f'Registro guardado correctamente: Número {rid}'
+                st.rerun()
         st.markdown('</div></div>',unsafe_allow_html=True)
     def form_pnc():
         nonce=st.session_state.form_nonce
-        st.markdown("""<div class="registro-full-panel"><div class="registro-pill">Nuevo registro</div><div class="registro-full-title">📝 PNC´s</div><div class="registro-full-subtitle">Completa la información y guarda el registro.</div>""",unsafe_allow_html=True)
-        if st.button('← Cambiar tipo de registro',key='volver_pnc'):
-            volver_selector()
+        st.markdown("""<div class="registro-full-panel"><div class="registro-pill">Nuevo registro</div><div class="registro-full-title">📝 PNC´s</div><div class="registro-full-subtitle">Los campos marcados con * son obligatorios.</div>""",unsafe_allow_html=True)
+        if st.button('← Cambiar tipo de registro',key='volver_pnc'): volver_selector()
         st.markdown('<div class="registro-form-shell">',unsafe_allow_html=True)
         prod=read_df('SELECT * FROM productos WHERE activo=1 ORDER BY descripcion'); defs=read_df('SELECT * FROM defectos WHERE activo=1 ORDER BY CAST(codigo AS INTEGER)')
-        opt_prod=['']+[f'{r.item} | {r.descripcion}' for r in prod.itertuples()]
-        opt_defs=['']+[f'{r.codigo} | {r.defecto}' for r in defs.itertuples()]
-        with st.form(f'registro_{nonce}', clear_on_submit=True):
-            c1,c2,c3=st.columns(3)
-            fecha=c1.date_input('Fecha',value=date.today(),key=f'pnc_fecha_{nonce}')
-            opt=c2.selectbox('ITEM / Producto',opt_prod,key=f'pnc_item_{nonce}')
+        opt_prod=['']+[f'{r.item} | {r.descripcion}' for r in prod.itertuples()]; opt_defs=['']+[f'{r.codigo} | {r.defecto}' for r in defs.itertuples()]
+        with st.container():
+            a,b,c=st.columns(3)
+            fecha=a.date_input('Fecha *',value=date.today(),key=f'pnc_fecha_{nonce}')
+            semana=b.number_input('Semana *',min_value=1,max_value=53,value=int(date.today().isocalendar().week),step=1,key=f'pnc_semana_{nonce}')
+            nave=c.selectbox('Nave *',opt_blank(catalog('nave')),key=f'pnc_nave_{nonce}')
+            a,b,c=st.columns(3)
+            opt=a.selectbox('ITEM / Producto *',opt_prod,key=f'pnc_item_{nonce}')
             item=opt.split('|')[0].strip() if opt else ''
-            row=prod[prod['item']==item].iloc[0] if item and not prod.empty and item in prod['item'].values else None
-            descp=str(row['descripcion']) if row is not None else ''
-            cliente=str(row['cliente']) if row is not None else ''
-            familia=str(row['familia']) if row is not None else ''
-            linea=familia
-            etapa=c3.selectbox('Etapa',opt_blank(catalog('etapa')),key=f'pnc_etapa_{nonce}')
-            d1,d2,d3=st.columns(3)
-            d1.text_input('Producto',value=descp,key=f'pnc_prod_{nonce}',disabled=True)
-            d2.text_input('Línea/Sector',value=linea,key=f'pnc_linea_{nonce}',disabled=True)
-            d3.text_input('Familia',value=familia,key=f'pnc_familia_{nonce}',disabled=True)
-            e1,e2,e3=st.columns(3)
-            nave=e1.selectbox('Nave',opt_blank(catalog('nave')),key=f'pnc_nave_{nonce}')
-            lote=e2.text_area('Lote',key=f'pnc_lote_{nonce}')
-            turno=e3.selectbox('Turno',opt_blank(catalog('turno')),key=f'pnc_turno_{nonce}')
-            status=e3.selectbox('Status',opt_blank(catalog('status')),key=f'pnc_status_{nonce}')
-            optd=st.selectbox('Código / Defecto',opt_defs,key=f'pnc_def_{nonce}')
-            cod=optd.split('|')[0].strip() if optd else ''
-            dr=defs[defs['codigo']==cod].iloc[0] if cod and not defs.empty and cod in defs['codigo'].values else None
+            row=prod[prod['item']==item].iloc[0] if item and item in prod['item'].values else None
+            descp=str(row['descripcion']) if row is not None else ''; cliente=str(row['cliente']) if row is not None else ''; familia=str(row['familia']) if row is not None else ''
+            lote=b.text_area('Lote *',key=f'pnc_lote_{nonce}'); etapa=c.selectbox('Etapa *',opt_blank(catalog('etapa')),key=f'pnc_etapa_{nonce}')
+            a,b,c=st.columns(3)
+            a.text_input('Descripción',value=descp,disabled=True); b.text_input('Cliente',value=cliente,disabled=True); c.text_input('Familia',value=familia,disabled=True)
+            linea=st.selectbox('Línea/Sector *',opt_blank(catalog('linea_sector')),key=f'pnc_linea_{nonce}')
+            a,b,c=st.columns(3)
+            turno=a.selectbox('Turno *',opt_blank(catalog('turno')),key=f'pnc_turno_{nonce}'); status=b.selectbox('Status *',opt_blank(catalog('status')),key=f'pnc_status_{nonce}'); optd=c.selectbox('Código / Defecto *',opt_defs,key=f'pnc_def_{nonce}')
+            cod=optd.split('|')[0].strip() if optd else ''; dr=defs[defs['codigo']==cod].iloc[0] if cod and cod in defs['codigo'].values else None
             defecto=str(dr['defecto']) if dr is not None else ''; tipo=str(dr['tipo_defecto']) if dr is not None else ''; clas=str(dr['clasificacion']) if dr is not None else ''
-            descripcion=st.text_area('Descripción del defecto',key=f'pnc_desc_{nonce}')
-            acciones=st.text_area('Acciones inmediatas',value='',key=f'pnc_accion_{nonce}')
-            f1,f2,f3=st.columns(3)
-            sup=f1.selectbox('Supervisor',opt_blank(catalog('supervisor')),key=f'pnc_sup_{nonce}')
-            ana=f1.selectbox('Analista',opt_blank(catalog('analista')),key=f'pnc_ana_{nonce}')
-            resp=f2.selectbox('Responsable detecta',opt_blank(catalog('responsable_detecta')),key=f'pnc_resp_{nonce}')
-            disp=f2.selectbox('Disposición',opt_blank(catalog('disposicion')),key=f'pnc_disp_{nonce}')
-            fecha_final=f3.date_input('Fecha final',value=date.today(),key=f'pnc_final_{nonce}') if status=='CERRADO' else None
-            q1,q2,q3,q4=st.columns(4)
-            obs=q1.number_input('Observada kg',min_value=0.0,key=f'pnc_obs_{nonce}')
-            rep=q2.number_input('Reproceso kg',min_value=0.0,key=f'pnc_rep_{nonce}')
-            dec=q3.number_input('Decomiso kg',min_value=0.0,key=f'pnc_dec_{nonce}')
-            apr=q4.number_input('Aprobado 2da kg',min_value=0.0,key=f'pnc_apr_{nonce}')
-            total=rep+dec+apr
-            mat=st.text_area('Material hallado / ME',key=f'pnc_mat_{nonce}')
-            notas=st.text_area('Observaciones',key=f'pnc_notas_{nonce}')
-            files=st.file_uploader('Adjuntar evidencia',accept_multiple_files=True,type=['pdf','png','jpg','jpeg','xlsx','csv','txt','docx'],key=f'pnc_files_{nonce}')
-            ok=st.form_submit_button('Guardar registro')
+            d1,d2,d3=st.columns(3)
+            d1.text_input('Defecto',value=defecto,disabled=True)
+            d2.text_input('Tipo de defecto',value=tipo,disabled=True)
+            d3.text_input('Clasificación *',value=clas,disabled=True)
+            cat1,cat2=st.columns(2)
+            categoria_inicial_pnc=cat1.selectbox('Categoría inicial *',['','1','2','3'],key=f'pnc_cat_inicial_{nonce}')
+            categoria_final_pnc=cat2.selectbox('Categoría final',['','1','2','3'],key=f'pnc_cat_final_{nonce}')
+            descripcion=st.text_area('Descripción del defecto *',key=f'pnc_desc_{nonce}'); acciones=st.text_area('Acciones inmediatas *',key=f'pnc_accion_{nonce}')
+            a,b,c=st.columns(3)
+            sup=a.selectbox('Supervisor (Responsable) *',opt_blank(catalog('supervisor')),key=f'pnc_sup_{nonce}'); ana=b.selectbox('Analista (Persona que detecta) *',opt_blank(catalog('analista')),key=f'pnc_ana_{nonce}'); resp=c.selectbox('Responsable de detectar el PNC *',opt_blank(catalog('responsable_detecta')),key=f'pnc_resp_{nonce}')
+            a,b,c=st.columns(3)
+            disp=a.selectbox('Disposición *',opt_blank(catalog('disposicion')),key=f'pnc_disp_{nonce}'); obs=b.number_input('Cantidad observada (kg) *',min_value=0.0,step=1.0,format='%.2f',key=f'pnc_obs_{nonce}'); fecha_final=c.date_input('Fecha final',value=date.today(),key=f'pnc_final_{nonce}') if status=='CERRADO' else None
+            q1,q2,q3=st.columns(3); rep=q1.number_input('Reproceso kg',min_value=0.0,step=1.0,format='%.2f',key=f'pnc_rep_{nonce}'); dec=q2.number_input('Decomiso kg',min_value=0.0,step=1.0,format='%.2f',key=f'pnc_dec_{nonce}'); apr=q3.number_input('Aprobado 2da kg',min_value=0.0,step=1.0,format='%.2f',key=f'pnc_apr_{nonce}'); total=rep+dec+apr
+            mat=st.text_area('Material hallado / ME',key=f'pnc_mat_{nonce}'); notas=st.text_area('Observaciones',key=f'pnc_notas_{nonce}'); files=st.file_uploader('Adjuntar evidencia',accept_multiple_files=True,type=['pdf','png','jpg','jpeg','xlsx','csv','txt','docx'],key=f'pnc_files_{nonce}')
+            ok=st.button('Guardar registro',key=f'guardar_pnc_{nonce}',type='primary')
         if ok:
-            folio=new_folio(); rid=exec_sql('INSERT INTO pnc_registros(folio,fecha_apertura,linea_sector,nave,item,descripcion_producto,cliente,familia,lote,etapa,codigo_defecto,defecto,tipo_defecto,clasificacion,turno,supervisor,analista,responsable_detecta,descripcion_defecto,acciones_inmediatas,disposicion,cantidad_observada,cantidad_reproceso,cantidad_decomiso,cantidad_aprobado_segunda,cantidad_total_pnc,status,fecha_final_tratamiento,observaciones,material_hallado,creado_por,creado_en) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',(folio,fecha.isoformat(),linea,nave,item,descp,cliente,familia,lote,etapa,cod,defecto,tipo,clas,turno,sup,ana,resp,descripcion,acciones,disp,obs,rep,dec,apr,total,status,fecha_final.isoformat() if fecha_final else None,notas,mat,st.session_state.auth['usuario'],now_iso()))
-            save_files(files,rid,folio,st.session_state.auth['usuario'])
-            audit(st.session_state.auth['usuario'],'CREAR_PNC',f'ID {rid}')
-            limpiar_form(); st.session_state.flash_registro_guardado=f'Registro guardado correctamente: Número {rid}'
-            st.rerun()
+            obligatorios={'Línea/Sector':linea,'Nave':nave,'ITEM':item,'Descripción':descp,'Cliente':cliente,'Familia':familia,'Lote':lote,'Etapa':etapa,'Código':cod,'Defecto':defecto,'Tipo de defecto':tipo,'Semana':semana,'Turno':turno,'Fecha':fecha,'Supervisor':sup,'Analista':ana,'Responsable de detectar el PNC':resp,'Descripción del defecto':descripcion,'Acciones inmediatas':acciones,'Disposición':disp,'Cantidad observada':obs,'Status':status,'Clasificación':clas,'Categoría inicial':categoria_inicial_pnc}
+            faltantes=[k for k,v in obligatorios.items() if v is None or (isinstance(v,str) and not v.strip()) or (k=='Cantidad observada' and float(v)<=0)]
+            if faltantes:
+                st.error('Completa los siguientes campos obligatorios: '+', '.join(faltantes)+'.')
+            else:
+                folio=new_folio(); rid=exec_sql('INSERT INTO pnc_registros(folio,fecha_apertura,linea_sector,nave,item,descripcion_producto,cliente,familia,lote,etapa,codigo_defecto,defecto,tipo_defecto,clasificacion,turno,supervisor,analista,responsable_detecta,descripcion_defecto,acciones_inmediatas,disposicion,cantidad_observada,cantidad_reproceso,cantidad_decomiso,cantidad_aprobado_segunda,cantidad_total_pnc,status,fecha_final_tratamiento,observaciones,material_hallado,creado_por,creado_en,semana,categoria_inicial_pnc,categoria_final_pnc) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',(folio,fecha.isoformat(),linea,nave,item,descp,cliente,familia,lote,etapa,cod,defecto,tipo,clas,turno,sup,ana,resp,descripcion,acciones,disp,float(obs),rep,dec,apr,total,status,fecha_final.isoformat() if fecha_final else None,notas,mat,st.session_state.auth['usuario'],now_iso(),int(semana),categoria_inicial_pnc,categoria_final_pnc))
+                save_files(files,rid,folio,st.session_state.auth['usuario']); audit(st.session_state.auth['usuario'],'CREAR_PNC',f'ID {rid}')
+                limpiar_form(); st.session_state.flash_registro_guardado=f'Registro guardado correctamente: Número {rid}'
+                st.rerun()
         st.markdown('</div></div>',unsafe_allow_html=True)
     if st.session_state.registro_tipo is None: selector()
     elif st.session_state.registro_tipo=='PNC': form_pnc()
@@ -519,6 +629,8 @@ def page_registro():
 def page_consulta():
     st.title('Consulta, seguimiento y descarga')
     st.caption('Usa el filtro para encontrar registros específicos. La fecha aparece después del número de registro.')
+    if st.session_state.pop('excel_sync_error',None): st.warning('No fue posible actualizar el libro Excel. Verifica que el archivo no esté abierto en otro programa.')
+    if EXCEL_PATH.exists(): st.download_button('📗 Descargar libro maestro Excel',EXCEL_PATH.read_bytes(),EXCEL_PATH.name,'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',key='download_excel_maestro')
     def prep(df):
         v=df.copy()
         if all(c in v.columns for c in ['dia','mes','anio']):
@@ -560,106 +672,323 @@ def page_consulta():
             with c2:
                 if st.button('Cancelar eliminación',key=f'cancel_del_{key}_{selected}'):
                     st.session_state.pop(f'confirm_del_{key}',None); st.rerun()
+    def edit_record(table_name,key,selected):
+        row_df=read_df(f'SELECT * FROM {table_name} WHERE id=?',(selected,))
+        if row_df.empty:
+            st.warning('El registro seleccionado ya no está disponible.')
+            return
+        row=row_df.iloc[0].to_dict()
+        prod=read_df('SELECT * FROM productos WHERE activo=1 ORDER BY descripcion')
+        defs=read_df('SELECT * FROM defectos WHERE activo=1 ORDER BY CAST(codigo AS INTEGER)')
+        opt_prod=['']+[f'{r.item} | {r.descripcion}' for r in prod.itertuples()]
+        opt_defs=['']+[f'{r.codigo} | {r.defecto}' for r in defs.itertuples()]
+        original_item=str(row.get('item') or '')
+        original_codigo=str(row.get('codigo_defecto') or '')
+        producto_actual=next((x for x in opt_prod if x.split('|')[0].strip()==original_item),'')
+        defecto_actual=next((x for x in opt_defs if x.split('|')[0].strip()==original_codigo),'')
+        labels={'fecha_apertura':'Fecha','dia':'Día','mes':'Mes','anio':'Año','linea_sector':'Línea/Sector *','nave':'Nave *','lote':'Lote *','etapa':'Etapa *','semana':'Semana *','turno':'Turno *','supervisor':'Supervisor *','supervisor_responsable':'Supervisor *','analista':'Analista *','analista_detecta':'Analista *','responsable_detecta':'Responsable de detectar el PNC *','descripcion_defecto':'Descripción del defecto *','descripcion_hallazgo':'Descripción del defecto *','acciones_inmediatas':'Acciones inmediatas *','accion_contingente':'Acciones inmediatas','disposicion':'Disposición *','cantidad_observada':'Cantidad observada (kg) *','status':'Status *','equipo_hallazgo':'Equipo del hallazgo','tipo':'Tipo de hallazgo','particulas_halladas':'Partículas halladas','investigacion_origen':'Investigación del origen','acciones_evitar_incidencia':'Acciones para evitar incidencia','observaciones':'Observaciones','material_hallado':'Material hallado / ME','fecha_final_tratamiento':'Fecha final','cantidad_reproceso':'Reproceso kg','cantidad_decomiso':'Decomiso kg','cantidad_aprobado_segunda':'Aprobado segunda instancia kg','categoria_inicial_pnc':'Categoría inicial *','categoria_final_pnc':'Categoría final'}
+        protected={'folio','creado_por','creado_en','cantidad_total_pnc','item','descripcion_producto','producto','cliente','familia','codigo_defecto','defecto','tipo_defecto','clasificacion','categoria_inicial'}
+        numeric={'dia','mes','anio','semana','particulas_halladas','cantidad_observada','cantidad_reproceso','cantidad_decomiso','cantidad_aprobado_segunda'}
+        select_catalog={'linea_sector':'linea_sector','nave':'nave','etapa':'etapa','turno':'turno','supervisor':'supervisor','supervisor_responsable':'supervisor','analista':'analista','analista_detecta':'analista','responsable_detecta':'responsable_detecta','disposicion':'disposicion','status':'status','categoria_inicial_pnc':'categoria_pnc','categoria_final_pnc':'categoria_pnc'}
+        with st.expander('✏️ Editar o completar registro',expanded=True):
+            titulo={'pnc':'PNC','me':'Materia Extraña','ddm':'Detector de metales y RX'}.get(key,key)
+            st.markdown(f'#### Editar registro de {titulo}: Número {selected}')
+            st.caption('El registro original se carga completo. Al cambiar ITEM o Código, los campos relacionados se actualizan automáticamente.')
+            a1,a2=st.columns(2)
+            opt_item=a1.selectbox('ITEM *',opt_prod,index=idx_or_zero(opt_prod,producto_actual),key=f'edit_live_item_{key}_{selected}')
+            opt_codigo=a2.selectbox('Código / Defecto *',opt_defs,index=idx_or_zero(opt_defs,defecto_actual),key=f'edit_live_codigo_{key}_{selected}')
+            item=opt_item.split('|')[0].strip() if opt_item else ''
+            pr=prod[prod['item']==item].iloc[0] if item and item in prod['item'].values else None
+            descripcion=str(pr['descripcion']) if pr is not None else ''
+            cliente=str(pr['cliente']) if pr is not None else ''
+            familia=str(pr['familia']) if pr is not None else ''
+            codigo=opt_codigo.split('|')[0].strip() if opt_codigo else ''
+            dr=defs[defs['codigo']==codigo].iloc[0] if codigo and codigo in defs['codigo'].values else None
+            defecto=str(dr['defecto']) if dr is not None else ''
+            tipo_defecto=str(dr['tipo_defecto']) if dr is not None else ''
+            clasificacion=str(dr['clasificacion']) if dr is not None else ''
+            p1,p2,p3=st.columns(3)
+            p1.text_input('Descripción',value=descripcion,disabled=True)
+            p2.text_input('Cliente',value=cliente,disabled=True)
+            p3.text_input('Familia',value=familia,disabled=True)
+            d1,d2,d3=st.columns(3)
+            d1.text_input('Defecto',value=defecto,disabled=True)
+            d2.text_input('Tipo de defecto',value=tipo_defecto,disabled=True)
+            d3.text_input('Clasificación',value=clasificacion,disabled=True)
+            values={}
+            columns=[c for c in row_df.columns if c!='id' and c not in protected]
+            with st.form(f'editar_form_{key}_{selected}'):
+                for pos in range(0,len(columns),3):
+                    cols_ui=st.columns(3)
+                    for ui,col in zip(cols_ui,columns[pos:pos+3]):
+                        raw=row.get(col); value='' if raw is None or pd.isna(raw) else raw
+                        label=labels.get(col,col.replace('_',' ').title())
+                        if col in select_catalog:
+                            options=['','1','2','3'] if select_catalog[col]=='categoria_pnc' else opt_blank(catalog(select_catalog[col])); current=str(value)
+                            if current and current not in options: options.append(current)
+                            values[col]=ui.selectbox(label,options,index=idx_or_zero(options,current),key=f'edit_{key}_{selected}_{col}')
+                        elif col in numeric:
+                            if col in {'dia','mes','anio','semana','particulas_halladas'}: values[col]=ui.number_input(label,min_value=0,step=1,value=int(float(value or 0)),key=f'edit_{key}_{selected}_{col}')
+                            else: values[col]=ui.number_input(label,min_value=0.0,step=1.0,format='%.2f',value=float(value or 0),key=f'edit_{key}_{selected}_{col}')
+                        elif col in {'descripcion_defecto','descripcion_hallazgo','acciones_inmediatas','accion_contingente','investigacion_origen','acciones_evitar_incidencia','observaciones','material_hallado','lote'}:
+                            values[col]=ui.text_area(label,value=str(value),key=f'edit_{key}_{selected}_{col}')
+                        else: values[col]=ui.text_input(label,value=str(value),key=f'edit_{key}_{selected}_{col}')
+                guardar=st.form_submit_button('Guardar cambios',type='primary')
+            if guardar:
+                auto={'item':item,'cliente':cliente,'familia':familia,'codigo_defecto':codigo,'defecto':defecto,'tipo_defecto':tipo_defecto}
+                if table_name=='pnc_registros': auto.update({'descripcion_producto':descripcion,'clasificacion':clasificacion})
+                else: auto.update({'producto':descripcion,'categoria_inicial':clasificacion})
+                required=['linea_sector','nave','lote','etapa','semana','turno','responsable_detecta','acciones_inmediatas','disposicion','cantidad_observada','status']
+                required += ['supervisor','analista','descripcion_defecto','categoria_inicial_pnc'] if table_name=='pnc_registros' else ['supervisor_responsable','analista_detecta','descripcion_hallazgo']
+                missing=[]
+                for name,val in {'ITEM':item,'Descripción':descripcion,'Cliente':cliente,'Familia':familia,'Código':codigo,'Defecto':defecto,'Tipo de defecto':tipo_defecto,'Clasificación':clasificacion}.items():
+                    if not str(val).strip(): missing.append(name)
+                for col in required:
+                    val=values.get(col)
+                    if val is None or (isinstance(val,str) and not val.strip()) or (col=='cantidad_observada' and float(val)<=0): missing.append(labels.get(col,col))
+                if missing: st.error('Completa los siguientes campos obligatorios: '+', '.join(dict.fromkeys(missing))+'.')
+                else:
+                    updates={**values,**auto}; update_cols=list(updates.keys())
+                    assignments=', '.join([f'"{c}"=?' for c in update_cols])
+                    exec_sql(f'UPDATE {table_name} SET {assignments} WHERE id=?',tuple(updates[c] for c in update_cols)+(selected,))
+                    audit(st.session_state.auth['usuario'],'EDITAR_REGISTRO',f'Tabla {table_name} | ID {selected}')
+                    st.success(f'Registro actualizado correctamente: Número {selected}')
+                    st.rerun()
     t1,t2,t3=st.tabs(['PNC´s','Materia Extraña','Detector de metales y RX'])
     with t1:
         df=read_df('SELECT * FROM pnc_registros ORDER BY id ASC'); selected,shown=table(df,'pnc')
         if not shown.empty: st.download_button('Descargar PNC CSV',prep(shown).to_csv(index=False).encode('utf-8-sig'),f"pnc_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",'text/csv')
-        if selected: st.markdown(f'### Registro seleccionado: Número {selected}'); delete_confirm('pnc_registros','pnc','ELIMINAR_PNC',selected)
+        if selected:
+            st.markdown(f'### Registro seleccionado: Número {selected}')
+            edit_record('pnc_registros','pnc',selected)
+            delete_confirm('pnc_registros','pnc','ELIMINAR_PNC',selected)
     with t2:
         df=read_df('SELECT * FROM me_registros ORDER BY id ASC'); selected,shown=table(df,'me')
         if not shown.empty: st.download_button('Descargar Materia Extraña CSV',prep(shown).to_csv(index=False).encode('utf-8-sig'),f"materia_extrana_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",'text/csv')
-        if selected: st.markdown(f'### Registro seleccionado: Número {selected}'); delete_confirm('me_registros','me','ELIMINAR_ME',selected)
+        if selected:
+            st.markdown(f'### Registro seleccionado: Número {selected}')
+            edit_record('me_registros','me',selected)
+            delete_confirm('me_registros','me','ELIMINAR_ME',selected)
     with t3:
         df=read_df('SELECT * FROM ddm_rx_registros ORDER BY id ASC'); selected,shown=table(df,'ddm')
         if not shown.empty: st.download_button('Descargar Detector de metales y RX CSV',prep(shown).to_csv(index=False).encode('utf-8-sig'),f"ddm_rx_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",'text/csv')
-        if selected: st.markdown(f'### Registro seleccionado: Número {selected}'); delete_confirm('ddm_rx_registros','ddm','ELIMINAR_DDM_RX',selected)
+        if selected:
+            st.markdown(f'### Registro seleccionado: Número {selected}')
+            edit_record('ddm_rx_registros','ddm',selected)
+            delete_confirm('ddm_rx_registros','ddm','ELIMINAR_DDM_RX',selected)
+    st.divider()
+    consulta_muestras_retencion()
+def page_muestras_retencion():
+    periodos=[
+        ('muestras_10_meses','10 Meses','🗓️'),
+        ('muestras_12_meses_alergeno','12 Meses Alérgeno','⚠️'),
+        ('muestras_12_meses_duvalin','12 Meses Duvalin','🍫'),
+        ('muestras_12_meses_nave2','12 Meses Nave 2','🏭'),
+        ('muestras_15_meses','15 Meses','📦'),
+        ('muestras_18_meses','18 Meses','🧪'),
+        ('muestras_24_meses','24 Meses','✅'),
+    ]
+    if 'muestra_tipo' not in st.session_state: st.session_state.muestra_tipo=None
+    if 'muestra_nonce' not in st.session_state: st.session_state.muestra_nonce=0
+    seleccionado=st.session_state.muestra_tipo
+    if seleccionado is None:
+        st.markdown('<div class="registro-landing-hero"><div class="registro-landing-title">Muestras de retención</div><div class="registro-landing-subtitle">Selecciona el periodo que deseas registrar.</div></div>',unsafe_allow_html=True)
+        for inicio in range(0,len(periodos),3):
+            columnas=st.columns(3,gap='large')
+            for col,(tabla,nombre,icono) in zip(columnas,periodos[inicio:inicio+3]):
+                with col:
+                    st.markdown('<span class="registro-card-slot"></span>',unsafe_allow_html=True)
+                    if st.button(f'{icono}  {nombre}\n\nCaptura y seguimiento de muestras de retención.\n\nAbrir registro',key=f'card_{tabla}'):
+                        st.session_state.muestra_tipo=tabla; st.rerun()
+        return
+    info=next((x for x in periodos if x[0]==seleccionado),None)
+    if not info:
+        st.session_state.muestra_tipo=None; st.rerun()
+    tabla,nombre,icono=info
+    if st.button('← Cambiar periodo de retención',key='volver_muestras'):
+        st.session_state.muestra_tipo=None; st.rerun()
+    st.markdown(f'<div class="registro-full-panel"><div class="registro-pill">Nuevo registro</div><div class="registro-full-title">{icono} {nombre}</div><div class="registro-full-subtitle">Los campos marcados con * son obligatorios.</div>',unsafe_allow_html=True)
+    productos=read_df('SELECT item,descripcion FROM productos WHERE activo=1 ORDER BY descripcion')
+    opciones=['']+[f'{r.item} | {r.descripcion}' for r in productos.itertuples()]
+    nonce=st.session_state.muestra_nonce
+    elegido=st.selectbox('ITEM *',opciones,key=f'mr_item_{tabla}_{nonce}')
+    item=elegido.split('|')[0].strip() if elegido else ''
+    fila=productos[productos['item'].astype(str)==item]
+    descripcion=str(fila.iloc[0]['descripcion']) if not fila.empty else ''
+    st.text_input('Descripción',value=descripcion,disabled=True)
+    with st.form(f'mr_form_{tabla}_{nonce}'):
+        c1,c2=st.columns(2)
+        lote=c1.text_input('Lote *')
+        destino=c2.selectbox('Destino *',['','Nacional','Exportación'])
+        c3,c4=st.columns(2)
+        muestras=c3.number_input('# De muestras *',min_value=0.0,step=1.0,format='%.2f')
+        corrugado=c4.number_input('# Corrugado *',min_value=0.0,step=1.0,format='%.2f')
+        responsable=st.selectbox('Responsable *',opt_blank(catalog('analista')))
+        observaciones=st.text_area('Observaciones')
+        guardar=st.form_submit_button('Guardar registro',type='primary')
+    if guardar:
+        req={'ITEM':item,'Descripción':descripcion,'Lote':lote,'Destino':destino,'# De muestras':muestras,'# Corrugado':corrugado,'Responsable':responsable}
+        faltan=[k for k,v in req.items() if v is None or (isinstance(v,str) and not v.strip()) or (k in ['# De muestras','# Corrugado'] and float(v)<=0)]
+        if faltan: st.error('Completa los siguientes campos obligatorios: '+', '.join(faltan)+'.')
+        else:
+            rid=exec_sql(f'INSERT INTO {tabla}(item,descripcion,lote,destino,numero_muestras,numero_corrugado,responsable,observaciones,creado_por,creado_en) VALUES(?,?,?,?,?,?,?,?,?,?)',(item,descripcion,lote.strip(),destino,float(muestras),float(corrugado),responsable,observaciones.strip(),st.session_state.auth['usuario'],now_iso()))
+            audit(st.session_state.auth['usuario'],'CREAR_MUESTRA_RETENCION',f'{nombre} | ID {rid}')
+            st.session_state.muestra_nonce+=1
+            st.success(f'Registro guardado correctamente: N° {rid}')
+            st.rerun()
+    st.markdown('</div>',unsafe_allow_html=True)
+
+def consulta_muestras_retencion():
+    configuracion=[
+        ('muestras_10_meses','10 Meses'),('muestras_12_meses_alergeno','12 Meses Alérgeno'),
+        ('muestras_12_meses_duvalin','12 Meses Duvalin'),('muestras_12_meses_nave2','12 Meses Nave 2'),
+        ('muestras_15_meses','15 Meses'),('muestras_18_meses','18 Meses'),('muestras_24_meses','24 Meses')]
+    st.markdown('## Muestras de retención')
+    tabs=st.tabs([n for _,n in configuracion])
+    productos=read_df('SELECT item,descripcion FROM productos WHERE activo=1 ORDER BY descripcion')
+    opciones_item=['']+[f'{r.item} | {r.descripcion}' for r in productos.itertuples()]
+    for tab,(tabla,nombre) in zip(tabs,configuracion):
+        with tab:
+            df=read_df(f'SELECT * FROM {tabla} ORDER BY id DESC')
+            buscar=st.text_input('Buscar registro',placeholder='Buscar por número, ITEM, descripción, lote, destino o responsable...',key=f'buscar_{tabla}')
+            mostrado=df.copy()
+            if buscar and not mostrado.empty:
+                mask=mostrado.astype(str).apply(lambda col: col.str.contains(buscar,case=False,na=False)).any(axis=1)
+                mostrado=mostrado[mask]
+            if mostrado.empty:
+                st.info('No hay registros para mostrar.')
+                continue
+            vista=mostrado[['id','item','descripcion','lote','destino','numero_muestras','numero_corrugado','responsable','observaciones']].rename(columns={'id':'N°','item':'ITEM','descripcion':'Descripción','lote':'Lote','destino':'Destino','numero_muestras':'# De muestras','numero_corrugado':'# Corrugado','responsable':'Responsable','observaciones':'Observaciones'})
+            evento=st.dataframe(vista,use_container_width=True,hide_index=True,on_select='rerun',selection_mode='single-row',key=f'table_{tabla}')
+            st.download_button('Descargar CSV',vista.to_csv(index=False).encode('utf-8-sig'),f'{tabla}_{datetime.now().strftime("%Y%m%d_%H%M%S")}.csv','text/csv',key=f'download_{tabla}')
+            filas=getattr(evento,'selection',{}).get('rows',[]) if evento is not None else []
+            if not filas: continue
+            rid=int(vista.iloc[filas[0]]['N°'])
+            st.markdown(f'### Registro seleccionado: Número {rid}')
+            original=read_df(f'SELECT * FROM {tabla} WHERE id=?',(rid,)).iloc[0].to_dict()
+            with st.expander(f'✏️ Editar registro N° {rid}',expanded=True):
+                actual=next((x for x in opciones_item if x and x.split('|')[0].strip()==str(original['item'])),'')
+                elegido=st.selectbox('ITEM *',opciones_item,index=idx_or_zero(opciones_item,actual),key=f'edit_item_{tabla}_{rid}')
+                item=elegido.split('|')[0].strip() if elegido else ''
+                fila=productos[productos['item'].astype(str)==item]
+                descripcion=str(fila.iloc[0]['descripcion']) if not fila.empty else ''
+                st.text_input('Descripción',value=descripcion,disabled=True,key=f'edit_desc_{tabla}_{rid}_{item}')
+                with st.form(f'edit_form_{tabla}_{rid}'):
+                    c1,c2=st.columns(2)
+                    lote=c1.text_input('Lote *',value=str(original['lote'] or ''))
+                    destinos=['','Nacional','Exportación']; dest=str(original['destino'] or '')
+                    destino=c2.selectbox('Destino *',destinos,index=idx_or_zero(destinos,dest))
+                    c3,c4=st.columns(2)
+                    muestras=c3.number_input('# De muestras *',min_value=0.0,step=1.0,format='%.2f',value=float(original['numero_muestras'] or 0))
+                    corrugado=c4.number_input('# Corrugado *',min_value=0.0,step=1.0,format='%.2f',value=float(original['numero_corrugado'] or 0))
+                    analistas=opt_blank(catalog('analista')); resp=str(original['responsable'] or '')
+                    if resp and resp not in analistas: analistas.append(resp)
+                    responsable=st.selectbox('Responsable *',analistas,index=idx_or_zero(analistas,resp))
+                    observaciones=st.text_area('Observaciones',value=str(original['observaciones'] or ''))
+                    actualizar=st.form_submit_button('Guardar cambios',type='primary')
+                if actualizar:
+                    req={'ITEM':item,'Descripción':descripcion,'Lote':lote,'Destino':destino,'# De muestras':muestras,'# Corrugado':corrugado,'Responsable':responsable}
+                    faltan=[k for k,v in req.items() if v is None or (isinstance(v,str) and not v.strip()) or (k in ['# De muestras','# Corrugado'] and float(v)<=0)]
+                    if faltan: st.error('Completa los siguientes campos obligatorios: '+', '.join(faltan)+'.')
+                    else:
+                        exec_sql(f'UPDATE {tabla} SET item=?,descripcion=?,lote=?,destino=?,numero_muestras=?,numero_corrugado=?,responsable=?,observaciones=?,actualizado_por=?,actualizado_en=? WHERE id=?',(item,descripcion,lote.strip(),destino,float(muestras),float(corrugado),responsable,observaciones.strip(),st.session_state.auth['usuario'],now_iso(),rid))
+                        audit(st.session_state.auth['usuario'],'EDITAR_MUESTRA_RETENCION',f'{nombre} | ID {rid}')
+                        st.success(f'Registro actualizado correctamente: N° {rid}'); st.rerun()
+            if st.button('Eliminar registro',key=f'del_{tabla}_{rid}'):
+                st.session_state[f'confirm_{tabla}']=rid
+            if st.session_state.get(f'confirm_{tabla}')==rid:
+                st.warning(f'Confirma la eliminación del registro N° {rid}.')
+                d1,d2=st.columns(2)
+                if d1.button('Sí, eliminar definitivamente',key=f'ok_{tabla}_{rid}'):
+                    exec_sql(f'DELETE FROM {tabla} WHERE id=?',(rid,)); reset_autoincrement(tabla)
+                    audit(st.session_state.auth['usuario'],'ELIMINAR_MUESTRA_RETENCION',f'{nombre} | ID {rid}')
+                    st.session_state.pop(f'confirm_{tabla}',None); st.rerun()
+                if d2.button('Cancelar',key=f'cancel_{tabla}_{rid}'):
+                    st.session_state.pop(f'confirm_{tabla}',None); st.rerun()
+
 def page_entrega_turno():
+    referencia='RE-CAL01-2301-00002-2013 Rev. 1'
+    grupos_lineas={
+        'MD - Car. Duros - FABRIMA':['MD - Car. Duros - FABRIMA'],
+        'BON O BON':['MD - BOB - CENTRO DE MASA','MD - BOB - HORNO','MD - BOB - DEPOSITADORA','MD - BOB - TROQUEL','MD - BOB - BAÑADORA 1','MD - BOB - BAÑADORA 2','MD - BOB - FLOW PACK 1','MD - BOB - FLOW PACK 2','MD - BOB - FLOW PACK 3','MD - BOB - FLOW PACK 4','MD - BOB - FLOW PACK 5','MD - BOB - HIGH DREAM'],
+        'DUVALIN':['MD-CIMI 1','MD-CIMI 2','MD-TETRA','FISICOQUIMICOS MD CREMAS PMX1','FISICOQUIMICOS MD CREMAS PMX2','FISICOQUIMICOS MD CREMAS PMX3','FISICOQUIMICOS MD CREMAS PMX4','FISICOQUIMICOS CIMIS Y TETRA'],
+        'CAVE1000 / MOLDEO':['MD - CAVE1000','MD MOLDEO SPS CV1000','MD MOLDEO CV1000 ENVASADO','MD MOLDEO DELTA ENVOLTURA','MD MOLDEO JIN HONG ENVOLTURA','MD MOLDEO MC'],
+        'OBLEAS':['MD - OBLEAS CENTRO DE MASAS','MD - OBLEA - HORNO','MD - OBLEA - DEPOSITADORA','MD - OBLEA - MESA DE CORTE','MD - OBLEA - BAÑADORA 1 (CARAMELO Y CEREAL)','MD - OBLEA - BAÑADORA 2 (COMPOUND)','MD OBLEAS SPS','MD-BELCA','MD-CTPACK'],
+        'CONCAS':['MD COBERTURAS CONCA L1','MD COBERTURAS CONCA L2','MD COBERTURAS CONCA L3','MD COBERTURAS CONCA NL1','MD COBERTURAS CONCA NL2','MD COBERTURAS CONCA NL3','MD COBERTURAS CONCA NL4','MD COBERTURAS CONCA NL5','MD COBERTURAS CONCA NL6','MD-PIPA','MD- TANQUE 09/54']
+    }
     if 'entrega_nave' not in st.session_state: st.session_state.entrega_nave=None
     if 'entrega_nonce' not in st.session_state: st.session_state.entrega_nonce=0
-
     if st.session_state.entrega_nave is None:
-        st.markdown('<div class="registro-landing-hero"><div class="registro-landing-title">Entrega de turno</div><div class="registro-landing-subtitle">Selecciona la nave para realizar la entrega de turno.</div></div>',unsafe_allow_html=True)
-        columnas=st.columns(3,gap='large')
-        opciones=[('Nave 1','🏭','Calidad de procesos y seguimiento operativo.'),('Nave 2','🏭','Entrega y continuidad de actividades.'),('Nave 3','🏭','Entrega y continuidad de actividades.')]
-        for col,(nave,icono,descripcion) in zip(columnas,opciones):
+        st.markdown('<div class="registro-landing-hero"><div class="registro-landing-title">Entrega de turno</div><div class="registro-landing-subtitle">Selecciona la nave para iniciar el registro.</div></div>',unsafe_allow_html=True)
+        cols=st.columns(3,gap='large')
+        for col,nave in zip(cols,['Nave 1','Nave 2','Nave 3']):
             with col:
                 st.markdown('<span class="registro-card-slot"></span>',unsafe_allow_html=True)
-                if st.button(f'{icono}  {nave}\n\n{descripcion}\n\nAbrir entrega',key=f'entrega_card_{nave}'):
-                    st.session_state.entrega_nave=nave
-                    st.rerun()
+                if st.button(f'🏭  {nave}\n\nEntrega y continuidad de actividades de Calidad Procesos.\n\nAbrir registro',key=f'entrega_{nave}'):
+                    st.session_state.entrega_nave=nave; st.rerun()
         return
-
     nave=st.session_state.entrega_nave
-    nonce=st.session_state.entrega_nonce
     if st.button('← Cambiar nave',key='entrega_volver'):
-        st.session_state.entrega_nave=None
-        st.rerun()
-
-    st.markdown(f'<div class="registro-full-panel"><div class="registro-pill">Entrega de turno</div><div class="registro-full-title">🔄 ENTREGA DE TURNO CALIDAD PROCESOS</div><div class="registro-full-subtitle">{nave} · Completa la información operativa y los seguimientos.</div>',unsafe_allow_html=True)
-
-    h1,h2,h3=st.columns([2,1,1])
-    analista=h1.selectbox('Analista *',opt_blank(catalog('analista')),key=f'entrega_analista_{nonce}')
-    fecha=h2.date_input('Fecha *',value=date.today(),key=f'entrega_fecha_{nonce}')
-    turno=h3.selectbox('Turno *',opt_blank(catalog('turno')),key=f'entrega_turno_{nonce}')
-
-    st.markdown('### Estado de líneas y procesos')
-    st.caption('Agrega únicamente las líneas que requieren entrega. Puedes añadir o eliminar filas.')
-    lineas_catalogo=catalog('linea_sector')
-    detalle_base=pd.DataFrame([{'Línea':'','Producto / descripción':'','Horas trabajadas':0.0,'Carga de apoyo':'','Observaciones':''}])
-    detalle=st.data_editor(
-        detalle_base,
-        num_rows='dynamic',
-        use_container_width=True,
-        hide_index=True,
-        key=f'entrega_detalle_{nave}_{nonce}',
-        column_config={
-            'Línea':st.column_config.SelectboxColumn('Línea *',options=lineas_catalogo,required=True),
-            'Producto / descripción':st.column_config.TextColumn('Producto / descripción'),
-            'Horas trabajadas':st.column_config.NumberColumn('Horas trabajadas',min_value=0.0,step=1.0,format='%.2f'),
-            'Carga de apoyo':st.column_config.TextColumn('Carga de apoyo'),
-            'Observaciones':st.column_config.TextColumn('Observaciones',width='large')
-        }
-    )
-
-    izq,der=st.columns([1.7,1],gap='large')
-    with izq:
-        st.markdown('### Observaciones generales de proceso')
-        observaciones_proceso=st.text_area('Información adicional de líneas y procesos',key=f'entrega_obs_general_{nonce}',height=180)
-    with der:
-        st.markdown('### Seguimientos del turno')
-        seguimiento_contaminaciones=st.text_area('Seguimiento a contaminaciones',key=f'entrega_cont_{nonce}')
-        seguimiento_pnc=st.text_area('Seguimiento a PNC',key=f'entrega_pnc_{nonce}')
-        limpiezas=st.text_area('Limpiezas',key=f'entrega_limp_{nonce}')
-        ordenes_fallo=st.text_area('Seguimiento a órdenes de fallo',key=f'entrega_fallo_{nonce}')
-        giro_junta_equipo=st.text_area('Giro / Junta de equipo',key=f'entrega_junta_{nonce}')
-
-    guardar=st.button('Guardar entrega de turno',type='primary',key=f'entrega_guardar_{nonce}')
-    if guardar:
-        filas=[]
-        for orden,row in detalle.iterrows():
-            linea=str(row.get('Línea','') or '').strip()
-            producto=str(row.get('Producto / descripción','') or '').strip()
-            horas=float(row.get('Horas trabajadas',0) or 0)
-            carga=str(row.get('Carga de apoyo','') or '').strip()
-            obs=str(row.get('Observaciones','') or '').strip()
-            if linea or producto or horas or carga or obs:
-                filas.append((linea,producto,horas,carga,obs,int(orden)))
+        st.session_state.entrega_nave=None; st.rerun()
+    if nave!='Nave 1':
+        st.markdown(f'<div class="registro-full-panel"><div class="registro-pill">Entrega de turno</div><div class="registro-full-title">🏭 {nave}</div><div class="registro-full-subtitle">Ventana preparada para incorporar el formato específico de {nave}.</div></div>',unsafe_allow_html=True)
+        return
+    nonce=st.session_state.entrega_nonce
+    st.markdown(f'<div class="registro-full-panel"><div class="registro-pill">{referencia}</div><div class="registro-full-title">ENTREGA DE TURNO CALIDAD PROCESOS</div><div class="registro-full-subtitle">NAVE 1</div>',unsafe_allow_html=True)
+    a,b,c=st.columns([2,1,1])
+    analista=a.selectbox('ANALISTA *',opt_blank(catalog('analista')),key=f'et_analista_{nonce}')
+    fecha=b.date_input('Fecha *',value=date.today(),key=f'et_fecha_{nonce}')
+    turno=c.selectbox('Turno *',opt_blank(catalog('turno')),key=f'et_turno_{nonce}')
+    productos=read_df('SELECT item,descripcion FROM productos WHERE activo=1 ORDER BY descripcion')
+    opciones_producto=['']+[f'{r.item} | {r.descripcion}' for r in productos.itertuples()]
+    tablas_lineas=[]
+    st.markdown('### Líneas y procesos')
+    for idx,(grupo,lineas) in enumerate(grupos_lineas.items()):
+        st.markdown(f'**{grupo}**')
+        base=pd.DataFrame({'Línea':lineas,'Productos / Item / descripción':['']*len(lineas),'Horas trabajadas de la línea':[0.0]*len(lineas),'Carga de datos al SPAC':[0.0]*len(lineas),'Observaciones':['']*len(lineas)})
+        edit=st.data_editor(base,use_container_width=True,hide_index=True,num_rows='fixed',key=f'et_lineas_{idx}_{nonce}',disabled=['Línea'],column_config={
+            'Productos / Item / descripción':st.column_config.SelectboxColumn('Productos / Item / descripción',options=opciones_producto),
+            'Horas trabajadas de la línea':st.column_config.NumberColumn('Horas trabajadas de la línea',min_value=0.0,step=1.0,format='%.2f'),
+            'Carga de datos al SPAC':st.column_config.NumberColumn('Carga de datos al SPAC',min_value=0.0,step=1.0,format='%.2f'),
+            'Observaciones':st.column_config.TextColumn('Observaciones',width='large')})
+        edit.insert(0,'Grupo',grupo); tablas_lineas.append(edit)
+    st.markdown('### Seguimientos')
+    seguimientos=[]
+    for idx,bloque in enumerate(['Seguimiento a Contaminaciones','Seguimiento a PNC´S','Limpiezas','Seguimiento a ORDENES DE FALLO','GIRO / JUNTA DE EQUIPO']):
+        with st.expander(bloque,expanded=idx<2):
+            base=pd.DataFrame([{'Registro #':'','Hoja física':'','Carga electrónica':'','Correo':'','Descripción del seguimiento':''} for _ in range(4 if idx<2 else 3)])
+            ed=st.data_editor(base,use_container_width=True,hide_index=True,num_rows='dynamic',key=f'et_seg_{idx}_{nonce}',column_config={
+                'Registro #':st.column_config.TextColumn('Registro #'),
+                'Hoja física':st.column_config.SelectboxColumn('Hoja física',options=['','Sí','No','N/A']),
+                'Carga electrónica':st.column_config.SelectboxColumn('Carga electrónica',options=['','Sí','No','N/A']),
+                'Correo':st.column_config.SelectboxColumn('Correo',options=['','Sí','No','N/A']),
+                'Descripción del seguimiento':st.column_config.TextColumn('Descripción del seguimiento',width='large')})
+            ed.insert(0,'Bloque',bloque); seguimientos.append(ed)
+    todas_lineas=pd.concat(tablas_lineas,ignore_index=True)
+    total_horas=float(pd.to_numeric(todas_lineas['Horas trabajadas de la línea'],errors='coerce').fillna(0).sum())
+    total_carga=float(pd.to_numeric(todas_lineas['Carga de datos al SPAC'],errors='coerce').fillna(0).sum())
+    t1,t2=st.columns(2)
+    t1.metric('TOTAL DE CARGA DE DATOS',f'{total_carga:,.2f}')
+    t2.metric('TOTAL DE HORAS TRABAJADAS DE LA LÍNEA',f'{total_horas:,.2f}')
+    if st.button('Guardar entrega de turno',type='primary',key=f'et_guardar_{nonce}'):
         faltantes=[]
         if not analista: faltantes.append('Analista')
         if not turno: faltantes.append('Turno')
-        if not filas: faltantes.append('al menos una línea o proceso')
-        if any(not f[0] for f in filas): faltantes.append('Línea en todas las filas capturadas')
-        if faltantes:
-            st.error('Completa los siguientes campos obligatorios: '+', '.join(dict.fromkeys(faltantes))+'.')
+        if faltantes: st.error('Completa los siguientes campos obligatorios: '+', '.join(faltantes)+'.')
         else:
-            # Integra la observación general al bloque operativo sin alterar la estructura del encabezado.
-            giro_final=giro_junta_equipo.strip()
-            if observaciones_proceso.strip():
-                giro_final=(giro_final+'\n\nObservaciones generales de proceso:\n'+observaciones_proceso.strip()).strip()
-            entrega_id=exec_sql('INSERT INTO entregas_turno(nave,fecha,turno,analista,seguimiento_contaminaciones,seguimiento_pnc,limpiezas,ordenes_fallo,giro_junta_equipo,creado_por,creado_en) VALUES(?,?,?,?,?,?,?,?,?,?,?)',(nave,fecha.isoformat(),turno,analista,seguimiento_contaminaciones.strip(),seguimiento_pnc.strip(),limpiezas.strip(),ordenes_fallo.strip(),giro_final,st.session_state.auth['usuario'],now_iso()))
-            for linea,producto,horas,carga,obs,orden in filas:
-                exec_sql('INSERT INTO entregas_turno_detalle(entrega_id,linea,producto_descripcion,horas_trabajadas,carga_apoyo,observaciones,orden_fila) VALUES(?,?,?,?,?,?,?)',(entrega_id,linea,producto,horas,carga,obs,orden))
-            audit(st.session_state.auth['usuario'],'CREAR_ENTREGA_TURNO',f'{nave} | ID {entrega_id}')
+            entrega_id=exec_sql('INSERT INTO entregas_turno(nave,fecha,analista,turno,referencia,total_carga_datos,total_horas_trabajadas,creado_por,creado_en) VALUES(?,?,?,?,?,?,?,?,?)',(nave,fecha.isoformat(),analista,turno,referencia,total_carga,total_horas,st.session_state.auth['usuario'],now_iso()))
+            for orden,row in todas_lineas.iterrows():
+                prod=str(row['Productos / Item / descripción'] or '')
+                obs=str(row['Observaciones'] or '')
+                horas=float(row['Horas trabajadas de la línea'] or 0); carga=float(row['Carga de datos al SPAC'] or 0)
+                if prod or obs or horas or carga:
+                    exec_sql('INSERT INTO entregas_turno_lineas(entrega_id,grupo,linea,producto_descripcion,horas_trabajadas,carga_spac,observaciones,orden_fila) VALUES(?,?,?,?,?,?,?,?)',(entrega_id,row['Grupo'],row['Línea'],prod,horas,carga,obs,int(orden)))
+            todas_seg=pd.concat(seguimientos,ignore_index=True)
+            for orden,row in todas_seg.iterrows():
+                valores=[str(row[c] or '') for c in ['Registro #','Hoja física','Carga electrónica','Correo','Descripción del seguimiento']]
+                if any(v.strip() for v in valores):
+                    exec_sql('INSERT INTO entregas_turno_seguimientos(entrega_id,bloque,registro_numero,hoja_fisica,carga_electronica,correo,descripcion_seguimiento,orden_fila) VALUES(?,?,?,?,?,?,?,?)',(entrega_id,row['Bloque'],*valores,int(orden)))
+            audit(st.session_state.auth['usuario'],'CREAR_ENTREGA_TURNO',f'Nave 1 | ID {entrega_id}')
             st.session_state.entrega_nonce+=1
             st.success(f'Entrega de turno guardada correctamente: Número {entrega_id}')
             st.rerun()
@@ -851,6 +1180,8 @@ def page_auditoria(): st.title('Auditoría'); st.dataframe(read_df('SELECT * FRO
 
 def main():
     init_state(); init_db()
+    try: sync_excel_desde_db()
+    except Exception as e: st.session_state['excel_sync_error']=str(e)
     if FORCE_RESET_ADMIN: reset_admin()
     user=login()
     styles(False)
@@ -863,6 +1194,7 @@ def main():
         if page=='Inicio': page_inicio()
         elif page=='Nuevo registro': page_registro()
         elif page=='Consulta y descarga': page_consulta()
+        elif page=='Muestras de retención': page_muestras_retencion()
         elif page=='Entrega de turno': page_entrega_turno()
         elif page=='Catálogos': page_catalogos()
         elif page=='Usuarios': page_usuarios()
