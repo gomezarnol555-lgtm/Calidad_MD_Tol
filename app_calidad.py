@@ -1,4 +1,3 @@
-
 import streamlit as st
 import pandas as pd
 import sqlite3, hashlib, os, base64
@@ -392,40 +391,77 @@ def page_registro():
             volver_selector()
         st.markdown('<div class="registro-form-shell">',unsafe_allow_html=True)
         prod=read_df('SELECT * FROM productos WHERE activo=1 ORDER BY descripcion')
+        defs=read_df('SELECT * FROM defectos WHERE activo=1 ORDER BY CAST(codigo AS INTEGER)')
         opt_prod=['']+[f'{r.item} | {r.descripcion}' for r in prod.itertuples()]
+        opt_defs=['']+[f'{r.codigo} | {r.defecto}' for r in defs.itertuples()]
         with st.form(f'form_{tabla}_{nonce}', clear_on_submit=True):
-            fecha=st.date_input('Fecha',value=date.today(),key=f'fecha_{tabla}_{nonce}')
-            x1,x2,x3=st.columns(3)
-            nave=x1.selectbox('Nave',opt_blank(catalog('nave')),key=f'nave_{tabla}_{nonce}')
-            equipo=x2.text_input('Equipo en donde se tiene el hallazgo',key=f'equipo_{tabla}_{nonce}')
-            opt=x3.selectbox('ITEM',opt_prod,key=f'item_{tabla}_{nonce}')
+            a1,a2,a3=st.columns(3)
+            fecha=a1.date_input('Fecha *',value=date.today(),key=f'fecha_{tabla}_{nonce}')
+            semana=a2.number_input('Semana *',min_value=1,max_value=53,step=1,value=int(date.today().isocalendar().week),key=f'semana_{tabla}_{nonce}')
+            nave=a3.selectbox('Nave *',opt_blank(catalog('nave')),key=f'nave_{tabla}_{nonce}')
+
+            b1,b2,b3=st.columns(3)
+            opt=b1.selectbox('ITEM *',opt_prod,key=f'item_{tabla}_{nonce}')
             item=opt.split('|')[0].strip() if opt else ''
             row=prod[prod['item']==item].iloc[0] if item and not prod.empty and item in prod['item'].values else None
             producto=str(row['descripcion']) if row is not None else ''
             linea_sector=str(row['familia']) if row is not None else ''
             familia=str(row['familia']) if row is not None else ''
-            y1,y2,y3=st.columns(3)
-            y1.text_input('Producto',value=producto,key=f'producto_{tabla}_{nonce}',disabled=True)
-            y2.text_input('Línea/Sector',value=linea_sector,key=f'linea_{tabla}_{nonce}',disabled=True)
-            y3.text_input('Familia',value=familia,key=f'familia_{tabla}_{nonce}',disabled=True)
-            z1,z2,z3=st.columns(3)
-            lote=z1.text_input('Lote',key=f'lote_{tabla}_{nonce}')
-            tipo=z2.selectbox('Tipo',opt_blank(['Metal','Plástico duro','Plástico blando','Vidrio','Madera','Papel/Cartón','Cabello','Insecto','Otro']),key=f'tipo_{tabla}_{nonce}')
-            particulas=z3.number_input('# de partículas halladas',min_value=0,step=1,key=f'part_{tabla}_{nonce}')
-            desc=st.text_area('Descripción del hallazgo',key=f'desc_{tabla}_{nonce}')
-            accion=st.text_area('Acción contingente',key=f'accion_{tabla}_{nonce}')
+            lote=b2.text_input('Lote *',key=f'lote_{tabla}_{nonce}')
+            etapa=b3.selectbox('Etapa *',opt_blank(catalog('etapa')),key=f'etapa_{tabla}_{nonce}')
+
+            c1,c2,c3=st.columns(3)
+            c1.text_input('Producto',value=producto,key=f'producto_{tabla}_{nonce}',disabled=True)
+            c2.text_input('Línea/Sector *',value=linea_sector,key=f'linea_{tabla}_{nonce}',disabled=True)
+            c3.text_input('Familia',value=familia,key=f'familia_{tabla}_{nonce}',disabled=True)
+
+            d1,d2,d3=st.columns(3)
+            optd=d1.selectbox('Código / Defecto *',opt_defs,key=f'codigo_{tabla}_{nonce}')
+            codigo=optd.split('|')[0].strip() if optd else ''
+            dr=defs[defs['codigo']==codigo].iloc[0] if codigo and not defs.empty and codigo in defs['codigo'].values else None
+            categoria_inicial=str(dr['clasificacion']) if dr is not None else ''
+            d2.text_input('Categoría inicial *',value=categoria_inicial,key=f'categoria_{tabla}_{nonce}',disabled=True)
+            turno=d3.selectbox('Turno *',opt_blank(catalog('turno')),key=f'turno_{tabla}_{nonce}')
+
+            e1,e2,e3=st.columns(3)
+            supervisor=e1.selectbox('Supervisor (Responsable) *',opt_blank(catalog('supervisor')),key=f'sup_{tabla}_{nonce}')
+            analista=e2.selectbox('Analista (Persona que detecta) *',opt_blank(catalog('analista')),key=f'ana_{tabla}_{nonce}')
+            responsable=e3.selectbox('Responsable de detectar el PNC *',opt_blank(catalog('responsable_detecta')),key=f'resp_{tabla}_{nonce}')
+
+            descripcion=st.text_area('Descripción del defecto *',key=f'desc_{tabla}_{nonce}')
+            acciones=st.text_area('Acciones inmediatas *',key=f'accion_{tabla}_{nonce}')
+            f1,f2,f3=st.columns(3)
+            disposicion=f1.selectbox('Disposición *',opt_blank(catalog('disposicion')),key=f'disp_{tabla}_{nonce}')
+            cantidad=f2.number_input('Cantidad observada (kg) *',min_value=0.0,step=0.1,key=f'cantidad_{tabla}_{nonce}')
+            status=f3.selectbox('Status *',opt_blank(catalog('status')),key=f'status_{tabla}_{nonce}')
+
+            # Campos particulares del registro, conservados para no modificar su lógica operativa.
+            g1,g2,g3=st.columns(3)
+            equipo=g1.text_input('Equipo en donde se tiene el hallazgo',key=f'equipo_{tabla}_{nonce}')
+            tipo=g2.selectbox('Tipo',opt_blank(['Metal','Plástico duro','Plástico blando','Vidrio','Madera','Papel/Cartón','Cabello','Insecto','Otro']),key=f'tipo_{tabla}_{nonce}')
+            particulas=g3.number_input('# de partículas halladas',min_value=0,step=1,key=f'part_{tabla}_{nonce}')
             investigacion=st.text_area('Investigación del origen',key=f'inv_{tabla}_{nonce}')
-            q1,q2=st.columns(2)
-            analista=q1.selectbox('Analista que detecta',opt_blank(catalog('analista')),key=f'ana_{tabla}_{nonce}')
-            supervisor=q2.selectbox('Supervisor responsable',opt_blank(catalog('supervisor')),key=f'sup_{tabla}_{nonce}')
             evitar=st.text_area('Acciones a realizar para evitar la incidencia',key=f'evitar_{tabla}_{nonce}')
             ok=st.form_submit_button('Guardar registro')
         if ok:
-            rid=exec_sql(f'INSERT INTO {tabla}(dia,mes,anio,nave,linea_sector,familia,equipo_hallazgo,item,producto,lote,descripcion_hallazgo,tipo,particulas_halladas,accion_contingente,investigacion_origen,analista_detecta,supervisor_responsable,acciones_evitar_incidencia,creado_por,creado_en) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',(fecha.day,fecha.month,fecha.year,nave,linea_sector,familia,equipo,item,producto,lote,desc,tipo,int(particulas),accion,investigacion,analista,supervisor,evitar,st.session_state.auth['usuario'],now_iso()))
-            audit(st.session_state.auth['usuario'],audit_action,f'ID {rid}')
-            limpiar_form()
-            st.session_state.flash_registro_guardado=f'Registro guardado correctamente: Número {rid}'
-            st.rerun()
+            obligatorios = {
+                'Línea/Sector': linea_sector, 'Nave': nave, 'ITEM': item, 'Lote': lote,
+                'Etapa': etapa, 'Código': codigo, 'Semana': semana, 'Turno': turno,
+                'Fecha': fecha, 'Supervisor': supervisor, 'Analista': analista,
+                'Responsable de detectar el PNC': responsable,
+                'Descripción del defecto': descripcion, 'Acciones inmediatas': acciones,
+                'Disposición': disposicion, 'Cantidad observada': cantidad,
+                'Status': status, 'Categoría inicial': categoria_inicial
+            }
+            faltantes=[nombre for nombre,valor in obligatorios.items() if valor is None or (isinstance(valor,str) and not valor.strip()) or (nombre=='Cantidad observada' and float(valor)<=0)]
+            if faltantes:
+                st.error('Completa los siguientes campos obligatorios: ' + ', '.join(faltantes) + '.')
+            else:
+                rid=exec_sql(f'''INSERT INTO {tabla}(dia,mes,anio,nave,linea_sector,familia,equipo_hallazgo,item,producto,lote,descripcion_hallazgo,tipo,particulas_halladas,accion_contingente,investigacion_origen,analista_detecta,supervisor_responsable,acciones_evitar_incidencia,creado_por,creado_en,etapa,codigo_defecto,semana,turno,responsable_detecta,acciones_inmediatas,disposicion,cantidad_observada,status,categoria_inicial) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)''',(fecha.day,fecha.month,fecha.year,nave,linea_sector,familia,equipo,item,producto,lote,descripcion,tipo,int(particulas),acciones,investigacion,analista,supervisor,evitar,st.session_state.auth['usuario'],now_iso(),etapa,codigo,int(semana),turno,responsable,acciones,disposicion,float(cantidad),status,categoria_inicial))
+                audit(st.session_state.auth['usuario'],audit_action,f'ID {rid}')
+                limpiar_form()
+                st.session_state.flash_registro_guardado=f'Registro guardado correctamente: Número {rid}'
+                st.rerun()
         st.markdown('</div></div>',unsafe_allow_html=True)
     def form_pnc():
         nonce=st.session_state.form_nonce
