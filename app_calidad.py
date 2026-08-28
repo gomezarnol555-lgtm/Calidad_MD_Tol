@@ -140,20 +140,17 @@ def init_db():
     cur.execute("CREATE TABLE IF NOT EXISTS muestras_15_meses(id INTEGER PRIMARY KEY AUTOINCREMENT, item TEXT NOT NULL, descripcion TEXT NOT NULL, lote TEXT NOT NULL, destino TEXT NOT NULL, numero_muestras REAL NOT NULL DEFAULT 0, numero_corrugado REAL NOT NULL DEFAULT 0, responsable TEXT NOT NULL, observaciones TEXT, creado_por TEXT, creado_en TEXT, actualizado_por TEXT, actualizado_en TEXT)")
     cur.execute("CREATE TABLE IF NOT EXISTS muestras_18_meses(id INTEGER PRIMARY KEY AUTOINCREMENT, item TEXT NOT NULL, descripcion TEXT NOT NULL, lote TEXT NOT NULL, destino TEXT NOT NULL, numero_muestras REAL NOT NULL DEFAULT 0, numero_corrugado REAL NOT NULL DEFAULT 0, responsable TEXT NOT NULL, observaciones TEXT, creado_por TEXT, creado_en TEXT, actualizado_por TEXT, actualizado_en TEXT)")
     cur.execute("CREATE TABLE IF NOT EXISTS muestras_24_meses(id INTEGER PRIMARY KEY AUTOINCREMENT, item TEXT NOT NULL, descripcion TEXT NOT NULL, lote TEXT NOT NULL, destino TEXT NOT NULL, numero_muestras REAL NOT NULL DEFAULT 0, numero_corrugado REAL NOT NULL DEFAULT 0, responsable TEXT NOT NULL, observaciones TEXT, creado_por TEXT, creado_en TEXT, actualizado_por TEXT, actualizado_en TEXT)")
-    cur.execute("CREATE TABLE IF NOT EXISTS entregas_turno(id INTEGER PRIMARY KEY AUTOINCREMENT, nave TEXT, fecha TEXT, analista TEXT, turno TEXT, referencia TEXT, total_carga_datos REAL DEFAULT 0, total_horas_trabajadas REAL DEFAULT 0, creado_por TEXT, creado_en TEXT, actualizado_por TEXT, actualizado_en TEXT)")
+    cur.execute("CREATE TABLE IF NOT EXISTS entregas_turno(id INTEGER PRIMARY KEY AUTOINCREMENT, nave TEXT, fecha TEXT, analista TEXT, turno TEXT, referencia TEXT, total_carga_datos REAL DEFAULT 0, total_horas_trabajadas REAL DEFAULT 0, creado_por TEXT, creado_en TEXT)")
     cur.execute("CREATE TABLE IF NOT EXISTS entregas_turno_lineas(id INTEGER PRIMARY KEY AUTOINCREMENT, entrega_id INTEGER, grupo TEXT, linea TEXT, producto_descripcion TEXT, horas_trabajadas REAL DEFAULT 0, carga_spac REAL DEFAULT 0, observaciones TEXT, orden_fila INTEGER DEFAULT 0)")
     cur.execute("CREATE TABLE IF NOT EXISTS entregas_turno_seguimientos(id INTEGER PRIMARY KEY AUTOINCREMENT, entrega_id INTEGER, bloque TEXT, registro_numero TEXT, hoja_fisica TEXT, carga_electronica TEXT, correo TEXT, descripcion_seguimiento TEXT, orden_fila INTEGER DEFAULT 0)")
-    # Compatibilidad con bases existentes: agrega cualquier columna faltante sin borrar información.
     migraciones_entrega={
-        'entregas_turno':{'nave':'TEXT','fecha':'TEXT','analista':'TEXT','turno':'TEXT','referencia':'TEXT','total_carga_datos':'REAL DEFAULT 0','total_horas_trabajadas':'REAL DEFAULT 0','creado_por':'TEXT','creado_en':'TEXT','actualizado_por':'TEXT','actualizado_en':'TEXT'},
-        'entregas_turno_lineas':{'entrega_id':'INTEGER','grupo':'TEXT','linea':'TEXT','producto_descripcion':'TEXT','horas_trabajadas':'REAL DEFAULT 0','carga_spac':'REAL DEFAULT 0','observaciones':'TEXT','orden_fila':'INTEGER DEFAULT 0'},
-        'entregas_turno_seguimientos':{'entrega_id':'INTEGER','bloque':'TEXT','registro_numero':'TEXT','hoja_fisica':'TEXT','carga_electronica':'TEXT','correo':'TEXT','descripcion_seguimiento':'TEXT','orden_fila':'INTEGER DEFAULT 0'}
-    }
+      'entregas_turno':{'nave':'TEXT','fecha':'TEXT','analista':'TEXT','turno':'TEXT','referencia':'TEXT','total_carga_datos':'REAL DEFAULT 0','total_horas_trabajadas':'REAL DEFAULT 0','creado_por':'TEXT','creado_en':'TEXT'},
+      'entregas_turno_lineas':{'entrega_id':'INTEGER','grupo':'TEXT','linea':'TEXT','producto_descripcion':'TEXT','horas_trabajadas':'REAL DEFAULT 0','carga_spac':'REAL DEFAULT 0','observaciones':'TEXT','orden_fila':'INTEGER DEFAULT 0'},
+      'entregas_turno_seguimientos':{'entrega_id':'INTEGER','bloque':'TEXT','registro_numero':'TEXT','hoja_fisica':'TEXT','carga_electronica':'TEXT','correo':'TEXT','descripcion_seguimiento':'TEXT','orden_fila':'INTEGER DEFAULT 0'}}
     for tabla,columnas in migraciones_entrega.items():
         existentes={r[1] for r in cur.execute(f'PRAGMA table_info({tabla})').fetchall()}
         for columna,tipo_sql in columnas.items():
-            if columna not in existentes:
-                cur.execute(f'ALTER TABLE {tabla} ADD COLUMN {columna} {tipo_sql}')
+            if columna not in existentes: cur.execute(f'ALTER TABLE {tabla} ADD COLUMN {columna} {tipo_sql}')
     cur.execute("CREATE TABLE IF NOT EXISTS adjuntos(id INTEGER PRIMARY KEY AUTOINCREMENT, registro_id INTEGER, folio TEXT, nombre_original TEXT, ruta_archivo TEXT, tipo_archivo TEXT, subido_por TEXT, subido_en TEXT)")
     cur.execute("CREATE TABLE IF NOT EXISTS auditoria(id INTEGER PRIMARY KEY AUTOINCREMENT, usuario TEXT, accion TEXT, detalle TEXT, fecha_hora TEXT)")
     for item,desc,cliente,familia in SEED_PRODUCTS: cur.execute("INSERT OR IGNORE INTO productos(item,descripcion,cliente,familia,activo) VALUES(?,?,?,?,1)",(item,desc,cliente,familia))
@@ -884,12 +881,12 @@ def consulta_muestras_retencion():
 def page_entrega_turno():
     referencia='RE-CAL01-2301-00002-2013 Rev. 1'
     grupos={
-        'MD - Car. Duros - FABRIMA':['MD - Car. Duros - FABRIMA'],
-        'BON O BON':['MD - BOB - CENTRO DE MASA','MD - BOB - HORNO','MD - BOB - DEPOSITADORA','MD - BOB - TROQUEL','MD - BOB - BAÑADORA 1','MD - BOB - BAÑADORA 2','MD - BOB - FLOW PACK 1','MD - BOB - FLOW PACK 2','MD - BOB - FLOW PACK 3','MD - BOB - FLOW PACK 4','MD - BOB - FLOW PACK 5','MD - BOB - HIGH DREAM'],
-        'DUVALIN':['MD-CIMI 1','MD-CIMI 2','MD-TETRA','FISICOQUIMICOS MD CREMAS PMX1','FISICOQUIMICOS MD CREMAS PMX2','FISICOQUIMICOS MD CREMAS PMX3','FISICOQUIMICOS MD CREMAS PMX4','FISICOQUIMICOS CIMIS Y TETRA'],
-        'CAVE1000 / MOLDEO':['MD - CAVE1000','MD MOLDEO SPS CV1000','MD MOLDEO CV1000 ENVASADO','MD MOLDEO DELTA ENVOLTURA','MD MOLDEO JIN HONG ENVOLTURA','MD MOLDEO MC'],
-        'OBLEAS':['MD - OBLEAS CENTRO DE MASAS','MD - OBLEA - HORNO','MD - OBLEA - DEPOSITADORA','MD - OBLEA - MESA DE CORTE','MD - OBLEA - BAÑADORA 1 (CARAMELO Y CEREAL)','MD - OBLEA - BAÑADORA 2 (COMPOUND)','MD OBLEAS SPS','MD-BELCA','MD-CTPACK'],
-        'CONCAS':['MD COBERTURAS CONCA L1','MD COBERTURAS CONCA L2','MD COBERTURAS CONCA L3','MD COBERTURAS CONCA NL1','MD COBERTURAS CONCA NL2','MD COBERTURAS CONCA NL3','MD COBERTURAS CONCA NL4','MD COBERTURAS CONCA NL5','MD COBERTURAS CONCA NL6','MD-PIPA','MD- TANQUE 09/54']}
+      'MD - Car. Duros - FABRIMA':['MD - Car. Duros - FABRIMA'],
+      'BON O BON':['MD - BOB - CENTRO DE MASA','MD - BOB - HORNO','MD - BOB - DEPOSITADORA','MD - BOB - TROQUEL','MD - BOB - BAÑADORA 1','MD - BOB - BAÑADORA 2','MD - BOB - FLOW PACK 1','MD - BOB - FLOW PACK 2','MD - BOB - FLOW PACK 3','MD - BOB - FLOW PACK 4','MD - BOB - FLOW PACK 5','MD - BOB - HIGH DREAM'],
+      'DUVALIN':['MD-CIMI 1','MD-CIMI 2','MD-TETRA','FISICOQUIMICOS MD CREMAS PMX1','FISICOQUIMICOS MD CREMAS PMX2','FISICOQUIMICOS MD CREMAS PMX3','FISICOQUIMICOS MD CREMAS PMX4','FISICOQUIMICOS CIMIS Y TETRA'],
+      'CAVE1000 / MOLDEO':['MD - CAVE1000','MD MOLDEO SPS CV1000','MD MOLDEO CV1000 ENVASADO','MD MOLDEO DELTA ENVOLTURA','MD MOLDEO JIN HONG ENVOLTURA','MD MOLDEO MC'],
+      'OBLEAS':['MD - OBLEAS CENTRO DE MASAS','MD - OBLEA - HORNO','MD - OBLEA - DEPOSITADORA','MD - OBLEA - MESA DE CORTE','MD - OBLEA - BAÑADORA 1 (CARAMELO Y CEREAL)','MD - OBLEA - BAÑADORA 2 (COMPOUND)','MD OBLEAS SPS','MD-BELCA','MD-CTPACK'],
+      'CONCAS':['MD COBERTURAS CONCA L1','MD COBERTURAS CONCA L2','MD COBERTURAS CONCA L3','MD COBERTURAS CONCA NL1','MD COBERTURAS CONCA NL2','MD COBERTURAS CONCA NL3','MD COBERTURAS CONCA NL4','MD COBERTURAS CONCA NL5','MD COBERTURAS CONCA NL6','MD-PIPA','MD- TANQUE 09/54']}
     if 'entrega_nave' not in st.session_state: st.session_state.entrega_nave=None
     if 'entrega_nonce' not in st.session_state: st.session_state.entrega_nonce=0
     if st.session_state.entrega_nave is None:
@@ -898,56 +895,51 @@ def page_entrega_turno():
         for col,nave in zip(cols,['Nave 1','Nave 2','Nave 3']):
             with col:
                 st.markdown('<span class="registro-card-slot"></span>',unsafe_allow_html=True)
-                if st.button(f'🏭  {nave}\n\nEntrega y continuidad de actividades de Calidad Procesos.\n\nAbrir registro',key=f'entrega_{nave}'):
+                if st.button(f'🏭  {nave}\n\nEntrega y continuidad de actividades.\n\nAbrir registro',key=f'entrega_{nave}'):
                     st.session_state.entrega_nave=nave; st.rerun()
         return
     nave=st.session_state.entrega_nave
-    if st.button('← Cambiar nave',key='entrega_volver'):
-        st.session_state.entrega_nave=None; st.rerun()
-    if nave!='Nave 1':
-        st.markdown(f'<div class="registro-full-panel"><div class="registro-pill">Entrega de turno</div><div class="registro-full-title">🏭 {nave}</div><div class="registro-full-subtitle">Ventana preparada para incorporar el formato específico.</div></div>',unsafe_allow_html=True); return
-    nonce=st.session_state.entrega_nonce
+    if st.button('← Cambiar nave',key='entrega_volver'): st.session_state.entrega_nave=None; st.rerun()
+    if nave!='Nave 1': st.info(f'La ventana {nave} está preparada para incorporar su formato específico.'); return
+    n=st.session_state.entrega_nonce
     st.markdown(f'<div class="registro-full-panel"><div class="registro-pill">{referencia}</div><div class="registro-full-title">ENTREGA DE TURNO CALIDAD PROCESOS</div><div class="registro-full-subtitle">NAVE 1</div>',unsafe_allow_html=True)
-    a,b,c=st.columns([2,1,1])
-    analista=a.selectbox('ANALISTA *',opt_blank(catalog('analista')),key=f'et_analista_{nonce}')
-    fecha=b.date_input('Fecha *',value=date.today(),key=f'et_fecha_{nonce}')
-    turno=c.selectbox('Turno *',opt_blank(catalog('turno')),key=f'et_turno_{nonce}')
-    tablas=[]; productos_grupo={}
+    a,b,c=st.columns([2,1,1]); analista=a.selectbox('ANALISTA *',opt_blank(catalog('analista')),key=f'et_a_{n}'); fecha=b.date_input('Fecha *',date.today(),key=f'et_f_{n}'); turno=c.selectbox('Turno *',opt_blank(catalog('turno')),key=f'et_t_{n}')
     st.markdown('### Líneas y procesos')
-    for idx,(grupo,lineas) in enumerate(grupos.items()):
-        st.markdown(f'#### {grupo}')
-        productos_grupo[grupo]=st.text_input('Producto / Item / descripción',key=f'et_producto_grupo_{idx}_{nonce}',placeholder=f'Escribe el producto correspondiente a {grupo}')
-        base=pd.DataFrame({'Línea':lineas,'Horas trabajadas de la línea':[0.0]*len(lineas),'Carga de datos al SPAC':[0.0]*len(lineas),'Observaciones':['']*len(lineas)})
-        ed=st.data_editor(base,use_container_width=True,hide_index=True,num_rows='fixed',key=f'et_lineas_{idx}_{nonce}',disabled=['Línea'],column_config={'Horas trabajadas de la línea':st.column_config.NumberColumn('Horas trabajadas de la línea',min_value=0.0,step=1.0,format='%.2f'),'Carga de datos al SPAC':st.column_config.NumberColumn('Carga de datos al SPAC',min_value=0.0,step=1.0,format='%.2f'),'Observaciones':st.column_config.TextColumn('Observaciones',width='large')})
-        ed.insert(0,'Grupo',grupo); tablas.append(ed)
-    st.markdown('### Seguimientos')
-    seguimientos=[]
-    for idx,bloque in enumerate(['Seguimiento a Contaminaciones','Seguimiento a PNC´S','Limpiezas','Seguimiento a ORDENES DE FALLO','GIRO / JUNTA DE EQUIPO']):
-        with st.expander(bloque,expanded=idx<2):
-            base=pd.DataFrame([{'Registro #':'','Hoja física':'','Carga electrónica':'','Correo':'','Descripción del seguimiento':''} for _ in range(4 if idx<2 else 3)])
-            ed=st.data_editor(base,use_container_width=True,hide_index=True,num_rows='dynamic',key=f'et_seg_{idx}_{nonce}',column_config={'Hoja física':st.column_config.SelectboxColumn('Hoja física',options=['','Sí','No','N/A']),'Carga electrónica':st.column_config.SelectboxColumn('Carga electrónica',options=['','Sí','No','N/A']),'Correo':st.column_config.SelectboxColumn('Correo',options=['','Sí','No','N/A']),'Descripción del seguimiento':st.column_config.TextColumn('Descripción del seguimiento',width='large')})
-            ed.insert(0,'Bloque',bloque); seguimientos.append(ed)
-    todas=pd.concat(tablas,ignore_index=True)
-    total_horas=float(pd.to_numeric(todas['Horas trabajadas de la línea'],errors='coerce').fillna(0).sum())
-    total_carga=float(pd.to_numeric(todas['Carga de datos al SPAC'],errors='coerce').fillna(0).sum())
-    t1,t2=st.columns(2);t1.metric('TOTAL DE CARGA DE DATOS',f'{total_carga:,.2f}');t2.metric('TOTAL DE HORAS TRABAJADAS DE LA LÍNEA',f'{total_horas:,.2f}')
-    if st.button('Guardar entrega de turno',type='primary',key=f'et_guardar_{nonce}'):
-        faltantes=[]
-        if not analista: faltantes.append('Analista')
-        if not turno: faltantes.append('Turno')
-        if faltantes: st.error('Completa los siguientes campos obligatorios: '+', '.join(faltantes)+'.')
+    st.caption('Producto es un único campo libre por proceso. Los botones − y + cambian horas y carga de uno en uno; también puedes escribir decimales directamente.')
+    filas=[]
+    for gi,(grupo,lineas) in enumerate(grupos.items()):
+        st.markdown(f'<div style="background:#062C36;color:white;padding:.55rem .8rem;border-radius:12px 12px 0 0;font-weight:900">{grupo}</div>',unsafe_allow_html=True)
+        producto=st.text_input('Producto / Item / descripción',key=f'et_prod_{gi}_{n}',placeholder='Escritura libre, no ligado a catálogos')
+        h=st.columns([2.2,1,1,2.2]); h[0].markdown('**Línea**');h[1].markdown('**Horas trabajadas**');h[2].markdown('**Carga al SPAC**');h[3].markdown('**Observaciones**')
+        for li,linea in enumerate(lineas):
+            cols=st.columns([2.2,1,1,2.2])
+            cols[0].text_input('Línea',linea,disabled=True,key=f'et_l_{gi}_{li}_{n}',label_visibility='collapsed')
+            horas=cols[1].number_input('Horas',min_value=0.0,step=1.0,format='%.2f',key=f'et_h_{gi}_{li}_{n}',label_visibility='collapsed')
+            carga=cols[2].number_input('Carga',min_value=0.0,step=1.0,format='%.2f',key=f'et_c_{gi}_{li}_{n}',label_visibility='collapsed')
+            obs=cols[3].text_input('Observaciones',key=f'et_o_{gi}_{li}_{n}',label_visibility='collapsed')
+            filas.append((grupo,linea,producto,float(horas),float(carga),obs,len(filas)))
+        st.markdown('<div style="height:.7rem"></div>',unsafe_allow_html=True)
+    seguimientos=[]; st.markdown('### Seguimientos')
+    for bi,bloque in enumerate(['Seguimiento a Contaminaciones','Seguimiento a PNC´S','Limpiezas','Seguimiento a ORDENES DE FALLO','GIRO / JUNTA DE EQUIPO']):
+        with st.expander(bloque,expanded=bi<2):
+            base=pd.DataFrame([{'Registro #':'','Hoja física':'','Carga electrónica':'','Correo':'','Descripción del seguimiento':''} for _ in range(3)])
+            ed=st.data_editor(base,num_rows='dynamic',use_container_width=True,hide_index=True,key=f'et_s_{bi}_{n}',column_config={'Hoja física':st.column_config.SelectboxColumn(options=['','Sí','No','N/A']),'Carga electrónica':st.column_config.SelectboxColumn(options=['','Sí','No','N/A']),'Correo':st.column_config.SelectboxColumn(options=['','Sí','No','N/A'])}); seguimientos.append((bloque,ed))
+    total_h=sum(x[3] for x in filas); total_c=sum(x[4] for x in filas)
+    m1,m2=st.columns(2);m1.metric('TOTAL DE CARGA DE DATOS',f'{total_c:.2f}');m2.metric('TOTAL DE HORAS TRABAJADAS',f'{total_h:.2f}')
+    if st.button('Guardar entrega de turno',type='primary',key=f'et_g_{n}'):
+        faltan=[]
+        if not analista: faltan.append('Analista')
+        if not turno: faltan.append('Turno')
+        if faltan: st.error('Completa: '+', '.join(faltan)+'.')
         else:
-            entrega_id=exec_sql('INSERT INTO entregas_turno(nave,fecha,analista,turno,referencia,total_carga_datos,total_horas_trabajadas,creado_por,creado_en) VALUES(?,?,?,?,?,?,?,?,?)',(nave,fecha.isoformat(),analista,turno,referencia,total_carga,total_horas,st.session_state.auth['usuario'],now_iso()))
-            for orden,row in todas.iterrows():
-                horas=float(row['Horas trabajadas de la línea'] or 0); carga=float(row['Carga de datos al SPAC'] or 0); obs=str(row['Observaciones'] or '')
-                producto=productos_grupo.get(row['Grupo'],'').strip()
-                if producto or obs or horas or carga:
-                    exec_sql('INSERT INTO entregas_turno_lineas(entrega_id,grupo,linea,producto_descripcion,horas_trabajadas,carga_spac,observaciones,orden_fila) VALUES(?,?,?,?,?,?,?,?)',(entrega_id,row['Grupo'],row['Línea'],producto,horas,carga,obs,int(orden)))
-            for orden,row in pd.concat(seguimientos,ignore_index=True).iterrows():
-                vals=[str(row[c] or '') for c in ['Registro #','Hoja física','Carga electrónica','Correo','Descripción del seguimiento']]
-                if any(v.strip() for v in vals): exec_sql('INSERT INTO entregas_turno_seguimientos(entrega_id,bloque,registro_numero,hoja_fisica,carga_electronica,correo,descripcion_seguimiento,orden_fila) VALUES(?,?,?,?,?,?,?,?)',(entrega_id,row['Bloque'],*vals,int(orden)))
-            audit(st.session_state.auth['usuario'],'CREAR_ENTREGA_TURNO',f'Nave 1 | ID {entrega_id}')
-            st.session_state.entrega_nonce+=1;st.success(f'Entrega de turno guardada correctamente: Número {entrega_id}');st.rerun()
+            eid=exec_sql('INSERT INTO entregas_turno(nave,fecha,analista,turno,referencia,total_carga_datos,total_horas_trabajadas,creado_por,creado_en) VALUES(?,?,?,?,?,?,?,?,?)',(nave,fecha.isoformat(),analista,turno,referencia,total_c,total_h,st.session_state.auth['usuario'],now_iso()))
+            for grupo,linea,producto,horas,carga,obs,orden in filas:
+                if producto.strip() or horas or carga or obs.strip(): exec_sql('INSERT INTO entregas_turno_lineas(entrega_id,grupo,linea,producto_descripcion,horas_trabajadas,carga_spac,observaciones,orden_fila) VALUES(?,?,?,?,?,?,?,?)',(eid,grupo,linea,producto.strip(),horas,carga,obs.strip(),orden))
+            for bloque,df in seguimientos:
+                for orden,row in df.iterrows():
+                    vals=[str(row.get(c,'') or '') for c in ['Registro #','Hoja física','Carga electrónica','Correo','Descripción del seguimiento']]
+                    if any(v.strip() for v in vals): exec_sql('INSERT INTO entregas_turno_seguimientos(entrega_id,bloque,registro_numero,hoja_fisica,carga_electronica,correo,descripcion_seguimiento,orden_fila) VALUES(?,?,?,?,?,?,?,?)',(eid,bloque,*vals,int(orden)))
+            audit(st.session_state.auth['usuario'],'CREAR_ENTREGA_TURNO',f'Nave 1 | ID {eid}');st.session_state.entrega_nonce+=1;st.success(f'Entrega guardada: Número {eid}');st.rerun()
     st.markdown('</div>',unsafe_allow_html=True)
 
 def admin_required():
