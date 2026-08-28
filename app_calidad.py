@@ -75,6 +75,23 @@ def init_db():
     for col in ['categoria_inicial_pnc','categoria_final_pnc']:
         try: cur.execute(f'ALTER TABLE pnc_registros ADD COLUMN {col} TEXT')
         except sqlite3.OperationalError: pass
+    cur.execute("""CREATE TABLE IF NOT EXISTS muestras_retencion(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        periodo_codigo TEXT NOT NULL,
+        periodo_nombre TEXT NOT NULL,
+        item TEXT NOT NULL,
+        descripcion TEXT NOT NULL,
+        lote TEXT NOT NULL,
+        destino TEXT NOT NULL,
+        numero_muestras REAL NOT NULL DEFAULT 0,
+        numero_corrugado REAL NOT NULL DEFAULT 0,
+        responsable TEXT NOT NULL,
+        observaciones TEXT,
+        creado_por TEXT,
+        creado_en TEXT,
+        actualizado_por TEXT,
+        actualizado_en TEXT
+    )""")
     cur.execute("CREATE TABLE IF NOT EXISTS adjuntos(id INTEGER PRIMARY KEY AUTOINCREMENT, registro_id INTEGER, folio TEXT, nombre_original TEXT, ruta_archivo TEXT, tipo_archivo TEXT, subido_por TEXT, subido_en TEXT)")
     cur.execute("CREATE TABLE IF NOT EXISTS auditoria(id INTEGER PRIMARY KEY AUTOINCREMENT, usuario TEXT, accion TEXT, detalle TEXT, fecha_hora TEXT)")
     for item,desc,cliente,familia in SEED_PRODUCTS: cur.execute("INSERT OR IGNORE INTO productos(item,descripcion,cliente,familia,activo) VALUES(?,?,?,?,1)",(item,desc,cliente,familia))
@@ -324,6 +341,7 @@ def left_menu():
     menu_button('Inicio','🏠 Inicio','🏠')
     menu_button('Nuevo registro','📝 Nuevo registro','📝')
     menu_button('Consulta y descarga','📊 Consulta y descarga','📊')
+    menu_button('Muestras de retención','🧪 Muestras de retención','🧪')
     if is_dev():
         menu_button('Catálogos','🧩 Catálogos','🧩')
         menu_button('Usuarios','👤 Usuarios','👤')
@@ -668,6 +686,143 @@ def page_consulta():
             st.markdown(f'### Registro seleccionado: Número {selected}')
             edit_record('ddm_rx_registros','ddm',selected)
             delete_confirm('ddm_rx_registros','ddm','ELIMINAR_DDM_RX',selected)
+def page_muestras_retencion():
+    st.markdown('<div class="home-hero"><div class="home-hero-title">Muestras de retención</div></div>',unsafe_allow_html=True)
+    st.caption('Captura, consulta, edita o elimina muestras de retención por periodo.')
+
+    periodos=[
+        ('10M','10 Meses'),
+        ('12MA','12 Meses Alérgeno'),
+        ('12MD1','12 Meses Duvalin'),
+        ('12MD2','12 Meses Duvalin'),
+        ('15M','15 Meses'),
+        ('18M','18 Meses'),
+        ('24M','24 Meses'),
+    ]
+    productos=read_df('SELECT item,descripcion FROM productos WHERE activo=1 ORDER BY descripcion')
+    opciones_producto=['']+[f'{r.item} | {r.descripcion}' for r in productos.itertuples()]
+    responsables=opt_blank(catalog('analista'))
+
+    def producto_por_item(item):
+        coincidencia=productos[productos['item'].astype(str)==str(item)]
+        return str(coincidencia.iloc[0]['descripcion']) if not coincidencia.empty else ''
+
+    def opcion_producto(item):
+        return next((o for o in opciones_producto if o and o.split('|')[0].strip()==str(item)), '')
+
+    def limpiar_estado(codigo):
+        st.session_state.pop(f'ret_edit_id_{codigo}',None)
+        st.session_state[f'ret_nonce_{codigo}']=st.session_state.get(f'ret_nonce_{codigo}',0)+1
+
+    tabs=st.tabs([nombre for _,nombre in periodos])
+    for tab,(codigo,nombre) in zip(tabs,periodos):
+        with tab:
+            st.markdown(f'### {nombre}')
+            datos=read_df('SELECT * FROM muestras_retencion WHERE periodo_codigo=? ORDER BY id DESC',(codigo,))
+            if not datos.empty:
+                vista=datos[['id','item','descripcion','lote','destino','numero_muestras','numero_corrugado','responsable','observaciones']].rename(columns={
+                    'id':'N°','item':'ITEM','descripcion':'Descripción','lote':'Lote','destino':'Destino',
+                    'numero_muestras':'# De muestras','numero_corrugado':'# Corrugado',
+                    'responsable':'Responsable','observaciones':'Observaciones'
+                })
+                st.dataframe(vista,use_container_width=True,hide_index=True)
+                opciones_registro=['']+[f"{int(r.id)} | {r.item} | {r.lote}" for r in datos.itertuples()]
+                seleccionado=st.selectbox('Selecciona un registro para editar o eliminar',opciones_registro,key=f'ret_select_{codigo}')
+                if seleccionado:
+                    registro_id=int(seleccionado.split('|')[0].strip())
+                    c_editar,c_eliminar=st.columns(2)
+                    if c_editar.button('✏️ Editar registro',key=f'ret_edit_btn_{codigo}_{registro_id}'):
+                        st.session_state[f'ret_edit_id_{codigo}']=registro_id
+                        st.rerun()
+                    if c_eliminar.button('🗑️ Eliminar registro',key=f'ret_del_btn_{codigo}_{registro_id}'):
+                        st.session_state[f'ret_confirm_del_{codigo}']=registro_id
+                    if st.session_state.get(f'ret_confirm_del_{codigo}')==registro_id:
+                        st.warning(f'Confirma la eliminación del registro N° {registro_id}.')
+                        d1,d2=st.columns(2)
+                        if d1.button('Sí, eliminar definitivamente',key=f'ret_del_ok_{codigo}_{registro_id}'):
+                            exec_sql('DELETE FROM muestras_retencion WHERE id=?',(registro_id,))
+                            reset_autoincrement('muestras_retencion')
+                            audit(st.session_state.auth['usuario'],'ELIMINAR_MUESTRA_RETENCION',f'Periodo {nombre} | ID {registro_id}')
+                            st.session_state.pop(f'ret_confirm_del_{codigo}',None)
+                            limpiar_estado(codigo)
+                            st.rerun()
+                        if d2.button('Cancelar',key=f'ret_del_cancel_{codigo}_{registro_id}'):
+                            st.session_state.pop(f'ret_confirm_del_{codigo}',None)
+                            st.rerun()
+            else:
+                st.info('No hay registros para este periodo.')
+
+            edit_id=st.session_state.get(f'ret_edit_id_{codigo}')
+            original={}
+            if edit_id:
+                df_original=read_df('SELECT * FROM muestras_retencion WHERE id=? AND periodo_codigo=?',(edit_id,codigo))
+                if not df_original.empty:
+                    original=df_original.iloc[0].to_dict()
+                else:
+                    limpiar_estado(codigo)
+                    st.rerun()
+
+            titulo_form=f'Editar registro N° {edit_id}' if edit_id else 'Nuevo registro'
+            st.markdown(f'#### {titulo_form}')
+            nonce=st.session_state.get(f'ret_nonce_{codigo}',0)
+            pref=f'ret_{codigo}_{edit_id or "new"}_{nonce}'
+            item_original=str(original.get('item') or '')
+            opcion_original=opcion_producto(item_original)
+
+            # ITEM fuera del formulario para refrescar inmediatamente la descripción.
+            item_opcion=st.selectbox('ITEM *',opciones_producto,index=idx_or_zero(opciones_producto,opcion_original),key=f'{pref}_item')
+            item=item_opcion.split('|')[0].strip() if item_opcion else ''
+            descripcion=producto_por_item(item)
+            st.text_input('Descripción',value=descripcion,disabled=True)
+
+            with st.form(f'{pref}_form'):
+                c1,c2=st.columns(2)
+                lote=c1.text_input('Lote *',value=str(original.get('lote') or ''))
+                destinos=['','Nacional','Exportación']
+                destino_actual=str(original.get('destino') or '')
+                destino=c2.selectbox('Destino *',destinos,index=idx_or_zero(destinos,destino_actual))
+                c3,c4=st.columns(2)
+                numero_muestras=c3.number_input('# De muestras *',min_value=0.0,step=1.0,format='%.2f',value=float(original.get('numero_muestras') or 0))
+                numero_corrugado=c4.number_input('# Corrugado *',min_value=0.0,step=1.0,format='%.2f',value=float(original.get('numero_corrugado') or 0))
+                responsable_actual=str(original.get('responsable') or '')
+                opciones_responsable=list(responsables)
+                if responsable_actual and responsable_actual not in opciones_responsable:
+                    opciones_responsable.append(responsable_actual)
+                responsable=st.selectbox('Responsable *',opciones_responsable,index=idx_or_zero(opciones_responsable,responsable_actual))
+                observaciones=st.text_area('Observaciones',value=str(original.get('observaciones') or ''))
+                guardar=st.form_submit_button('Guardar cambios' if edit_id else 'Guardar registro',type='primary')
+                cancelar=st.form_submit_button('Cancelar edición') if edit_id else False
+
+            if cancelar:
+                limpiar_estado(codigo)
+                st.rerun()
+
+            if guardar:
+                obligatorios={
+                    'ITEM':item,'Descripción':descripcion,'Lote':lote,'Destino':destino,
+                    '# De muestras':numero_muestras,'# Corrugado':numero_corrugado,
+                    'Responsable':responsable
+                }
+                faltantes=[campo for campo,valor in obligatorios.items() if valor is None or (isinstance(valor,str) and not valor.strip()) or (campo in ['# De muestras','# Corrugado'] and float(valor)<=0)]
+                if faltantes:
+                    st.error('Completa los siguientes campos obligatorios: '+', '.join(faltantes)+'.')
+                elif edit_id:
+                    exec_sql('UPDATE muestras_retencion SET item=?,descripcion=?,lote=?,destino=?,numero_muestras=?,numero_corrugado=?,responsable=?,observaciones=?,actualizado_por=?,actualizado_en=? WHERE id=? AND periodo_codigo=?',(
+                        item,descripcion,lote.strip(),destino,float(numero_muestras),float(numero_corrugado),responsable,observaciones.strip(),st.session_state.auth['usuario'],now_iso(),edit_id,codigo
+                    ))
+                    audit(st.session_state.auth['usuario'],'EDITAR_MUESTRA_RETENCION',f'Periodo {nombre} | ID {edit_id}')
+                    limpiar_estado(codigo)
+                    st.success(f'Registro actualizado correctamente: N° {edit_id}')
+                    st.rerun()
+                else:
+                    nuevo_id=exec_sql('INSERT INTO muestras_retencion(periodo_codigo,periodo_nombre,item,descripcion,lote,destino,numero_muestras,numero_corrugado,responsable,observaciones,creado_por,creado_en) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)',(
+                        codigo,nombre,item,descripcion,lote.strip(),destino,float(numero_muestras),float(numero_corrugado),responsable,observaciones.strip(),st.session_state.auth['usuario'],now_iso()
+                    ))
+                    audit(st.session_state.auth['usuario'],'CREAR_MUESTRA_RETENCION',f'Periodo {nombre} | ID {nuevo_id}')
+                    limpiar_estado(codigo)
+                    st.success(f'Registro guardado correctamente: N° {nuevo_id}')
+                    st.rerun()
+
 def admin_required():
     if not is_dev(): st.warning('Solo el usuario administrador puede modificar catálogos.'); return False
     return True
@@ -866,6 +1021,7 @@ def main():
         if page=='Inicio': page_inicio()
         elif page=='Nuevo registro': page_registro()
         elif page=='Consulta y descarga': page_consulta()
+        elif page=='Muestras de retención': page_muestras_retencion()
         elif page=='Catálogos': page_catalogos()
         elif page=='Usuarios': page_usuarios()
         elif page=='Auditoría': page_auditoria()
