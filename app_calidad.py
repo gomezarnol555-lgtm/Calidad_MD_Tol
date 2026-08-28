@@ -72,6 +72,9 @@ def init_db():
             except sqlite3.OperationalError: pass
     try: cur.execute('ALTER TABLE pnc_registros ADD COLUMN semana INTEGER')
     except sqlite3.OperationalError: pass
+    for col in ['categoria_inicial_pnc','categoria_final_pnc']:
+        try: cur.execute(f'ALTER TABLE pnc_registros ADD COLUMN {col} TEXT')
+        except sqlite3.OperationalError: pass
     cur.execute("CREATE TABLE IF NOT EXISTS adjuntos(id INTEGER PRIMARY KEY AUTOINCREMENT, registro_id INTEGER, folio TEXT, nombre_original TEXT, ruta_archivo TEXT, tipo_archivo TEXT, subido_por TEXT, subido_en TEXT)")
     cur.execute("CREATE TABLE IF NOT EXISTS auditoria(id INTEGER PRIMARY KEY AUTOINCREMENT, usuario TEXT, accion TEXT, detalle TEXT, fecha_hora TEXT)")
     for item,desc,cliente,familia in SEED_PRODUCTS: cur.execute("INSERT OR IGNORE INTO productos(item,descripcion,cliente,familia,activo) VALUES(?,?,?,?,1)",(item,desc,cliente,familia))
@@ -442,7 +445,7 @@ def page_registro():
             acciones=st.text_area('Acciones inmediatas *',key=f'accion_{tabla}_{nonce}')
             a,b,c=st.columns(3)
             disposicion=a.selectbox('Disposición *',opt_blank(catalog('disposicion')),key=f'disp_{tabla}_{nonce}')
-            cantidad=b.number_input('Cantidad observada (kg) *',min_value=0.0,step=0.1,key=f'cantidad_{tabla}_{nonce}')
+            cantidad=b.number_input('Cantidad observada (kg) *',min_value=0.0,step=1.0,format='%.2f',key=f'cantidad_{tabla}_{nonce}')
             status=c.selectbox('Status *',opt_blank(catalog('status')),key=f'status_{tabla}_{nonce}')
             a,b,c=st.columns(3)
             equipo=a.text_input('Equipo en donde se tiene el hallazgo',key=f'equipo_{tabla}_{nonce}')
@@ -491,21 +494,24 @@ def page_registro():
             d1.text_input('Defecto',value=defecto,disabled=True)
             d2.text_input('Tipo de defecto',value=tipo,disabled=True)
             d3.text_input('Clasificación *',value=clas,disabled=True)
+            cat1,cat2=st.columns(2)
+            categoria_inicial_pnc=cat1.selectbox('Categoría inicial *',['','1','2','3'],key=f'pnc_cat_inicial_{nonce}')
+            categoria_final_pnc=cat2.selectbox('Categoría final',['','1','2','3'],key=f'pnc_cat_final_{nonce}')
             descripcion=st.text_area('Descripción del defecto *',key=f'pnc_desc_{nonce}'); acciones=st.text_area('Acciones inmediatas *',key=f'pnc_accion_{nonce}')
             a,b,c=st.columns(3)
             sup=a.selectbox('Supervisor (Responsable) *',opt_blank(catalog('supervisor')),key=f'pnc_sup_{nonce}'); ana=b.selectbox('Analista (Persona que detecta) *',opt_blank(catalog('analista')),key=f'pnc_ana_{nonce}'); resp=c.selectbox('Responsable de detectar el PNC *',opt_blank(catalog('responsable_detecta')),key=f'pnc_resp_{nonce}')
             a,b,c=st.columns(3)
-            disp=a.selectbox('Disposición *',opt_blank(catalog('disposicion')),key=f'pnc_disp_{nonce}'); obs=b.number_input('Cantidad observada (kg) *',min_value=0.0,step=0.1,key=f'pnc_obs_{nonce}'); fecha_final=c.date_input('Fecha final',value=date.today(),key=f'pnc_final_{nonce}') if status=='CERRADO' else None
-            q1,q2,q3=st.columns(3); rep=q1.number_input('Reproceso kg',min_value=0.0,key=f'pnc_rep_{nonce}'); dec=q2.number_input('Decomiso kg',min_value=0.0,key=f'pnc_dec_{nonce}'); apr=q3.number_input('Aprobado 2da kg',min_value=0.0,key=f'pnc_apr_{nonce}'); total=rep+dec+apr
+            disp=a.selectbox('Disposición *',opt_blank(catalog('disposicion')),key=f'pnc_disp_{nonce}'); obs=b.number_input('Cantidad observada (kg) *',min_value=0.0,step=1.0,format='%.2f',key=f'pnc_obs_{nonce}'); fecha_final=c.date_input('Fecha final',value=date.today(),key=f'pnc_final_{nonce}') if status=='CERRADO' else None
+            q1,q2,q3=st.columns(3); rep=q1.number_input('Reproceso kg',min_value=0.0,step=1.0,format='%.2f',key=f'pnc_rep_{nonce}'); dec=q2.number_input('Decomiso kg',min_value=0.0,step=1.0,format='%.2f',key=f'pnc_dec_{nonce}'); apr=q3.number_input('Aprobado 2da kg',min_value=0.0,step=1.0,format='%.2f',key=f'pnc_apr_{nonce}'); total=rep+dec+apr
             mat=st.text_area('Material hallado / ME',key=f'pnc_mat_{nonce}'); notas=st.text_area('Observaciones',key=f'pnc_notas_{nonce}'); files=st.file_uploader('Adjuntar evidencia',accept_multiple_files=True,type=['pdf','png','jpg','jpeg','xlsx','csv','txt','docx'],key=f'pnc_files_{nonce}')
             ok=st.button('Guardar registro',key=f'guardar_pnc_{nonce}',type='primary')
         if ok:
-            obligatorios={'Línea/Sector':linea,'Nave':nave,'ITEM':item,'Descripción':descp,'Cliente':cliente,'Familia':familia,'Lote':lote,'Etapa':etapa,'Código':cod,'Defecto':defecto,'Tipo de defecto':tipo,'Semana':semana,'Turno':turno,'Fecha':fecha,'Supervisor':sup,'Analista':ana,'Responsable de detectar el PNC':resp,'Descripción del defecto':descripcion,'Acciones inmediatas':acciones,'Disposición':disp,'Cantidad observada':obs,'Status':status,'Categoría inicial':clas}
+            obligatorios={'Línea/Sector':linea,'Nave':nave,'ITEM':item,'Descripción':descp,'Cliente':cliente,'Familia':familia,'Lote':lote,'Etapa':etapa,'Código':cod,'Defecto':defecto,'Tipo de defecto':tipo,'Semana':semana,'Turno':turno,'Fecha':fecha,'Supervisor':sup,'Analista':ana,'Responsable de detectar el PNC':resp,'Descripción del defecto':descripcion,'Acciones inmediatas':acciones,'Disposición':disp,'Cantidad observada':obs,'Status':status,'Clasificación':clas,'Categoría inicial':categoria_inicial_pnc}
             faltantes=[k for k,v in obligatorios.items() if v is None or (isinstance(v,str) and not v.strip()) or (k=='Cantidad observada' and float(v)<=0)]
             if faltantes:
                 st.error('Completa los siguientes campos obligatorios: '+', '.join(faltantes)+'.')
             else:
-                folio=new_folio(); rid=exec_sql('INSERT INTO pnc_registros(folio,fecha_apertura,linea_sector,nave,item,descripcion_producto,cliente,familia,lote,etapa,codigo_defecto,defecto,tipo_defecto,clasificacion,turno,supervisor,analista,responsable_detecta,descripcion_defecto,acciones_inmediatas,disposicion,cantidad_observada,cantidad_reproceso,cantidad_decomiso,cantidad_aprobado_segunda,cantidad_total_pnc,status,fecha_final_tratamiento,observaciones,material_hallado,creado_por,creado_en,semana) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',(folio,fecha.isoformat(),linea,nave,item,descp,cliente,familia,lote,etapa,cod,defecto,tipo,clas,turno,sup,ana,resp,descripcion,acciones,disp,float(obs),rep,dec,apr,total,status,fecha_final.isoformat() if fecha_final else None,notas,mat,st.session_state.auth['usuario'],now_iso(),int(semana)))
+                folio=new_folio(); rid=exec_sql('INSERT INTO pnc_registros(folio,fecha_apertura,linea_sector,nave,item,descripcion_producto,cliente,familia,lote,etapa,codigo_defecto,defecto,tipo_defecto,clasificacion,turno,supervisor,analista,responsable_detecta,descripcion_defecto,acciones_inmediatas,disposicion,cantidad_observada,cantidad_reproceso,cantidad_decomiso,cantidad_aprobado_segunda,cantidad_total_pnc,status,fecha_final_tratamiento,observaciones,material_hallado,creado_por,creado_en,semana,categoria_inicial_pnc,categoria_final_pnc) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',(folio,fecha.isoformat(),linea,nave,item,descp,cliente,familia,lote,etapa,cod,defecto,tipo,clas,turno,sup,ana,resp,descripcion,acciones,disp,float(obs),rep,dec,apr,total,status,fecha_final.isoformat() if fecha_final else None,notas,mat,st.session_state.auth['usuario'],now_iso(),int(semana),categoria_inicial_pnc,categoria_final_pnc))
                 save_files(files,rid,folio,st.session_state.auth['usuario']); audit(st.session_state.auth['usuario'],'CREAR_PNC',f'ID {rid}')
                 limpiar_form(); st.session_state.flash_registro_guardado=f'Registro guardado correctamente: Número {rid}'
                 st.rerun()
@@ -572,10 +578,10 @@ def page_consulta():
         original_codigo=str(row.get('codigo_defecto') or '')
         producto_actual=next((x for x in opt_prod if x.split('|')[0].strip()==original_item),'')
         defecto_actual=next((x for x in opt_defs if x.split('|')[0].strip()==original_codigo),'')
-        labels={'fecha_apertura':'Fecha','dia':'Día','mes':'Mes','anio':'Año','linea_sector':'Línea/Sector *','nave':'Nave *','lote':'Lote *','etapa':'Etapa *','semana':'Semana *','turno':'Turno *','supervisor':'Supervisor *','supervisor_responsable':'Supervisor *','analista':'Analista *','analista_detecta':'Analista *','responsable_detecta':'Responsable de detectar el PNC *','descripcion_defecto':'Descripción del defecto *','descripcion_hallazgo':'Descripción del defecto *','acciones_inmediatas':'Acciones inmediatas *','accion_contingente':'Acciones inmediatas','disposicion':'Disposición *','cantidad_observada':'Cantidad observada (kg) *','status':'Status *','equipo_hallazgo':'Equipo del hallazgo','tipo':'Tipo de hallazgo','particulas_halladas':'Partículas halladas','investigacion_origen':'Investigación del origen','acciones_evitar_incidencia':'Acciones para evitar incidencia','observaciones':'Observaciones','material_hallado':'Material hallado / ME','fecha_final_tratamiento':'Fecha final','cantidad_reproceso':'Reproceso kg','cantidad_decomiso':'Decomiso kg','cantidad_aprobado_segunda':'Aprobado segunda instancia kg'}
+        labels={'fecha_apertura':'Fecha','dia':'Día','mes':'Mes','anio':'Año','linea_sector':'Línea/Sector *','nave':'Nave *','lote':'Lote *','etapa':'Etapa *','semana':'Semana *','turno':'Turno *','supervisor':'Supervisor *','supervisor_responsable':'Supervisor *','analista':'Analista *','analista_detecta':'Analista *','responsable_detecta':'Responsable de detectar el PNC *','descripcion_defecto':'Descripción del defecto *','descripcion_hallazgo':'Descripción del defecto *','acciones_inmediatas':'Acciones inmediatas *','accion_contingente':'Acciones inmediatas','disposicion':'Disposición *','cantidad_observada':'Cantidad observada (kg) *','status':'Status *','equipo_hallazgo':'Equipo del hallazgo','tipo':'Tipo de hallazgo','particulas_halladas':'Partículas halladas','investigacion_origen':'Investigación del origen','acciones_evitar_incidencia':'Acciones para evitar incidencia','observaciones':'Observaciones','material_hallado':'Material hallado / ME','fecha_final_tratamiento':'Fecha final','cantidad_reproceso':'Reproceso kg','cantidad_decomiso':'Decomiso kg','cantidad_aprobado_segunda':'Aprobado segunda instancia kg','categoria_inicial_pnc':'Categoría inicial *','categoria_final_pnc':'Categoría final'}
         protected={'folio','creado_por','creado_en','cantidad_total_pnc','item','descripcion_producto','producto','cliente','familia','codigo_defecto','defecto','tipo_defecto','clasificacion','categoria_inicial'}
         numeric={'dia','mes','anio','semana','particulas_halladas','cantidad_observada','cantidad_reproceso','cantidad_decomiso','cantidad_aprobado_segunda'}
-        select_catalog={'linea_sector':'linea_sector','nave':'nave','etapa':'etapa','turno':'turno','supervisor':'supervisor','supervisor_responsable':'supervisor','analista':'analista','analista_detecta':'analista','responsable_detecta':'responsable_detecta','disposicion':'disposicion','status':'status'}
+        select_catalog={'linea_sector':'linea_sector','nave':'nave','etapa':'etapa','turno':'turno','supervisor':'supervisor','supervisor_responsable':'supervisor','analista':'analista','analista_detecta':'analista','responsable_detecta':'responsable_detecta','disposicion':'disposicion','status':'status','categoria_inicial_pnc':'categoria_pnc','categoria_final_pnc':'categoria_pnc'}
         with st.expander('✏️ Editar o completar registro',expanded=True):
             titulo={'pnc':'PNC','me':'Materia Extraña','ddm':'Detector de metales y RX'}.get(key,key)
             st.markdown(f'#### Editar registro de {titulo}: Número {selected}')
@@ -610,12 +616,12 @@ def page_consulta():
                         raw=row.get(col); value='' if raw is None or pd.isna(raw) else raw
                         label=labels.get(col,col.replace('_',' ').title())
                         if col in select_catalog:
-                            options=opt_blank(catalog(select_catalog[col])); current=str(value)
+                            options=['','1','2','3'] if select_catalog[col]=='categoria_pnc' else opt_blank(catalog(select_catalog[col])); current=str(value)
                             if current and current not in options: options.append(current)
                             values[col]=ui.selectbox(label,options,index=idx_or_zero(options,current),key=f'edit_{key}_{selected}_{col}')
                         elif col in numeric:
                             if col in {'dia','mes','anio','semana','particulas_halladas'}: values[col]=ui.number_input(label,min_value=0,step=1,value=int(float(value or 0)),key=f'edit_{key}_{selected}_{col}')
-                            else: values[col]=ui.number_input(label,min_value=0.0,step=0.1,value=float(value or 0),key=f'edit_{key}_{selected}_{col}')
+                            else: values[col]=ui.number_input(label,min_value=0.0,step=1.0,format='%.2f',value=float(value or 0),key=f'edit_{key}_{selected}_{col}')
                         elif col in {'descripcion_defecto','descripcion_hallazgo','acciones_inmediatas','accion_contingente','investigacion_origen','acciones_evitar_incidencia','observaciones','material_hallado','lote'}:
                             values[col]=ui.text_area(label,value=str(value),key=f'edit_{key}_{selected}_{col}')
                         else: values[col]=ui.text_input(label,value=str(value),key=f'edit_{key}_{selected}_{col}')
@@ -625,7 +631,7 @@ def page_consulta():
                 if table_name=='pnc_registros': auto.update({'descripcion_producto':descripcion,'clasificacion':clasificacion})
                 else: auto.update({'producto':descripcion,'categoria_inicial':clasificacion})
                 required=['linea_sector','nave','lote','etapa','semana','turno','responsable_detecta','acciones_inmediatas','disposicion','cantidad_observada','status']
-                required += ['supervisor','analista','descripcion_defecto'] if table_name=='pnc_registros' else ['supervisor_responsable','analista_detecta','descripcion_hallazgo']
+                required += ['supervisor','analista','descripcion_defecto','categoria_inicial_pnc'] if table_name=='pnc_registros' else ['supervisor_responsable','analista_detecta','descripcion_hallazgo']
                 missing=[]
                 for name,val in {'ITEM':item,'Descripción':descripcion,'Cliente':cliente,'Familia':familia,'Código':codigo,'Defecto':defecto,'Tipo de defecto':tipo_defecto,'Clasificación':clasificacion}.items():
                     if not str(val).strip(): missing.append(name)
