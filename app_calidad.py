@@ -92,6 +92,14 @@ def init_db():
         actualizado_por TEXT,
         actualizado_en TEXT
     )""")
+    # Tablas independientes para cada periodo de muestras de retención.
+    cur.execute("CREATE TABLE IF NOT EXISTS muestras_10_meses(id INTEGER PRIMARY KEY AUTOINCREMENT, item TEXT NOT NULL, descripcion TEXT NOT NULL, lote TEXT NOT NULL, destino TEXT NOT NULL, numero_muestras REAL NOT NULL DEFAULT 0, numero_corrugado REAL NOT NULL DEFAULT 0, responsable TEXT NOT NULL, observaciones TEXT, creado_por TEXT, creado_en TEXT, actualizado_por TEXT, actualizado_en TEXT)")
+    cur.execute("CREATE TABLE IF NOT EXISTS muestras_12_meses_alergeno(id INTEGER PRIMARY KEY AUTOINCREMENT, item TEXT NOT NULL, descripcion TEXT NOT NULL, lote TEXT NOT NULL, destino TEXT NOT NULL, numero_muestras REAL NOT NULL DEFAULT 0, numero_corrugado REAL NOT NULL DEFAULT 0, responsable TEXT NOT NULL, observaciones TEXT, creado_por TEXT, creado_en TEXT, actualizado_por TEXT, actualizado_en TEXT)")
+    cur.execute("CREATE TABLE IF NOT EXISTS muestras_12_meses_duvalin(id INTEGER PRIMARY KEY AUTOINCREMENT, item TEXT NOT NULL, descripcion TEXT NOT NULL, lote TEXT NOT NULL, destino TEXT NOT NULL, numero_muestras REAL NOT NULL DEFAULT 0, numero_corrugado REAL NOT NULL DEFAULT 0, responsable TEXT NOT NULL, observaciones TEXT, creado_por TEXT, creado_en TEXT, actualizado_por TEXT, actualizado_en TEXT)")
+    cur.execute("CREATE TABLE IF NOT EXISTS muestras_12_meses_nave2(id INTEGER PRIMARY KEY AUTOINCREMENT, item TEXT NOT NULL, descripcion TEXT NOT NULL, lote TEXT NOT NULL, destino TEXT NOT NULL, numero_muestras REAL NOT NULL DEFAULT 0, numero_corrugado REAL NOT NULL DEFAULT 0, responsable TEXT NOT NULL, observaciones TEXT, creado_por TEXT, creado_en TEXT, actualizado_por TEXT, actualizado_en TEXT)")
+    cur.execute("CREATE TABLE IF NOT EXISTS muestras_15_meses(id INTEGER PRIMARY KEY AUTOINCREMENT, item TEXT NOT NULL, descripcion TEXT NOT NULL, lote TEXT NOT NULL, destino TEXT NOT NULL, numero_muestras REAL NOT NULL DEFAULT 0, numero_corrugado REAL NOT NULL DEFAULT 0, responsable TEXT NOT NULL, observaciones TEXT, creado_por TEXT, creado_en TEXT, actualizado_por TEXT, actualizado_en TEXT)")
+    cur.execute("CREATE TABLE IF NOT EXISTS muestras_18_meses(id INTEGER PRIMARY KEY AUTOINCREMENT, item TEXT NOT NULL, descripcion TEXT NOT NULL, lote TEXT NOT NULL, destino TEXT NOT NULL, numero_muestras REAL NOT NULL DEFAULT 0, numero_corrugado REAL NOT NULL DEFAULT 0, responsable TEXT NOT NULL, observaciones TEXT, creado_por TEXT, creado_en TEXT, actualizado_por TEXT, actualizado_en TEXT)")
+    cur.execute("CREATE TABLE IF NOT EXISTS muestras_24_meses(id INTEGER PRIMARY KEY AUTOINCREMENT, item TEXT NOT NULL, descripcion TEXT NOT NULL, lote TEXT NOT NULL, destino TEXT NOT NULL, numero_muestras REAL NOT NULL DEFAULT 0, numero_corrugado REAL NOT NULL DEFAULT 0, responsable TEXT NOT NULL, observaciones TEXT, creado_por TEXT, creado_en TEXT, actualizado_por TEXT, actualizado_en TEXT)")
     cur.execute("CREATE TABLE IF NOT EXISTS adjuntos(id INTEGER PRIMARY KEY AUTOINCREMENT, registro_id INTEGER, folio TEXT, nombre_original TEXT, ruta_archivo TEXT, tipo_archivo TEXT, subido_por TEXT, subido_en TEXT)")
     cur.execute("CREATE TABLE IF NOT EXISTS auditoria(id INTEGER PRIMARY KEY AUTOINCREMENT, usuario TEXT, accion TEXT, detalle TEXT, fecha_hora TEXT)")
     for item,desc,cliente,familia in SEED_PRODUCTS: cur.execute("INSERT OR IGNORE INTO productos(item,descripcion,cliente,familia,activo) VALUES(?,?,?,?,1)",(item,desc,cliente,familia))
@@ -686,142 +694,134 @@ def page_consulta():
             st.markdown(f'### Registro seleccionado: Número {selected}')
             edit_record('ddm_rx_registros','ddm',selected)
             delete_confirm('ddm_rx_registros','ddm','ELIMINAR_DDM_RX',selected)
+    st.divider()
+    consulta_muestras_retencion()
 def page_muestras_retencion():
-    st.markdown('<div class="home-hero"><div class="home-hero-title">Muestras de retención</div></div>',unsafe_allow_html=True)
-    st.caption('Captura, consulta, edita o elimina muestras de retención por periodo.')
-
     periodos=[
-        ('10M','10 Meses'),
-        ('12MA','12 Meses Alérgeno'),
-        ('12MD1','12 Meses Duvalin'),
-        ('12MD2','12 Meses Duvalin'),
-        ('15M','15 Meses'),
-        ('18M','18 Meses'),
-        ('24M','24 Meses'),
+        ('muestras_10_meses','10 Meses','🗓️'),
+        ('muestras_12_meses_alergeno','12 Meses Alérgeno','⚠️'),
+        ('muestras_12_meses_duvalin','12 Meses Duvalin','🍫'),
+        ('muestras_12_meses_nave2','12 Meses Nave 2','🏭'),
+        ('muestras_15_meses','15 Meses','📦'),
+        ('muestras_18_meses','18 Meses','🧪'),
+        ('muestras_24_meses','24 Meses','✅'),
     ]
+    if 'muestra_tipo' not in st.session_state: st.session_state.muestra_tipo=None
+    if 'muestra_nonce' not in st.session_state: st.session_state.muestra_nonce=0
+    seleccionado=st.session_state.muestra_tipo
+    if seleccionado is None:
+        st.markdown('<div class="registro-landing-hero"><div class="registro-landing-title">Muestras de retención</div><div class="registro-landing-subtitle">Selecciona el periodo que deseas registrar.</div></div>',unsafe_allow_html=True)
+        for inicio in range(0,len(periodos),3):
+            columnas=st.columns(3,gap='large')
+            for col,(tabla,nombre,icono) in zip(columnas,periodos[inicio:inicio+3]):
+                with col:
+                    st.markdown('<span class="registro-card-slot"></span>',unsafe_allow_html=True)
+                    if st.button(f'{icono}  {nombre}\n\nCaptura y seguimiento de muestras de retención.\n\nAbrir registro',key=f'card_{tabla}'):
+                        st.session_state.muestra_tipo=tabla; st.rerun()
+        return
+    info=next((x for x in periodos if x[0]==seleccionado),None)
+    if not info:
+        st.session_state.muestra_tipo=None; st.rerun()
+    tabla,nombre,icono=info
+    if st.button('← Cambiar periodo de retención',key='volver_muestras'):
+        st.session_state.muestra_tipo=None; st.rerun()
+    st.markdown(f'<div class="registro-full-panel"><div class="registro-pill">Nuevo registro</div><div class="registro-full-title">{icono} {nombre}</div><div class="registro-full-subtitle">Los campos marcados con * son obligatorios.</div>',unsafe_allow_html=True)
     productos=read_df('SELECT item,descripcion FROM productos WHERE activo=1 ORDER BY descripcion')
-    opciones_producto=['']+[f'{r.item} | {r.descripcion}' for r in productos.itertuples()]
-    responsables=opt_blank(catalog('analista'))
+    opciones=['']+[f'{r.item} | {r.descripcion}' for r in productos.itertuples()]
+    nonce=st.session_state.muestra_nonce
+    elegido=st.selectbox('ITEM *',opciones,key=f'mr_item_{tabla}_{nonce}')
+    item=elegido.split('|')[0].strip() if elegido else ''
+    fila=productos[productos['item'].astype(str)==item]
+    descripcion=str(fila.iloc[0]['descripcion']) if not fila.empty else ''
+    st.text_input('Descripción',value=descripcion,disabled=True)
+    with st.form(f'mr_form_{tabla}_{nonce}'):
+        c1,c2=st.columns(2)
+        lote=c1.text_input('Lote *')
+        destino=c2.selectbox('Destino *',['','Nacional','Exportación'])
+        c3,c4=st.columns(2)
+        muestras=c3.number_input('# De muestras *',min_value=0.0,step=1.0,format='%.2f')
+        corrugado=c4.number_input('# Corrugado *',min_value=0.0,step=1.0,format='%.2f')
+        responsable=st.selectbox('Responsable *',opt_blank(catalog('analista')))
+        observaciones=st.text_area('Observaciones')
+        guardar=st.form_submit_button('Guardar registro',type='primary')
+    if guardar:
+        req={'ITEM':item,'Descripción':descripcion,'Lote':lote,'Destino':destino,'# De muestras':muestras,'# Corrugado':corrugado,'Responsable':responsable}
+        faltan=[k for k,v in req.items() if v is None or (isinstance(v,str) and not v.strip()) or (k in ['# De muestras','# Corrugado'] and float(v)<=0)]
+        if faltan: st.error('Completa los siguientes campos obligatorios: '+', '.join(faltan)+'.')
+        else:
+            rid=exec_sql(f'INSERT INTO {tabla}(item,descripcion,lote,destino,numero_muestras,numero_corrugado,responsable,observaciones,creado_por,creado_en) VALUES(?,?,?,?,?,?,?,?,?,?)',(item,descripcion,lote.strip(),destino,float(muestras),float(corrugado),responsable,observaciones.strip(),st.session_state.auth['usuario'],now_iso()))
+            audit(st.session_state.auth['usuario'],'CREAR_MUESTRA_RETENCION',f'{nombre} | ID {rid}')
+            st.session_state.muestra_nonce+=1
+            st.success(f'Registro guardado correctamente: N° {rid}')
+            st.rerun()
+    st.markdown('</div>',unsafe_allow_html=True)
 
-    def producto_por_item(item):
-        coincidencia=productos[productos['item'].astype(str)==str(item)]
-        return str(coincidencia.iloc[0]['descripcion']) if not coincidencia.empty else ''
-
-    def opcion_producto(item):
-        return next((o for o in opciones_producto if o and o.split('|')[0].strip()==str(item)), '')
-
-    def limpiar_estado(codigo):
-        st.session_state.pop(f'ret_edit_id_{codigo}',None)
-        st.session_state[f'ret_nonce_{codigo}']=st.session_state.get(f'ret_nonce_{codigo}',0)+1
-
-    tabs=st.tabs([nombre for _,nombre in periodos])
-    for tab,(codigo,nombre) in zip(tabs,periodos):
+def consulta_muestras_retencion():
+    configuracion=[
+        ('muestras_10_meses','10 Meses'),('muestras_12_meses_alergeno','12 Meses Alérgeno'),
+        ('muestras_12_meses_duvalin','12 Meses Duvalin'),('muestras_12_meses_nave2','12 Meses Nave 2'),
+        ('muestras_15_meses','15 Meses'),('muestras_18_meses','18 Meses'),('muestras_24_meses','24 Meses')]
+    st.markdown('## Muestras de retención')
+    tabs=st.tabs([n for _,n in configuracion])
+    productos=read_df('SELECT item,descripcion FROM productos WHERE activo=1 ORDER BY descripcion')
+    opciones_item=['']+[f'{r.item} | {r.descripcion}' for r in productos.itertuples()]
+    for tab,(tabla,nombre) in zip(tabs,configuracion):
         with tab:
-            st.markdown(f'### {nombre}')
-            datos=read_df('SELECT * FROM muestras_retencion WHERE periodo_codigo=? ORDER BY id DESC',(codigo,))
-            if not datos.empty:
-                vista=datos[['id','item','descripcion','lote','destino','numero_muestras','numero_corrugado','responsable','observaciones']].rename(columns={
-                    'id':'N°','item':'ITEM','descripcion':'Descripción','lote':'Lote','destino':'Destino',
-                    'numero_muestras':'# De muestras','numero_corrugado':'# Corrugado',
-                    'responsable':'Responsable','observaciones':'Observaciones'
-                })
-                st.dataframe(vista,use_container_width=True,hide_index=True)
-                opciones_registro=['']+[f"{int(r.id)} | {r.item} | {r.lote}" for r in datos.itertuples()]
-                seleccionado=st.selectbox('Selecciona un registro para editar o eliminar',opciones_registro,key=f'ret_select_{codigo}')
-                if seleccionado:
-                    registro_id=int(seleccionado.split('|')[0].strip())
-                    c_editar,c_eliminar=st.columns(2)
-                    if c_editar.button('✏️ Editar registro',key=f'ret_edit_btn_{codigo}_{registro_id}'):
-                        st.session_state[f'ret_edit_id_{codigo}']=registro_id
-                        st.rerun()
-                    if c_eliminar.button('🗑️ Eliminar registro',key=f'ret_del_btn_{codigo}_{registro_id}'):
-                        st.session_state[f'ret_confirm_del_{codigo}']=registro_id
-                    if st.session_state.get(f'ret_confirm_del_{codigo}')==registro_id:
-                        st.warning(f'Confirma la eliminación del registro N° {registro_id}.')
-                        d1,d2=st.columns(2)
-                        if d1.button('Sí, eliminar definitivamente',key=f'ret_del_ok_{codigo}_{registro_id}'):
-                            exec_sql('DELETE FROM muestras_retencion WHERE id=?',(registro_id,))
-                            reset_autoincrement('muestras_retencion')
-                            audit(st.session_state.auth['usuario'],'ELIMINAR_MUESTRA_RETENCION',f'Periodo {nombre} | ID {registro_id}')
-                            st.session_state.pop(f'ret_confirm_del_{codigo}',None)
-                            limpiar_estado(codigo)
-                            st.rerun()
-                        if d2.button('Cancelar',key=f'ret_del_cancel_{codigo}_{registro_id}'):
-                            st.session_state.pop(f'ret_confirm_del_{codigo}',None)
-                            st.rerun()
-            else:
-                st.info('No hay registros para este periodo.')
-
-            edit_id=st.session_state.get(f'ret_edit_id_{codigo}')
-            original={}
-            if edit_id:
-                df_original=read_df('SELECT * FROM muestras_retencion WHERE id=? AND periodo_codigo=?',(edit_id,codigo))
-                if not df_original.empty:
-                    original=df_original.iloc[0].to_dict()
-                else:
-                    limpiar_estado(codigo)
-                    st.rerun()
-
-            titulo_form=f'Editar registro N° {edit_id}' if edit_id else 'Nuevo registro'
-            st.markdown(f'#### {titulo_form}')
-            nonce=st.session_state.get(f'ret_nonce_{codigo}',0)
-            pref=f'ret_{codigo}_{edit_id or "new"}_{nonce}'
-            item_original=str(original.get('item') or '')
-            opcion_original=opcion_producto(item_original)
-
-            # ITEM fuera del formulario para refrescar inmediatamente la descripción.
-            item_opcion=st.selectbox('ITEM *',opciones_producto,index=idx_or_zero(opciones_producto,opcion_original),key=f'{pref}_item')
-            item=item_opcion.split('|')[0].strip() if item_opcion else ''
-            descripcion=producto_por_item(item)
-            st.text_input('Descripción',value=descripcion,disabled=True)
-
-            with st.form(f'{pref}_form'):
-                c1,c2=st.columns(2)
-                lote=c1.text_input('Lote *',value=str(original.get('lote') or ''))
-                destinos=['','Nacional','Exportación']
-                destino_actual=str(original.get('destino') or '')
-                destino=c2.selectbox('Destino *',destinos,index=idx_or_zero(destinos,destino_actual))
-                c3,c4=st.columns(2)
-                numero_muestras=c3.number_input('# De muestras *',min_value=0.0,step=1.0,format='%.2f',value=float(original.get('numero_muestras') or 0))
-                numero_corrugado=c4.number_input('# Corrugado *',min_value=0.0,step=1.0,format='%.2f',value=float(original.get('numero_corrugado') or 0))
-                responsable_actual=str(original.get('responsable') or '')
-                opciones_responsable=list(responsables)
-                if responsable_actual and responsable_actual not in opciones_responsable:
-                    opciones_responsable.append(responsable_actual)
-                responsable=st.selectbox('Responsable *',opciones_responsable,index=idx_or_zero(opciones_responsable,responsable_actual))
-                observaciones=st.text_area('Observaciones',value=str(original.get('observaciones') or ''))
-                guardar=st.form_submit_button('Guardar cambios' if edit_id else 'Guardar registro',type='primary')
-                cancelar=st.form_submit_button('Cancelar edición') if edit_id else False
-
-            if cancelar:
-                limpiar_estado(codigo)
-                st.rerun()
-
-            if guardar:
-                obligatorios={
-                    'ITEM':item,'Descripción':descripcion,'Lote':lote,'Destino':destino,
-                    '# De muestras':numero_muestras,'# Corrugado':numero_corrugado,
-                    'Responsable':responsable
-                }
-                faltantes=[campo for campo,valor in obligatorios.items() if valor is None or (isinstance(valor,str) and not valor.strip()) or (campo in ['# De muestras','# Corrugado'] and float(valor)<=0)]
-                if faltantes:
-                    st.error('Completa los siguientes campos obligatorios: '+', '.join(faltantes)+'.')
-                elif edit_id:
-                    exec_sql('UPDATE muestras_retencion SET item=?,descripcion=?,lote=?,destino=?,numero_muestras=?,numero_corrugado=?,responsable=?,observaciones=?,actualizado_por=?,actualizado_en=? WHERE id=? AND periodo_codigo=?',(
-                        item,descripcion,lote.strip(),destino,float(numero_muestras),float(numero_corrugado),responsable,observaciones.strip(),st.session_state.auth['usuario'],now_iso(),edit_id,codigo
-                    ))
-                    audit(st.session_state.auth['usuario'],'EDITAR_MUESTRA_RETENCION',f'Periodo {nombre} | ID {edit_id}')
-                    limpiar_estado(codigo)
-                    st.success(f'Registro actualizado correctamente: N° {edit_id}')
-                    st.rerun()
-                else:
-                    nuevo_id=exec_sql('INSERT INTO muestras_retencion(periodo_codigo,periodo_nombre,item,descripcion,lote,destino,numero_muestras,numero_corrugado,responsable,observaciones,creado_por,creado_en) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)',(
-                        codigo,nombre,item,descripcion,lote.strip(),destino,float(numero_muestras),float(numero_corrugado),responsable,observaciones.strip(),st.session_state.auth['usuario'],now_iso()
-                    ))
-                    audit(st.session_state.auth['usuario'],'CREAR_MUESTRA_RETENCION',f'Periodo {nombre} | ID {nuevo_id}')
-                    limpiar_estado(codigo)
-                    st.success(f'Registro guardado correctamente: N° {nuevo_id}')
-                    st.rerun()
+            df=read_df(f'SELECT * FROM {tabla} ORDER BY id DESC')
+            buscar=st.text_input('Buscar registro',placeholder='Buscar por número, ITEM, descripción, lote, destino o responsable...',key=f'buscar_{tabla}')
+            mostrado=df.copy()
+            if buscar and not mostrado.empty:
+                mask=mostrado.astype(str).apply(lambda col: col.str.contains(buscar,case=False,na=False)).any(axis=1)
+                mostrado=mostrado[mask]
+            if mostrado.empty:
+                st.info('No hay registros para mostrar.')
+                continue
+            vista=mostrado[['id','item','descripcion','lote','destino','numero_muestras','numero_corrugado','responsable','observaciones']].rename(columns={'id':'N°','item':'ITEM','descripcion':'Descripción','lote':'Lote','destino':'Destino','numero_muestras':'# De muestras','numero_corrugado':'# Corrugado','responsable':'Responsable','observaciones':'Observaciones'})
+            st.dataframe(vista,use_container_width=True,hide_index=True)
+            st.download_button('Descargar CSV',vista.to_csv(index=False).encode('utf-8-sig'),f'{tabla}_{datetime.now().strftime("%Y%m%d_%H%M%S")}.csv','text/csv',key=f'download_{tabla}')
+            opcion=st.selectbox('Selecciona un registro para editar o eliminar',['']+[f'{int(r.id)} | {r.item} | {r.lote}' for r in mostrado.itertuples()],key=f'sel_{tabla}')
+            if not opcion: continue
+            rid=int(opcion.split('|')[0].strip())
+            original=read_df(f'SELECT * FROM {tabla} WHERE id=?',(rid,)).iloc[0].to_dict()
+            with st.expander(f'✏️ Editar registro N° {rid}',expanded=True):
+                actual=next((x for x in opciones_item if x and x.split('|')[0].strip()==str(original['item'])),'')
+                elegido=st.selectbox('ITEM *',opciones_item,index=idx_or_zero(opciones_item,actual),key=f'edit_item_{tabla}_{rid}')
+                item=elegido.split('|')[0].strip() if elegido else ''
+                fila=productos[productos['item'].astype(str)==item]
+                descripcion=str(fila.iloc[0]['descripcion']) if not fila.empty else ''
+                st.text_input('Descripción',value=descripcion,disabled=True,key=f'edit_desc_{tabla}_{rid}_{item}')
+                with st.form(f'edit_form_{tabla}_{rid}'):
+                    c1,c2=st.columns(2)
+                    lote=c1.text_input('Lote *',value=str(original['lote'] or ''))
+                    destinos=['','Nacional','Exportación']; dest=str(original['destino'] or '')
+                    destino=c2.selectbox('Destino *',destinos,index=idx_or_zero(destinos,dest))
+                    c3,c4=st.columns(2)
+                    muestras=c3.number_input('# De muestras *',min_value=0.0,step=1.0,format='%.2f',value=float(original['numero_muestras'] or 0))
+                    corrugado=c4.number_input('# Corrugado *',min_value=0.0,step=1.0,format='%.2f',value=float(original['numero_corrugado'] or 0))
+                    analistas=opt_blank(catalog('analista')); resp=str(original['responsable'] or '')
+                    if resp and resp not in analistas: analistas.append(resp)
+                    responsable=st.selectbox('Responsable *',analistas,index=idx_or_zero(analistas,resp))
+                    observaciones=st.text_area('Observaciones',value=str(original['observaciones'] or ''))
+                    actualizar=st.form_submit_button('Guardar cambios',type='primary')
+                if actualizar:
+                    req={'ITEM':item,'Descripción':descripcion,'Lote':lote,'Destino':destino,'# De muestras':muestras,'# Corrugado':corrugado,'Responsable':responsable}
+                    faltan=[k for k,v in req.items() if v is None or (isinstance(v,str) and not v.strip()) or (k in ['# De muestras','# Corrugado'] and float(v)<=0)]
+                    if faltan: st.error('Completa los siguientes campos obligatorios: '+', '.join(faltan)+'.')
+                    else:
+                        exec_sql(f'UPDATE {tabla} SET item=?,descripcion=?,lote=?,destino=?,numero_muestras=?,numero_corrugado=?,responsable=?,observaciones=?,actualizado_por=?,actualizado_en=? WHERE id=?',(item,descripcion,lote.strip(),destino,float(muestras),float(corrugado),responsable,observaciones.strip(),st.session_state.auth['usuario'],now_iso(),rid))
+                        audit(st.session_state.auth['usuario'],'EDITAR_MUESTRA_RETENCION',f'{nombre} | ID {rid}')
+                        st.success(f'Registro actualizado correctamente: N° {rid}'); st.rerun()
+            if st.button('Eliminar registro',key=f'del_{tabla}_{rid}'):
+                st.session_state[f'confirm_{tabla}']=rid
+            if st.session_state.get(f'confirm_{tabla}')==rid:
+                st.warning(f'Confirma la eliminación del registro N° {rid}.')
+                d1,d2=st.columns(2)
+                if d1.button('Sí, eliminar definitivamente',key=f'ok_{tabla}_{rid}'):
+                    exec_sql(f'DELETE FROM {tabla} WHERE id=?',(rid,)); reset_autoincrement(tabla)
+                    audit(st.session_state.auth['usuario'],'ELIMINAR_MUESTRA_RETENCION',f'{nombre} | ID {rid}')
+                    st.session_state.pop(f'confirm_{tabla}',None); st.rerun()
+                if d2.button('Cancelar',key=f'cancel_{tabla}_{rid}'):
+                    st.session_state.pop(f'confirm_{tabla}',None); st.rerun()
 
 def admin_required():
     if not is_dev(): st.warning('Solo el usuario administrador puede modificar catálogos.'); return False
