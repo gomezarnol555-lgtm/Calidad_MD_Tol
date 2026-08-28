@@ -1,6 +1,9 @@
 import streamlit as st
 import pandas as pd
-import sqlite3, hashlib, os, base64
+import sqlite3, hashlib, os, base64, threading
+from openpyxl import Workbook, load_workbook
+from openpyxl.styles import Font, PatternFill, Alignment
+from openpyxl.utils import get_column_letter
 from datetime import datetime, date
 from pathlib import Path
 from uuid import uuid4
@@ -8,6 +11,8 @@ from uuid import uuid4
 APP_NAME = "Calidad MD | PNC y ME"
 DB_PATH = "calidad.db"
 UPLOAD_DIR = Path("evidencias_calidad")
+EXCEL_PATH = Path("calidad_registros.xlsx")
+_EXCEL_LOCK = threading.RLock()
 FORCE_RESET_ADMIN = True
 ADMIN_USER = "admin"
 ADMIN_PASS = "Cambiar123!"
@@ -32,7 +37,42 @@ def read_df(q, params=()):
     try: return pd.read_sql_query(q,c,params=params)
     finally: c.close()
 def exec_sql(q, params=()):
-    c=conn(); cur=c.cursor(); cur.execute(q,params); c.commit(); lid=cur.lastrowid; c.close(); return lid
+    c=conn(); cur=c.cursor(); cur.execute(q,params); c.commit(); lid=cur.lastrowid; c.close()
+    q_upper=str(q).upper()
+    tablas_excel=['PNC_REGISTROS','ME_REGISTROS','DDM_RX_REGISTROS','MUESTRAS_10_MESES','MUESTRAS_12_MESES_ALERGENO','MUESTRAS_12_MESES_DUVALIN','MUESTRAS_12_MESES_NAVE2','MUESTRAS_15_MESES','MUESTRAS_18_MESES','MUESTRAS_24_MESES']
+    if any(t in q_upper for t in tablas_excel) and any(a in q_upper for a in ['INSERT','UPDATE','DELETE']):
+        try: sync_excel_desde_db()
+        except Exception as e: st.session_state['excel_sync_error']=str(e)
+    return lid
+
+def sync_excel_desde_db():
+    """Replica las diez tablas operativas en un único libro, una hoja por tabla."""
+    hojas={
+        'PNC':'pnc_registros','Materia Extraña':'me_registros','Detector Metales RX':'ddm_rx_registros',
+        '10 Meses':'muestras_10_meses','12 Meses Alérgeno':'muestras_12_meses_alergeno',
+        '12 Meses Duvalin':'muestras_12_meses_duvalin','12 Meses Nave 2':'muestras_12_meses_nave2',
+        '15 Meses':'muestras_15_meses','18 Meses':'muestras_18_meses','24 Meses':'muestras_24_meses'
+    }
+    with _EXCEL_LOCK:
+        wb=load_workbook(EXCEL_PATH) if EXCEL_PATH.exists() else Workbook()
+        if 'Sheet' in wb.sheetnames and len(wb.sheetnames)==1: wb.remove(wb['Sheet'])
+        for nombre,tabla in hojas.items():
+            df=read_df(f'SELECT * FROM {tabla} ORDER BY id ASC')
+            ws=wb[nombre] if nombre in wb.sheetnames else wb.create_sheet(nombre)
+            ws.delete_rows(1,ws.max_row)
+            headers=list(df.columns)
+            if not headers:
+                # Obtiene encabezados aun cuando no existan registros.
+                c=conn(); headers=[r[1] for r in c.execute(f'PRAGMA table_info({tabla})').fetchall()]; c.close()
+            for col,h in enumerate(headers,1):
+                cell=ws.cell(1,col,h); cell.font=Font(bold=True,color='FFFFFF'); cell.fill=PatternFill('solid',fgColor='062C36'); cell.alignment=Alignment(horizontal='center')
+            for r_idx,row in enumerate(df.itertuples(index=False,name=None),2):
+                for c_idx,value in enumerate(row,1): ws.cell(r_idx,c_idx,value)
+            ws.freeze_panes='A2'; ws.auto_filter.ref=f'A1:{get_column_letter(max(1,len(headers)))}{max(1,ws.max_row)}'
+            for i,h in enumerate(headers,1):
+                max_len=max([len(str(h))]+[len(str(ws.cell(r,i).value or '')) for r in range(2,min(ws.max_row,200)+1)])
+                ws.column_dimensions[get_column_letter(i)].width=min(max(max_len+2,12),45)
+        wb.save(EXCEL_PATH)
 
 def reset_autoincrement(table):
     try:
@@ -549,6 +589,8 @@ def page_registro():
 def page_consulta():
     st.title('Consulta, seguimiento y descarga')
     st.caption('Usa el filtro para encontrar registros específicos. La fecha aparece después del número de registro.')
+    if st.session_state.pop('excel_sync_error',None): st.warning('No fue posible actualizar el libro Excel. Verifica que el archivo no esté abierto en otro programa.')
+    if EXCEL_PATH.exists(): st.download_button('📗 Descargar libro maestro Excel',EXCEL_PATH.read_bytes(),EXCEL_PATH.name,'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',key='download_excel_maestro')
     def prep(df):
         v=df.copy()
         if all(c in v.columns for c in ['dia','mes','anio']):
@@ -777,11 +819,12 @@ def consulta_muestras_retencion():
                 st.info('No hay registros para mostrar.')
                 continue
             vista=mostrado[['id','item','descripcion','lote','destino','numero_muestras','numero_corrugado','responsable','observaciones']].rename(columns={'id':'N°','item':'ITEM','descripcion':'Descripción','lote':'Lote','destino':'Destino','numero_muestras':'# De muestras','numero_corrugado':'# Corrugado','responsable':'Responsable','observaciones':'Observaciones'})
-            st.dataframe(vista,use_container_width=True,hide_index=True)
+            evento=st.dataframe(vista,use_container_width=True,hide_index=True,on_select='rerun',selection_mode='single-row',key=f'table_{tabla}')
             st.download_button('Descargar CSV',vista.to_csv(index=False).encode('utf-8-sig'),f'{tabla}_{datetime.now().strftime("%Y%m%d_%H%M%S")}.csv','text/csv',key=f'download_{tabla}')
-            opcion=st.selectbox('Selecciona un registro para editar o eliminar',['']+[f'{int(r.id)} | {r.item} | {r.lote}' for r in mostrado.itertuples()],key=f'sel_{tabla}')
-            if not opcion: continue
-            rid=int(opcion.split('|')[0].strip())
+            filas=getattr(evento,'selection',{}).get('rows',[]) if evento is not None else []
+            if not filas: continue
+            rid=int(vista.iloc[filas[0]]['N°'])
+            st.markdown(f'### Registro seleccionado: Número {rid}')
             original=read_df(f'SELECT * FROM {tabla} WHERE id=?',(rid,)).iloc[0].to_dict()
             with st.expander(f'✏️ Editar registro N° {rid}',expanded=True):
                 actual=next((x for x in opciones_item if x and x.split('|')[0].strip()==str(original['item'])),'')
@@ -1009,6 +1052,8 @@ def page_auditoria(): st.title('Auditoría'); st.dataframe(read_df('SELECT * FRO
 
 def main():
     init_state(); init_db()
+    try: sync_excel_desde_db()
+    except Exception as e: st.session_state['excel_sync_error']=str(e)
     if FORCE_RESET_ADMIN: reset_admin()
     user=login()
     styles(False)
