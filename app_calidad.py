@@ -1126,68 +1126,201 @@ def general_catalog_dataframe():
     return pd.DataFrame({h:v+['']*(mx-len(v)) for h,v in data.items()})
 
 def page_catalogos():
-    st.title('Catálogos'); st.caption('Datos precargados directamente en la aplicación. El administrador puede agregar, actualizar o eliminar elementos.')
-    tab1,tab2,tab3,tab4=st.tabs(['Productos','Defectos','Datos generales','Naves, líneas y sectores'])
+    st.title('Catálogos')
+    st.caption('Selecciona una fila para editarla o eliminarla. Los cambios se reflejan automáticamente en los registros vinculados.')
+
+    def fila_seleccionada(df_vista, key):
+        if df_vista.empty:
+            st.info('No hay valores disponibles.')
+            return None
+        evento = st.dataframe(
+            df_vista,
+            use_container_width=True,
+            hide_index=True,
+            on_select='rerun',
+            selection_mode='single-row',
+            key=f'catalogo_tabla_{key}'
+        )
+        filas = getattr(evento, 'selection', {}).get('rows', []) if evento is not None else []
+        if filas:
+            return int(df_vista.iloc[filas[0]]['ID'])
+        return None
+
+    def solicitar_eliminacion(tabla, rid, etiqueta, audit_action, key):
+        if st.button('Eliminar', key=f'cat_del_{key}_{rid}'):
+            st.session_state[f'cat_confirm_{key}'] = rid
+        if st.session_state.get(f'cat_confirm_{key}') == rid:
+            st.warning(f'Confirma la eliminación de: {etiqueta}. Los registros históricos conservarán la información previamente guardada.')
+            c1, c2 = st.columns(2)
+            if c1.button('Sí, eliminar definitivamente', key=f'cat_del_ok_{key}_{rid}'):
+                exec_sql(f'UPDATE {tabla} SET activo=0 WHERE id=?', (rid,))
+                audit(st.session_state.auth['usuario'], audit_action, f'ID {rid} | {etiqueta}')
+                st.session_state.pop(f'cat_confirm_{key}', None)
+                st.success('Valor eliminado correctamente.')
+                st.rerun()
+            if c2.button('Cancelar', key=f'cat_del_cancel_{key}_{rid}'):
+                st.session_state.pop(f'cat_confirm_{key}', None)
+                st.rerun()
+
+    tab1, tab2, tab3, tab4 = st.tabs([
+        'Productos', 'Defectos', 'Datos generales', 'Naves, líneas y sectores'
+    ])
+
     with tab1:
-        df=read_df('SELECT id,item,descripcion,cliente,familia FROM productos WHERE activo=1 ORDER BY descripcion'); st.dataframe(df,use_container_width=True,hide_index=True)
+        df = read_df('SELECT id,item,descripcion,cliente,familia FROM productos WHERE activo=1 ORDER BY descripcion')
+        vista = df.rename(columns={'id':'ID','item':'ITEM','descripcion':'Descripción','cliente':'Cliente','familia':'Familia'})
+        selected = fila_seleccionada(vista, 'productos')
         if admin_required():
-            with st.expander('Agregar producto'):
-                with st.form('add_prod'):
-                    item=st.text_input('Item'); desc=st.text_input('Descripción'); cliente=st.text_input('Cliente'); familia=st.text_input('Familia')
-                    if st.form_submit_button('Agregar producto') and item and desc: exec_sql('INSERT OR REPLACE INTO productos(item,descripcion,cliente,familia,activo) VALUES(?,?,?,?,1)',(item.strip(),desc.strip(),cliente.strip(),familia.strip())); st.rerun()
-            if not df.empty:
-                opt=st.selectbox('Producto a eliminar',[f'{r.id} | {r.item} | {r.descripcion}' for r in df.itertuples()],key='del_prod')
-                if st.button('Eliminar producto seleccionado'): exec_sql('UPDATE productos SET activo=0 WHERE id=?',(int(opt.split('|')[0].strip()),)); st.rerun()
+            with st.expander('Agregar producto', expanded=False):
+                with st.form('cat_add_producto', clear_on_submit=True):
+                    a,b=st.columns(2)
+                    item=a.text_input('ITEM *'); descripcion=b.text_input('Descripción *')
+                    c,d=st.columns(2)
+                    cliente=c.text_input('Cliente *'); familia=d.text_input('Familia *')
+                    agregar=st.form_submit_button('Agregar producto', type='primary')
+                if agregar:
+                    faltan=[k for k,v in {'ITEM':item,'Descripción':descripcion,'Cliente':cliente,'Familia':familia}.items() if not v.strip()]
+                    if faltan: st.error('Completa: '+', '.join(faltan)+'.')
+                    elif not read_df('SELECT id FROM productos WHERE item=? AND activo=1',(item.strip(),)).empty: st.error('Ya existe un producto activo con ese ITEM.')
+                    else:
+                        existente=read_df('SELECT id FROM productos WHERE item=?',(item.strip(),))
+                        if existente.empty:
+                            rid=exec_sql('INSERT INTO productos(item,descripcion,cliente,familia,activo) VALUES(?,?,?,?,1)',(item.strip(),descripcion.strip(),cliente.strip(),familia.strip()))
+                        else:
+                            rid=int(existente.iloc[0]['id']); exec_sql('UPDATE productos SET descripcion=?,cliente=?,familia=?,activo=1 WHERE id=?',(descripcion.strip(),cliente.strip(),familia.strip(),rid))
+                        audit(st.session_state.auth['usuario'],'AGREGAR_PRODUCTO',f'ID {rid} | ITEM {item.strip()}'); st.success('Producto agregado correctamente.'); st.rerun()
+            if selected:
+                row=df[df['id']==selected].iloc[0]
+                with st.expander(f'Editar producto seleccionado: {row["item"]}', expanded=True):
+                    with st.form(f'cat_edit_producto_{selected}'):
+                        a,b=st.columns(2)
+                        item_e=a.text_input('ITEM *',value=str(row['item'] or '')); desc_e=b.text_input('Descripción *',value=str(row['descripcion'] or ''))
+                        c,d=st.columns(2)
+                        cliente_e=c.text_input('Cliente *',value=str(row['cliente'] or '')); familia_e=d.text_input('Familia *',value=str(row['familia'] or ''))
+                        editar=st.form_submit_button('Guardar cambios',type='primary')
+                    if editar:
+                        vals={'ITEM':item_e,'Descripción':desc_e,'Cliente':cliente_e,'Familia':familia_e}; faltan=[k for k,v in vals.items() if not v.strip()]
+                        duplicado=read_df('SELECT id FROM productos WHERE item=? AND id<>? AND activo=1',(item_e.strip(),selected))
+                        if faltan: st.error('Completa: '+', '.join(faltan)+'.')
+                        elif not duplicado.empty: st.error('Ya existe otro producto activo con ese ITEM.')
+                        else:
+                            exec_sql('UPDATE productos SET item=?,descripcion=?,cliente=?,familia=? WHERE id=?',(item_e.strip(),desc_e.strip(),cliente_e.strip(),familia_e.strip(),selected))
+                            audit(st.session_state.auth['usuario'],'EDITAR_PRODUCTO',f'ID {selected} | ITEM {item_e.strip()}'); st.success('Producto actualizado correctamente.'); st.rerun()
+                solicitar_eliminacion('productos',selected,str(row['item']),'ELIMINAR_PRODUCTO','productos')
+
     with tab2:
-        df=read_df('SELECT id,codigo,defecto,tipo_defecto,clasificacion FROM defectos WHERE activo=1 ORDER BY CAST(codigo AS INTEGER)'); st.dataframe(df,use_container_width=True,hide_index=True)
+        df = read_df('SELECT id,codigo,defecto,tipo_defecto,clasificacion FROM defectos WHERE activo=1 ORDER BY CAST(codigo AS INTEGER),codigo')
+        vista=df.rename(columns={'id':'ID','codigo':'Código','defecto':'Defecto','tipo_defecto':'Tipo de defecto','clasificacion':'Clasificación'})
+        selected=fila_seleccionada(vista,'defectos')
         if admin_required():
-            with st.expander('Agregar defecto'):
-                with st.form('add_def'):
-                    codigo=st.text_input('Código'); defecto=st.text_input('Defecto'); tipo=st.selectbox('Tipo',catalog('tipo_defecto') or ['Funcional','Contaminación']); clas=st.selectbox('Clasificación',['Inocuidad','Calidad','Salubridad','Legalidad'])
-                    if st.form_submit_button('Agregar defecto') and codigo and defecto: exec_sql('INSERT OR REPLACE INTO defectos(codigo,defecto,tipo_defecto,clasificacion,activo) VALUES(?,?,?,?,1)',(codigo.strip(),defecto.strip(),tipo,clas)); st.rerun()
-            if not df.empty:
-                opt=st.selectbox('Defecto a eliminar',[f'{r.id} | {r.codigo} | {r.defecto}' for r in df.itertuples()],key='del_def')
-                if st.button('Eliminar defecto seleccionado'): exec_sql('UPDATE defectos SET activo=0 WHERE id=?',(int(opt.split('|')[0].strip()),)); st.rerun()
+            tipos=opt_blank(catalog('tipo_defecto')) or ['','Funcional','Contaminación']
+            clasificaciones=['','Inocuidad','Calidad','Salubridad','Legalidad']
+            with st.expander('Agregar defecto',expanded=False):
+                with st.form('cat_add_defecto',clear_on_submit=True):
+                    a,b=st.columns(2); codigo=a.text_input('Código *'); defecto=b.text_input('Defecto *')
+                    c,d=st.columns(2); tipo=c.selectbox('Tipo de defecto *',tipos); clas=d.selectbox('Clasificación *',clasificaciones)
+                    agregar=st.form_submit_button('Agregar defecto',type='primary')
+                if agregar:
+                    vals={'Código':codigo,'Defecto':defecto,'Tipo de defecto':tipo,'Clasificación':clas}; faltan=[k for k,v in vals.items() if not str(v).strip()]
+                    if faltan: st.error('Completa: '+', '.join(faltan)+'.')
+                    elif not read_df('SELECT id FROM defectos WHERE codigo=? AND activo=1',(codigo.strip(),)).empty: st.error('Ya existe un defecto activo con ese código.')
+                    else:
+                        existente=read_df('SELECT id FROM defectos WHERE codigo=?',(codigo.strip(),))
+                        if existente.empty: rid=exec_sql('INSERT INTO defectos(codigo,defecto,tipo_defecto,clasificacion,activo) VALUES(?,?,?,?,1)',(codigo.strip(),defecto.strip(),tipo,clas))
+                        else:
+                            rid=int(existente.iloc[0]['id']); exec_sql('UPDATE defectos SET defecto=?,tipo_defecto=?,clasificacion=?,activo=1 WHERE id=?',(defecto.strip(),tipo,clas,rid))
+                        audit(st.session_state.auth['usuario'],'AGREGAR_DEFECTO',f'ID {rid} | Código {codigo.strip()}'); st.success('Defecto agregado correctamente.'); st.rerun()
+            if selected:
+                row=df[df['id']==selected].iloc[0]
+                with st.expander(f'Editar defecto seleccionado: {row["codigo"]}',expanded=True):
+                    with st.form(f'cat_edit_defecto_{selected}'):
+                        a,b=st.columns(2); codigo_e=a.text_input('Código *',value=str(row['codigo'] or '')); defecto_e=b.text_input('Defecto *',value=str(row['defecto'] or ''))
+                        tipo_opts=list(dict.fromkeys(tipos+[str(row['tipo_defecto'] or '')])); clas_opts=list(dict.fromkeys(clasificaciones+[str(row['clasificacion'] or '')]))
+                        c,d=st.columns(2); tipo_e=c.selectbox('Tipo de defecto *',tipo_opts,index=idx_or_zero(tipo_opts,str(row['tipo_defecto'] or ''))); clas_e=d.selectbox('Clasificación *',clas_opts,index=idx_or_zero(clas_opts,str(row['clasificacion'] or '')))
+                        editar=st.form_submit_button('Guardar cambios',type='primary')
+                    if editar:
+                        vals={'Código':codigo_e,'Defecto':defecto_e,'Tipo de defecto':tipo_e,'Clasificación':clas_e}; faltan=[k for k,v in vals.items() if not str(v).strip()]
+                        duplicado=read_df('SELECT id FROM defectos WHERE codigo=? AND id<>? AND activo=1',(codigo_e.strip(),selected))
+                        if faltan: st.error('Completa: '+', '.join(faltan)+'.')
+                        elif not duplicado.empty: st.error('Ya existe otro defecto activo con ese código.')
+                        else:
+                            exec_sql('UPDATE defectos SET codigo=?,defecto=?,tipo_defecto=?,clasificacion=? WHERE id=?',(codigo_e.strip(),defecto_e.strip(),tipo_e,clas_e,selected))
+                            audit(st.session_state.auth['usuario'],'EDITAR_DEFECTO',f'ID {selected} | Código {codigo_e.strip()}'); st.success('Defecto actualizado correctamente.'); st.rerun()
+                solicitar_eliminacion('defectos',selected,str(row['codigo'])+' | '+str(row['defecto']),'ELIMINAR_DEFECTO','defectos')
+
     with tab3:
-        st.subheader('Datos generales'); st.dataframe(general_catalog_dataframe(),use_container_width=True,hide_index=True)
+        labels={'Supervisores':'supervisor','Analistas':'analista','Nave':'nave','Status':'status','Responsable de detectar PNC':'responsable_detecta','Etapa':'etapa','Línea/Sector':'linea_sector','Turno':'turno','Tipo de defecto':'tipo_defecto','Disposición':'disposicion'}
+        inverso={v:k for k,v in labels.items()}
+        raw=read_df('SELECT id,categoria,valor FROM catalogos WHERE activo=1 ORDER BY categoria,valor')
+        raw=raw[raw['categoria'].isin(labels.values())].copy()
+        raw['lista']=raw['categoria'].map(inverso)
+        vista=raw[['id','lista','valor']].rename(columns={'id':'ID','lista':'Catálogo','valor':'Valor'})
+        selected=fila_seleccionada(vista,'generales')
         if admin_required():
-            labels={'Supervisores':'supervisor','Analistas':'analista','Nave':'nave','Status':'status','Responsable de detectar PNC':'responsable_detecta','Etapa':'etapa','Línea':'linea_sector','Turno':'turno','Defecto':'tipo_defecto','Disposición':'disposicion'}
-            with st.expander('Agregar valor a datos generales'):
-                with st.form('add_general'):
-                    lab=st.selectbox('Lista',list(labels.keys())); val=st.text_input('Nuevo valor')
-                    if st.form_submit_button('Agregar valor') and val.strip(): exec_sql('INSERT OR IGNORE INTO catalogos(categoria,valor,activo) VALUES(?,?,1)',(labels[lab],val.strip())); st.rerun()
-            raw=read_df('SELECT id,categoria,valor FROM catalogos WHERE activo=1 ORDER BY categoria,valor'); raw['lista']=raw['categoria'].map({v:k for k,v in labels.items()}); raw=raw.dropna(subset=['lista'])
-            if not raw.empty:
-                opt=st.selectbox('Valor a eliminar',[f'{r.id} | {r.lista} | {r.valor}' for r in raw.itertuples()],key='del_general')
-                if st.button('Eliminar valor seleccionado'): exec_sql('UPDATE catalogos SET activo=0 WHERE id=?',(int(opt.split('|')[0].strip()),)); st.rerun()
+            with st.expander('Agregar valor',expanded=False):
+                with st.form('cat_add_general',clear_on_submit=True):
+                    lista=st.selectbox('Catálogo *',list(labels.keys())); valor=st.text_input('Nuevo valor *'); agregar=st.form_submit_button('Agregar valor',type='primary')
+                if agregar:
+                    cat=labels[lista]
+                    if not valor.strip(): st.error('Ingresa el nuevo valor.')
+                    elif not read_df('SELECT id FROM catalogos WHERE categoria=? AND valor=? AND activo=1',(cat,valor.strip())).empty: st.error('Ese valor ya existe en el catálogo seleccionado.')
+                    else:
+                        existente=read_df('SELECT id FROM catalogos WHERE categoria=? AND valor=?',(cat,valor.strip()))
+                        if existente.empty: rid=exec_sql('INSERT INTO catalogos(categoria,valor,activo) VALUES(?,?,1)',(cat,valor.strip()))
+                        else:
+                            rid=int(existente.iloc[0]['id']); exec_sql('UPDATE catalogos SET activo=1 WHERE id=?',(rid,))
+                        audit(st.session_state.auth['usuario'],'AGREGAR_CATALOGO',f'{lista} | {valor.strip()}'); st.success('Valor agregado correctamente.'); st.rerun()
+            if selected:
+                row=raw[raw['id']==selected].iloc[0]
+                with st.expander(f'Editar valor seleccionado: {row["valor"]}',expanded=True):
+                    with st.form(f'cat_edit_general_{selected}'):
+                        lista_opts=list(labels.keys()); lista_e=st.selectbox('Catálogo *',lista_opts,index=idx_or_zero(lista_opts,str(row['lista']))); valor_e=st.text_input('Valor *',value=str(row['valor'] or '')); editar=st.form_submit_button('Guardar cambios',type='primary')
+                    if editar:
+                        cat_e=labels[lista_e]; duplicado=read_df('SELECT id FROM catalogos WHERE categoria=? AND valor=? AND id<>? AND activo=1',(cat_e,valor_e.strip(),selected))
+                        if not valor_e.strip(): st.error('Ingresa el valor.')
+                        elif not duplicado.empty: st.error('Ese valor ya existe en el catálogo seleccionado.')
+                        else:
+                            exec_sql('UPDATE catalogos SET categoria=?,valor=? WHERE id=?',(cat_e,valor_e.strip(),selected))
+                            audit(st.session_state.auth['usuario'],'EDITAR_CATALOGO',f'ID {selected} | {lista_e} | {valor_e.strip()}'); st.success('Valor actualizado correctamente.'); st.rerun()
+                solicitar_eliminacion('catalogos',selected,str(row['lista'])+' | '+str(row['valor']),'ELIMINAR_CATALOGO','generales')
 
     with tab4:
         st.subheader('Catálogo de naves, líneas y sectores')
-        st.caption('Catálogo integrado en la aplicación. Determina a qué nave se asignan las horas, aunque el formato contenga líneas de otra nave.')
-        error_catalogo=st.session_state.pop('catalogo_naves_error',None)
-        if error_catalogo: st.error('No fue posible cargar el catálogo: '+error_catalogo)
-        catalogo_df=read_df('SELECT id,nave,linea,sector,orden FROM catalogo_naves_lineas WHERE activo=1 ORDER BY nave,orden,id')
-        st.dataframe(catalogo_df.rename(columns={'id':'N°','nave':'Nave','linea':'Línea','sector':'Sector','orden':'Orden'}),use_container_width=True,hide_index=True)
+        st.caption('La asignación de horas por nave utiliza estas relaciones.')
+        df=read_df('SELECT id,nave,linea,sector,orden FROM catalogo_naves_lineas WHERE activo=1 ORDER BY nave,orden,id')
+        vista=df.rename(columns={'id':'ID','nave':'Nave','linea':'Línea','sector':'Sector','orden':'Orden'})
+        selected=fila_seleccionada(vista,'naves')
         if admin_required():
             archivo=st.file_uploader('Actualizar catálogo desde Excel (opcional)',type=['xlsx'],key='upload_catalogo_naves')
             if archivo is not None and st.button('Importar y reemplazar catálogo',type='primary',key='importar_catalogo_naves'):
                 try:
-                    cantidad=importar_catalogo_naves(archivo,st.session_state.auth['usuario'])
-                    audit(st.session_state.auth['usuario'],'IMPORTAR_CATALOGO_NAVES',f'{cantidad} relaciones importadas')
-                    st.success(f'Catálogo actualizado correctamente: {cantidad} relaciones de nave, línea y sector.')
-                    st.rerun()
-                except Exception as e:
-                    st.error(f'No fue posible importar el archivo: {e}')
-            with st.expander('Agregar relación manual'):
-                with st.form('add_nave_linea_sector'):
-                    nave_cat=st.selectbox('Nave',['Nave 1','Nave 2','Nave 3'])
-                    linea_cat=st.text_input('Línea')
-                    sector_cat=st.text_input('Sector')
-                    agregar=st.form_submit_button('Agregar relación')
-                if agregar and (linea_cat.strip() or sector_cat.strip()):
-                    orden=int(read_df('SELECT COALESCE(MAX(orden),-1)+1 AS n FROM catalogo_naves_lineas WHERE nave=?',(nave_cat,)).iloc[0]['n'])
-                    exec_sql('INSERT OR REPLACE INTO catalogo_naves_lineas(nave,linea,sector,linea_norm,sector_norm,orden,activo) VALUES(?,?,?,?,?,?,1)',(nave_cat,linea_cat.strip(),sector_cat.strip(),normalizar_catalogo(linea_cat),normalizar_catalogo(sector_cat),orden))
-                    st.rerun()
+                    cantidad=importar_catalogo_naves(archivo,st.session_state.auth['usuario']); audit(st.session_state.auth['usuario'],'IMPORTAR_CATALOGO_NAVES',f'{cantidad} relaciones importadas'); st.success(f'Catálogo actualizado: {cantidad} relaciones.'); st.rerun()
+                except Exception as e: st.error(f'No fue posible importar el archivo: {e}')
+            with st.expander('Agregar relación',expanded=False):
+                with st.form('cat_add_nave_relacion',clear_on_submit=True):
+                    nave=st.selectbox('Nave *',['Nave 1','Nave 2','Nave 3']); linea=st.text_input('Línea *'); sector=st.text_input('Sector *'); agregar=st.form_submit_button('Agregar relación',type='primary')
+                if agregar:
+                    if not linea.strip() or not sector.strip(): st.error('Completa Línea y Sector.')
+                    else:
+                        duplicado=read_df('SELECT id FROM catalogo_naves_lineas WHERE nave=? AND linea_norm=? AND sector_norm=? AND activo=1',(nave,normalizar_catalogo(linea),normalizar_catalogo(sector)))
+                        if not duplicado.empty: st.error('Esa relación ya existe.')
+                        else:
+                            orden=int(read_df('SELECT COALESCE(MAX(orden),-1)+1 AS n FROM catalogo_naves_lineas WHERE nave=?',(nave,)).iloc[0]['n'])
+                            rid=exec_sql('INSERT INTO catalogo_naves_lineas(nave,linea,sector,linea_norm,sector_norm,orden,activo) VALUES(?,?,?,?,?,?,1)',(nave,linea.strip(),sector.strip(),normalizar_catalogo(linea),normalizar_catalogo(sector),orden))
+                            audit(st.session_state.auth['usuario'],'AGREGAR_RELACION_NAVE',f'ID {rid} | {nave} | {linea.strip()} | {sector.strip()}'); st.success('Relación agregada correctamente.'); st.rerun()
+            if selected:
+                row=df[df['id']==selected].iloc[0]
+                with st.expander(f'Editar relación seleccionada: {row["nave"]} | {row["sector"]}',expanded=True):
+                    with st.form(f'cat_edit_nave_{selected}'):
+                        nav_opts=['Nave 1','Nave 2','Nave 3']; nave_e=st.selectbox('Nave *',nav_opts,index=idx_or_zero(nav_opts,str(row['nave']))); linea_e=st.text_input('Línea *',value=str(row['linea'] or '')); sector_e=st.text_input('Sector *',value=str(row['sector'] or '')); orden_e=st.number_input('Orden',min_value=0,step=1,value=int(row['orden'] or 0)); editar=st.form_submit_button('Guardar cambios',type='primary')
+                    if editar:
+                        duplicado=read_df('SELECT id FROM catalogo_naves_lineas WHERE nave=? AND linea_norm=? AND sector_norm=? AND id<>? AND activo=1',(nave_e,normalizar_catalogo(linea_e),normalizar_catalogo(sector_e),selected))
+                        if not linea_e.strip() or not sector_e.strip(): st.error('Completa Línea y Sector.')
+                        elif not duplicado.empty: st.error('Ya existe otra relación con esos datos.')
+                        else:
+                            exec_sql('UPDATE catalogo_naves_lineas SET nave=?,linea=?,sector=?,linea_norm=?,sector_norm=?,orden=? WHERE id=?',(nave_e,linea_e.strip(),sector_e.strip(),normalizar_catalogo(linea_e),normalizar_catalogo(sector_e),int(orden_e),selected))
+                            audit(st.session_state.auth['usuario'],'EDITAR_RELACION_NAVE',f'ID {selected} | {nave_e} | {linea_e.strip()} | {sector_e.strip()}'); st.success('Relación actualizada correctamente.'); st.rerun()
+                solicitar_eliminacion('catalogo_naves_lineas',selected,str(row['nave'])+' | '+str(row['linea'])+' | '+str(row['sector']),'ELIMINAR_RELACION_NAVE','naves')
 
 def page_usuarios():
     if not is_dev():
