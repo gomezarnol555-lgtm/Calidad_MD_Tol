@@ -111,7 +111,8 @@ def clasificar_filas(filas):
     return t,out
 
 def guardar_matriz(eid,fecha,analista,carga,tot):
-    exec_sql('INSERT INTO matriz_entrega(fecha,analista,entrega_id,total_carga_datos,horas_nave1,horas_nave2,horas_nave3,actualizado_en) VALUES(?,?,?,?,?,?,?,?)',(fecha,analista,eid,carga,tot.get('Nave 1',0),tot.get('Nave 2',0),tot.get('Nave 3',0),now_iso()))
+    analista_limpio=str(analista or '').strip()
+    exec_sql('INSERT INTO matriz_entrega(fecha,analista,entrega_id,total_carga_datos,horas_nave1,horas_nave2,horas_nave3,actualizado_en) VALUES(?,?,?,?,?,?,?,?)',(fecha,analista_limpio,eid,carga,tot.get('Nave 1',0),tot.get('Nave 2',0),tot.get('Nave 3',0),now_iso()))
 
 def excel_matriz(df):
     b=BytesIO()
@@ -228,6 +229,32 @@ def matriz_entregas():
         st.dataframe(f.pivot_table(index='analista',columns='fecha',values=campo,aggfunc='sum',fill_value=0),use_container_width=True)
 
 
+def migrar_matriz_fecha_analista(cur):
+    """Cambia la restricción anterior UNIQUE(fecha) por UNIQUE(fecha, analista)."""
+    fila = cur.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='matriz_entrega'").fetchone()
+    sql_actual = (fila[0] if fila and fila[0] else '').replace(' ', '').replace('\n', '').upper()
+    if not sql_actual or 'UNIQUE(FECHA,ANALISTA)' in sql_actual:
+        return
+    cur.execute('ALTER TABLE matriz_entrega RENAME TO matriz_entrega_anterior')
+    cur.execute("""CREATE TABLE matriz_entrega(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        fecha TEXT NOT NULL,
+        analista TEXT NOT NULL,
+        entrega_id INTEGER,
+        total_carga_datos REAL DEFAULT 0,
+        horas_nave1 REAL DEFAULT 0,
+        horas_nave2 REAL DEFAULT 0,
+        horas_nave3 REAL DEFAULT 0,
+        actualizado_en TEXT,
+        UNIQUE(fecha,analista)
+    )""")
+    cur.execute("""INSERT OR IGNORE INTO matriz_entrega
+        (id,fecha,analista,entrega_id,total_carga_datos,horas_nave1,horas_nave2,horas_nave3,actualizado_en)
+        SELECT id,fecha,COALESCE(NULLIF(TRIM(analista),''),'SIN ANALISTA'),entrega_id,
+               total_carga_datos,horas_nave1,horas_nave2,horas_nave3,actualizado_en
+        FROM matriz_entrega_anterior""")
+    cur.execute('DROP TABLE matriz_entrega_anterior')
+
 def init_db():
     UPLOAD_DIR.mkdir(exist_ok=True)
     c=conn(); cur=c.cursor()
@@ -280,7 +307,8 @@ def init_db():
     cur.execute("CREATE TABLE IF NOT EXISTS muestras_18_meses(id INTEGER PRIMARY KEY AUTOINCREMENT, item TEXT NOT NULL, descripcion TEXT NOT NULL, lote TEXT NOT NULL, destino TEXT NOT NULL, numero_muestras REAL NOT NULL DEFAULT 0, numero_corrugado REAL NOT NULL DEFAULT 0, responsable TEXT NOT NULL, observaciones TEXT, creado_por TEXT, creado_en TEXT, actualizado_por TEXT, actualizado_en TEXT)")
     cur.execute("CREATE TABLE IF NOT EXISTS muestras_24_meses(id INTEGER PRIMARY KEY AUTOINCREMENT, item TEXT NOT NULL, descripcion TEXT NOT NULL, lote TEXT NOT NULL, destino TEXT NOT NULL, numero_muestras REAL NOT NULL DEFAULT 0, numero_corrugado REAL NOT NULL DEFAULT 0, responsable TEXT NOT NULL, observaciones TEXT, creado_por TEXT, creado_en TEXT, actualizado_por TEXT, actualizado_en TEXT)")
     cur.execute("CREATE TABLE IF NOT EXISTS catalogo_naves_lineas(id INTEGER PRIMARY KEY AUTOINCREMENT,nave TEXT,linea TEXT,sector TEXT,linea_norm TEXT,sector_norm TEXT,orden INTEGER DEFAULT 0,activo INTEGER DEFAULT 1,UNIQUE(nave,linea,sector))")
-    cur.execute("CREATE TABLE IF NOT EXISTS matriz_entrega(id INTEGER PRIMARY KEY AUTOINCREMENT,fecha TEXT UNIQUE,analista TEXT,entrega_id INTEGER,total_carga_datos REAL DEFAULT 0,horas_nave1 REAL DEFAULT 0,horas_nave2 REAL DEFAULT 0,horas_nave3 REAL DEFAULT 0,actualizado_en TEXT)")
+    cur.execute("CREATE TABLE IF NOT EXISTS matriz_entrega(id INTEGER PRIMARY KEY AUTOINCREMENT,fecha TEXT NOT NULL,analista TEXT NOT NULL,entrega_id INTEGER,total_carga_datos REAL DEFAULT 0,horas_nave1 REAL DEFAULT 0,horas_nave2 REAL DEFAULT 0,horas_nave3 REAL DEFAULT 0,actualizado_en TEXT,UNIQUE(fecha,analista))")
+    migrar_matriz_fecha_analista(cur)
     cur.execute("CREATE TABLE IF NOT EXISTS entregas_turno(id INTEGER PRIMARY KEY AUTOINCREMENT, nave TEXT, fecha TEXT, analista TEXT, turno TEXT, referencia TEXT, total_carga_datos REAL DEFAULT 0, total_horas_trabajadas REAL DEFAULT 0, creado_por TEXT, creado_en TEXT)")
     cur.execute("CREATE TABLE IF NOT EXISTS entregas_turno_lineas(id INTEGER PRIMARY KEY AUTOINCREMENT, entrega_id INTEGER, grupo TEXT, linea TEXT, producto_descripcion TEXT, horas_trabajadas REAL DEFAULT 0, carga_spac REAL DEFAULT 0, observaciones TEXT, orden_fila INTEGER DEFAULT 0)")
     cur.execute("CREATE TABLE IF NOT EXISTS entregas_turno_seguimientos(id INTEGER PRIMARY KEY AUTOINCREMENT, entrega_id INTEGER, bloque TEXT, registro_numero TEXT, hoja_fisica TEXT, carga_electronica TEXT, correo TEXT, descripcion_seguimiento TEXT, orden_fila INTEGER DEFAULT 0)")
@@ -1123,11 +1151,11 @@ def page_entrega_turno():
         totales_nave,filas_clasificadas=clasificar_filas(filas);total_h=sum(totales_nave.values());total_c=sum(x[4] for x in filas)+sum(x[5] for x in resultados)
         m1,m2=st.columns(2);m1.metric('TOTAL DE CARGA DE DATOS',f'{total_c:.2f}');m2.metric('TOTAL GENERAL DE HORAS',f'{total_h:.2f}');q1,q2,q3=st.columns(3);q1.metric('HORAS NAVE 1',f"{totales_nave['Nave 1']:.2f}");q2.metric('HORAS NAVE 2',f"{totales_nave['Nave 2']:.2f}");q3.metric('HORAS NAVE 3',f"{totales_nave['Nave 3']:.2f}")
         if st.button('Guardar entrega de turno',type='primary',key=f'et23_g_{nave}_{n}'):
-            repetida=not read_df('SELECT id FROM matriz_entrega WHERE fecha=?',(fecha.isoformat(),)).empty
+            repetida=not read_df('SELECT id FROM matriz_entrega WHERE fecha=? AND analista=?',(fecha.isoformat(),analista)).empty
             faltan=[]
             if not analista:faltan.append('Analista')
             if not turno:faltan.append('Turno')
-            if repetida:st.error('Fecha repetida. Ya existe una entrega de turno para esta fecha. Corrige la fecha o elimina ese día desde la matriz.')
+            if repetida:st.error('Registro repetido. Ya existe una entrega de turno para el mismo analista y la misma fecha. Corrige la fecha, selecciona otro analista o elimina previamente ese registro desde la matriz.')
             elif faltan:st.error('Completa: '+', '.join(faltan)+'.')
             else:
                 eid=exec_sql('INSERT INTO entregas_turno(nave,fecha,analista,turno,referencia,total_carga_datos,total_horas_trabajadas,creado_por,creado_en) VALUES(?,?,?,?,?,?,?,?,?)',(nave,fecha.isoformat(),analista,turno,referencia,total_c,total_h,st.session_state.auth['usuario'],now_iso()))
@@ -1169,11 +1197,11 @@ def page_entrega_turno():
     totales_nave,filas_clasificadas=clasificar_filas(filas);total_h=sum(totales_nave.values());total_c=sum(x[4] for x in filas)
     m1,m2=st.columns(2);m1.metric('TOTAL DE CARGA DE DATOS',f'{total_c:.2f}');m2.metric('TOTAL GENERAL DE HORAS',f'{total_h:.2f}');q1,q2,q3=st.columns(3);q1.metric('HORAS NAVE 1',f"{totales_nave['Nave 1']:.2f}");q2.metric('HORAS NAVE 2',f"{totales_nave['Nave 2']:.2f}");q3.metric('HORAS NAVE 3',f"{totales_nave['Nave 3']:.2f}")
     if st.button('Guardar entrega de turno',type='primary',key=f'et_g_{n}'):
-        repetida=not read_df('SELECT id FROM matriz_entrega WHERE fecha=?',(fecha.isoformat(),)).empty
+        repetida=not read_df('SELECT id FROM matriz_entrega WHERE fecha=? AND analista=?',(fecha.isoformat(),analista)).empty
         faltan=[]
         if not analista: faltan.append('Analista')
         if not turno: faltan.append('Turno')
-        if repetida:st.error('Fecha repetida. Ya existe una entrega de turno para esta fecha. Corrige la fecha o elimina ese día desde la matriz.')
+        if repetida:st.error('Registro repetido. Ya existe una entrega de turno para el mismo analista y la misma fecha. Corrige la fecha, selecciona otro analista o elimina previamente ese registro desde la matriz.')
         elif faltan: st.error('Completa: '+', '.join(faltan)+'.')
         else:
             eid=exec_sql('INSERT INTO entregas_turno(nave,fecha,analista,turno,referencia,total_carga_datos,total_horas_trabajadas,creado_por,creado_en) VALUES(?,?,?,?,?,?,?,?,?)',(nave,fecha.isoformat(),analista,turno,referencia,total_c,total_h,st.session_state.auth['usuario'],now_iso()))
