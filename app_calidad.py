@@ -1226,7 +1226,7 @@ def general_catalog_dataframe():
 
 def page_catalogos():
     st.title('Catálogos'); st.caption('Datos precargados desde el Excel adjunto. El administrador puede agregar o eliminar elementos.')
-    tab1,tab2,tab3=st.tabs(['Productos','Defectos','Datos generales'])
+    tab1,tab2,tab3,tab4=st.tabs(['Productos','Defectos','Datos generales','Naves, líneas y sectores'])
     with tab1:
         df=read_df('SELECT id,item,descripcion,cliente,familia FROM productos WHERE activo=1 ORDER BY descripcion'); st.dataframe(df,use_container_width=True,hide_index=True)
         if admin_required():
@@ -1259,6 +1259,189 @@ def page_catalogos():
             if not raw.empty:
                 opt=st.selectbox('Valor a eliminar',[f'{r.id} | {r.lista} | {r.valor}' for r in raw.itertuples()],key='del_general')
                 if st.button('Eliminar valor seleccionado'): exec_sql('UPDATE catalogos SET activo=0 WHERE id=?',(int(opt.split('|')[0].strip()),)); st.rerun()
+
+    with tab4:
+        st.subheader('Naves, líneas y sectores')
+        st.caption('Este catálogo controla la clasificación de las horas trabajadas por Nave 1, Nave 2 y Nave 3.')
+
+        filtro_nave=st.multiselect(
+            'Filtrar por nave',
+            ['Nave 1','Nave 2','Nave 3'],
+            key='cat_naves_filtro'
+        )
+        buscar=st.text_input(
+            'Buscar línea o sector',
+            placeholder='Escribe parte del nombre de la línea o sector...',
+            key='cat_naves_buscar'
+        )
+
+        df_naves=read_df('''SELECT id,nave,linea,sector,orden
+                            FROM catalogo_naves_lineas
+                            WHERE activo=1
+                            ORDER BY nave,orden,id''')
+        if filtro_nave:
+            df_naves=df_naves[df_naves['nave'].isin(filtro_nave)]
+        if buscar.strip() and not df_naves.empty:
+            texto=buscar.strip()
+            mascara=(
+                df_naves['linea'].fillna('').astype(str).str.contains(texto,case=False,na=False)
+                | df_naves['sector'].fillna('').astype(str).str.contains(texto,case=False,na=False)
+            )
+            df_naves=df_naves[mascara]
+
+        if df_naves.empty:
+            st.info('No hay relaciones activas para mostrar con los filtros seleccionados.')
+            seleccionado=None
+        else:
+            vista_naves=df_naves.rename(columns={
+                'id':'ID','nave':'Nave','linea':'Línea',
+                'sector':'Sector','orden':'Orden'
+            })
+            nonce_naves=st.session_state.get('cat_naves_nonce',0)
+            evento_naves=st.dataframe(
+                vista_naves,
+                use_container_width=True,
+                hide_index=True,
+                on_select='rerun',
+                selection_mode='single-row',
+                key=f'cat_naves_tabla_{nonce_naves}'
+            )
+            filas_naves=getattr(evento_naves,'selection',{}).get('rows',[]) if evento_naves is not None else []
+            posicion_valida=(
+                bool(filas_naves)
+                and isinstance(filas_naves[0],int)
+                and 0 <= filas_naves[0] < len(vista_naves)
+            )
+            if posicion_valida:
+                seleccionado=int(vista_naves.iloc[filas_naves[0]]['ID'])
+            else:
+                seleccionado=None
+                if filas_naves:
+                    st.session_state.cat_naves_nonce=nonce_naves+1
+                    st.rerun()
+
+        if admin_required():
+            with st.expander('Agregar nueva relación',expanded=False):
+                with st.form('cat_naves_agregar',clear_on_submit=True):
+                    c1,c2,c3=st.columns(3)
+                    nueva_nave=c1.selectbox('Nave *',['Nave 1','Nave 2','Nave 3'])
+                    nueva_linea=c2.text_input('Línea *')
+                    nuevo_sector=c3.text_input('Sector *')
+                    agregar_nave=st.form_submit_button('Agregar relación',type='primary')
+                if agregar_nave:
+                    linea_limpia=nueva_linea.strip()
+                    sector_limpio=nuevo_sector.strip()
+                    if not linea_limpia or not sector_limpio:
+                        st.error('Completa los campos Nave, Línea y Sector.')
+                    else:
+                        duplicado=read_df(
+                            '''SELECT id FROM catalogo_naves_lineas
+                               WHERE nave=? AND linea_norm=? AND sector_norm=? AND activo=1''',
+                            (nueva_nave,normalizar_catalogo(linea_limpia),normalizar_catalogo(sector_limpio))
+                        )
+                        if not duplicado.empty:
+                            st.error('La relación de nave, línea y sector ya existe.')
+                        else:
+                            anterior=read_df(
+                                '''SELECT id FROM catalogo_naves_lineas
+                                   WHERE nave=? AND linea_norm=? AND sector_norm=? LIMIT 1''',
+                                (nueva_nave,normalizar_catalogo(linea_limpia),normalizar_catalogo(sector_limpio))
+                            )
+                            orden_df=read_df(
+                                'SELECT COALESCE(MAX(orden),-1)+1 AS siguiente FROM catalogo_naves_lineas WHERE nave=?',
+                                (nueva_nave,)
+                            )
+                            orden_nuevo=int(orden_df.iloc[0]['siguiente'])
+                            if anterior.empty:
+                                rid=exec_sql(
+                                    '''INSERT INTO catalogo_naves_lineas
+                                       (nave,linea,sector,linea_norm,sector_norm,orden,activo)
+                                       VALUES(?,?,?,?,?,?,1)''',
+                                    (nueva_nave,linea_limpia,sector_limpio,
+                                     normalizar_catalogo(linea_limpia),normalizar_catalogo(sector_limpio),orden_nuevo)
+                                )
+                            else:
+                                rid=int(anterior.iloc[0]['id'])
+                                exec_sql(
+                                    '''UPDATE catalogo_naves_lineas
+                                       SET linea=?,sector=?,orden=?,activo=1
+                                       WHERE id=?''',
+                                    (linea_limpia,sector_limpio,orden_nuevo,rid)
+                                )
+                            audit(st.session_state.auth['usuario'],'AGREGAR_RELACION_NAVE',f'ID {rid} | {nueva_nave} | {linea_limpia} | {sector_limpio}')
+                            st.success('Relación agregada correctamente.')
+                            st.session_state.cat_naves_nonce=st.session_state.get('cat_naves_nonce',0)+1
+                            st.rerun()
+
+            if seleccionado is not None:
+                registro_df=read_df(
+                    '''SELECT id,nave,linea,sector,orden
+                       FROM catalogo_naves_lineas WHERE id=? AND activo=1''',
+                    (seleccionado,)
+                )
+                if registro_df.empty:
+                    st.session_state.cat_naves_nonce=st.session_state.get('cat_naves_nonce',0)+1
+                    st.rerun()
+                registro=registro_df.iloc[0]
+                st.markdown(f"### Relación seleccionada: {registro['nave']} | {registro['linea']} | {registro['sector']}")
+
+                with st.expander('Editar relación seleccionada',expanded=True):
+                    with st.form(f'cat_naves_editar_{seleccionado}'):
+                        opciones_nave=['Nave 1','Nave 2','Nave 3']
+                        c1,c2,c3,c4=st.columns([1,2,2,1])
+                        nave_editada=c1.selectbox(
+                            'Nave *',opciones_nave,
+                            index=idx_or_zero(opciones_nave,str(registro['nave']))
+                        )
+                        linea_editada=c2.text_input('Línea *',value=str(registro['linea'] or ''))
+                        sector_editado=c3.text_input('Sector *',value=str(registro['sector'] or ''))
+                        orden_editado=c4.number_input('Orden',min_value=0,step=1,value=int(registro['orden'] or 0))
+                        guardar_edicion=st.form_submit_button('Guardar cambios',type='primary')
+                    if guardar_edicion:
+                        linea_limpia=linea_editada.strip()
+                        sector_limpio=sector_editado.strip()
+                        if not linea_limpia or not sector_limpio:
+                            st.error('Completa Línea y Sector.')
+                        else:
+                            duplicado=read_df(
+                                '''SELECT id FROM catalogo_naves_lineas
+                                   WHERE nave=? AND linea_norm=? AND sector_norm=?
+                                   AND id<>? AND activo=1''',
+                                (nave_editada,normalizar_catalogo(linea_limpia),
+                                 normalizar_catalogo(sector_limpio),seleccionado)
+                            )
+                            if not duplicado.empty:
+                                st.error('Ya existe otra relación activa con esos datos.')
+                            else:
+                                exec_sql(
+                                    '''UPDATE catalogo_naves_lineas
+                                       SET nave=?,linea=?,sector=?,linea_norm=?,sector_norm=?,orden=?
+                                       WHERE id=?''',
+                                    (nave_editada,linea_limpia,sector_limpio,
+                                     normalizar_catalogo(linea_limpia),normalizar_catalogo(sector_limpio),
+                                     int(orden_editado),seleccionado)
+                                )
+                                audit(st.session_state.auth['usuario'],'EDITAR_RELACION_NAVE',f'ID {seleccionado} | {nave_editada} | {linea_limpia} | {sector_limpio}')
+                                st.success('Relación actualizada correctamente. La clasificación de horas usará el nuevo valor.')
+                                st.session_state.cat_naves_nonce=st.session_state.get('cat_naves_nonce',0)+1
+                                st.rerun()
+
+                if st.button('Eliminar relación seleccionada',key=f'cat_naves_eliminar_{seleccionado}'):
+                    st.session_state.cat_naves_confirmar=seleccionado
+                if st.session_state.get('cat_naves_confirmar')==seleccionado:
+                    st.warning('Confirma la eliminación. La relación dejará de utilizarse para clasificar nuevas sumatorias.')
+                    b1,b2=st.columns(2)
+                    if b1.button('Sí, eliminar definitivamente',key=f'cat_naves_eliminar_ok_{seleccionado}'):
+                        exec_sql('UPDATE catalogo_naves_lineas SET activo=0 WHERE id=?',(seleccionado,))
+                        audit(st.session_state.auth['usuario'],'ELIMINAR_RELACION_NAVE',f'ID {seleccionado}')
+                        st.session_state.pop('cat_naves_confirmar',None)
+                        st.session_state.cat_naves_nonce=st.session_state.get('cat_naves_nonce',0)+1
+                        st.success('Relación eliminada correctamente.')
+                        st.rerun()
+                    if b2.button('Cancelar',key=f'cat_naves_eliminar_cancelar_{seleccionado}'):
+                        st.session_state.pop('cat_naves_confirmar',None)
+                        st.session_state.cat_naves_nonce=st.session_state.get('cat_naves_nonce',0)+1
+                        st.rerun()
 
 def page_usuarios():
     if not is_dev():
