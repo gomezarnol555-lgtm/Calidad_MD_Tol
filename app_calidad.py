@@ -8,11 +8,6 @@ from openpyxl.utils import get_column_letter
 from datetime import datetime, date
 from pathlib import Path
 from uuid import uuid4
-from reportlab.lib import colors
-from reportlab.lib.pagesizes import A4, landscape
-from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.lib.enums import TA_CENTER
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, PageBreak
 
 APP_NAME = "Calidad MD | PNC y ME"
 DB_PATH = "calidad.db"
@@ -96,70 +91,79 @@ def idx_or_zero(options, value):
     value='' if value is None else str(value)
     return options.index(value) if value in options else 0
 
-def normalizar_catalogo(valor):
+def normalizar_catalogo(v):
     import unicodedata
-    t=unicodedata.normalize('NFKD',str(valor or '').strip().upper())
-    return ' '.join(''.join(c for c in t if not unicodedata.combining(c)).replace('´',"'").split())
+    t=unicodedata.normalize('NFKD',str(v or '').strip().upper())
+    return ' '.join(''.join(c for c in t if not unicodedata.combining(c)).split())
 
-def obtener_nave_catalogo(linea,grupo=''):
-    df=read_df('SELECT nave,linea_norm,sector_norm FROM catalogo_naves_lineas WHERE activo=1 ORDER BY orden')
-    for valor in (normalizar_catalogo(linea),normalizar_catalogo(grupo)):
-        if valor and not df.empty:
-            x=df[(df.linea_norm==valor)|(df.sector_norm==valor)]
+def nave_por_catalogo(linea,grupo=''):
+    d=read_df('SELECT nave,linea_norm,sector_norm FROM catalogo_naves_lineas WHERE activo=1')
+    for v in (normalizar_catalogo(linea),normalizar_catalogo(grupo)):
+        if v and not d.empty:
+            x=d[(d.linea_norm==v)|(d.sector_norm==v)]
             if not x.empty:return str(x.iloc[0].nave)
     return ''
 
-def clasificar_filas_y_totales(filas):
-    tot={'Nave 1':0.0,'Nave 2':0.0,'Nave 3':0.0,'Sin clasificar':0.0}; detalle=[]
-    for grupo,linea,producto,horas,carga,obs,orden in filas:
-        nav=obtener_nave_catalogo(linea,grupo) or 'Sin clasificar'; tot[nav]+=float(horas or 0)
-        detalle.append((grupo,linea,producto,horas,carga,obs,orden,nav))
-    return tot,detalle
+def clasificar_filas(filas):
+    t={'Nave 1':0.0,'Nave 2':0.0,'Nave 3':0.0,'Sin clasificar':0.0};out=[]
+    for g,l,p,h,c,o,n in filas:
+        nv=nave_por_catalogo(l,g) or 'Sin clasificar';t[nv]+=float(h or 0);out.append((g,l,p,h,c,o,n,nv))
+    return t,out
 
-def registrar_indicadores_entrega(entrega_id,fecha,analista,total_carga,totales):
-    exec_sql('INSERT INTO matriz_entrega(fecha,analista,entrega_id,total_carga_datos,horas_nave1,horas_nave2,horas_nave3,actualizado_en) VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(fecha,analista) DO UPDATE SET entrega_id=excluded.entrega_id,total_carga_datos=excluded.total_carga_datos,horas_nave1=excluded.horas_nave1,horas_nave2=excluded.horas_nave2,horas_nave3=excluded.horas_nave3,actualizado_en=excluded.actualizado_en',
-        (fecha,analista,entrega_id,float(total_carga),float(totales.get('Nave 1',0)),float(totales.get('Nave 2',0)),float(totales.get('Nave 3',0)),now_iso()))
+def guardar_matriz(eid,fecha,analista,carga,tot):
+    exec_sql('INSERT INTO matriz_entrega(fecha,analista,entrega_id,total_carga_datos,horas_nave1,horas_nave2,horas_nave3,actualizado_en) VALUES(?,?,?,?,?,?,?,?)',(fecha,analista,eid,carga,tot.get('Nave 1',0),tot.get('Nave 2',0),tot.get('Nave 3',0),now_iso()))
 
-def generar_pdf_entrega(entrega_id):
-    cab=read_df('SELECT * FROM entregas_turno WHERE id=?',(entrega_id,))
-    det=read_df('SELECT * FROM entregas_turno_lineas WHERE entrega_id=? ORDER BY orden_fila,id',(entrega_id,))
-    seg=read_df('SELECT * FROM entregas_turno_seguimientos WHERE entrega_id=? ORDER BY bloque,orden_fila,id',(entrega_id,))
-    ind=read_df('SELECT * FROM matriz_entrega WHERE entrega_id=?',(entrega_id,))
-    if cab.empty:return b''
-    r=cab.iloc[0]; buf=BytesIO(); doc=SimpleDocTemplate(buf,pagesize=landscape(A4),rightMargin=28,leftMargin=28,topMargin=28,bottomMargin=28)
-    styles=getSampleStyleSheet(); title=ParagraphStyle('T',parent=styles['Title'],fontName='Helvetica-Bold',fontSize=18,textColor=colors.HexColor('#062C36'),alignment=TA_CENTER,spaceAfter=12)
-    h=ParagraphStyle('H',parent=styles['Heading2'],fontName='Helvetica-Bold',fontSize=11,textColor=colors.HexColor('#0A4652'),spaceBefore=8,spaceAfter=6)
-    body=ParagraphStyle('B',parent=styles['BodyText'],fontSize=8,leading=10)
-    story=[Paragraph('REPORTE DE ENTREGA DE TURNO - CALIDAD PROCESOS',title)]
-    meta=[['Registro',str(entrega_id),'Fecha',str(r.fecha),'Analista',str(r.analista),'Turno',str(r.turno)],['Nave del formato',str(r.nave),'Referencia',str(r.referencia),'Creado por',str(r.creado_por),'Creado en',str(r.creado_en)]]
-    t=Table(meta,colWidths=[58,72,52,72,55,120,50,95]); t.setStyle(TableStyle([('BACKGROUND',(0,0),(-1,0),colors.HexColor('#DDF4EF')),('GRID',(0,0),(-1,-1),.35,colors.HexColor('#B8C7D1')),('FONTNAME',(0,0),(-1,-1),'Helvetica'),('FONTNAME',(0,0),(-1,-1),'Helvetica-Bold'),('FONTSIZE',(0,0),(-1,-1),7),('VALIGN',(0,0),(-1,-1),'MIDDLE'),('LEFTPADDING',(0,0),(-1,-1),5),('RIGHTPADDING',(0,0),(-1,-1),5)])); story += [t,Spacer(1,10)]
-    if not ind.empty:
-        x=ind.iloc[0]; mat=[['Total carga de datos','Horas Nave 1','Horas Nave 2','Horas Nave 3'],[f'{x.total_carga_datos:.2f}',f'{x.horas_nave1:.2f}',f'{x.horas_nave2:.2f}',f'{x.horas_nave3:.2f}']]
-        mt=Table(mat,colWidths=[170]*4); mt.setStyle(TableStyle([('BACKGROUND',(0,0),(-1,0),colors.HexColor('#062C36')),('TEXTCOLOR',(0,0),(-1,0),colors.white),('BACKGROUND',(0,1),(-1,1),colors.HexColor('#ECFDF8')),('ALIGN',(0,0),(-1,-1),'CENTER'),('FONTNAME',(0,0),(-1,0),'Helvetica-Bold'),('FONTSIZE',(0,0),(-1,-1),9),('GRID',(0,0),(-1,-1),.5,colors.HexColor('#8FA5B2')),('TOPPADDING',(0,0),(-1,-1),7),('BOTTOMPADDING',(0,0),(-1,-1),7)])); story += [Paragraph('Matriz de indicadores',h),mt,Spacer(1,8)]
-    if not det.empty:
-        data=[['Nave','Grupo','Línea / sector','Producto / análisis','Horas','Carga','Observaciones']]
-        for q in det.itertuples(): data.append([str(getattr(q,'nave_catalogo','') or ''),str(q.grupo or ''),str(q.linea or ''),str(q.producto_descripcion or ''),f'{float(q.horas_trabajadas or 0):.2f}',f'{float(q.carga_spac or 0):.2f}',str(q.observaciones or '')])
-        dt=Table([[Paragraph(str(v),body) for v in row] for row in data],colWidths=[55,90,150,150,42,42,180],repeatRows=1)
-        dt.setStyle(TableStyle([('BACKGROUND',(0,0),(-1,0),colors.HexColor('#0A4652')),('TEXTCOLOR',(0,0),(-1,0),colors.white),('FONTNAME',(0,0),(-1,0),'Helvetica-Bold'),('GRID',(0,0),(-1,-1),.3,colors.HexColor('#B8C7D1')),('VALIGN',(0,0),(-1,-1),'MIDDLE'),('ROWBACKGROUNDS',(0,1),(-1,-1),[colors.white,colors.HexColor('#F5F8FA')]),('LEFTPADDING',(0,0),(-1,-1),4),('RIGHTPADDING',(0,0),(-1,-1),4),('TOPPADDING',(0,0),(-1,-1),4),('BOTTOMPADDING',(0,0),(-1,-1),4)])); story += [Paragraph('Detalle registrado',h),dt]
-    if not seg.empty:
-        story += [PageBreak(),Paragraph('Seguimientos',h)]
-        sd=[['Bloque','Registro','Hoja física','Carga electrónica','Correo','Descripción']]
-        for q in seg.itertuples(): sd.append([str(q.bloque or ''),str(q.registro_numero or ''),str(q.hoja_fisica or ''),str(q.carga_electronica or ''),str(q.correo or ''),str(q.descripcion_seguimiento or '')])
-        stbl=Table([[Paragraph(str(v),body) for v in row] for row in sd],colWidths=[120,60,65,75,55,300],repeatRows=1); stbl.setStyle(TableStyle([('BACKGROUND',(0,0),(-1,0),colors.HexColor('#0A4652')),('TEXTCOLOR',(0,0),(-1,0),colors.white),('GRID',(0,0),(-1,-1),.3,colors.HexColor('#B8C7D1')),('VALIGN',(0,0),(-1,-1),'MIDDLE'),('ROWBACKGROUNDS',(0,1),(-1,-1),[colors.white,colors.HexColor('#F5F8FA')])]))
-        story.append(stbl)
-    doc.build(story); return buf.getvalue()
+def excel_matriz(df):
+    b=BytesIO()
+    with pd.ExcelWriter(b,engine='openpyxl') as w:
+        base=df.rename(columns={'fecha':'Fecha','analista':'Analista','total_carga_datos':'Total carga de datos','horas_nave1':'Horas Nave 1','horas_nave2':'Horas Nave 2','horas_nave3':'Horas Nave 3'})
+        base.to_excel(w,sheet_name='Base indicadores',index=False)
+        for c,n in [('total_carga_datos','Total carga'),('horas_nave1','Horas Nave 1'),('horas_nave2','Horas Nave 2'),('horas_nave3','Horas Nave 3')]:df.pivot_table(index='analista',columns='fecha',values=c,aggfunc='sum',fill_value=0).to_excel(w,sheet_name=n)
+        for ws in w.book.worksheets:
+            ws.freeze_panes='A2'
+            for cell in ws[1]:cell.font=Font(bold=True,color='FFFFFF');cell.fill=PatternFill('solid',fgColor='062C36')
+    return b.getvalue()
 
-def mostrar_matriz_indicadores():
-    st.markdown('### Matriz de indicadores por fecha y analista')
-    df=read_df('SELECT fecha,analista,total_carga_datos,horas_nave1,horas_nave2,horas_nave3 FROM matriz_entrega ORDER BY fecha,analista')
-    if df.empty: st.info('Todavía no hay indicadores registrados.'); return
-    a,b=st.columns(2); nombres=sorted(df.analista.dropna().unique()); fechas=sorted(df.fecha.dropna().unique())
-    fn=a.multiselect('Buscar por analista',nombres,key='mat_analista'); ff=b.multiselect('Buscar por fecha',fechas,key='mat_fecha')
-    if fn:df=df[df.analista.isin(fn)]
-    if ff:df=df[df.fecha.isin(ff)]
-    for campo,titulo in [('total_carga_datos','Total de carga de datos'),('horas_nave1','Horas trabajadas Nave 1'),('horas_nave2','Horas trabajadas Nave 2'),('horas_nave3','Horas trabajadas Nave 3')]:
-        mat=df.pivot_table(index='analista',columns='fecha',values=campo,aggfunc='sum',fill_value=0)
-        st.markdown(f'**{titulo}**'); st.dataframe(mat,use_container_width=True)
+def pdf_entrega(eid):
+    try:
+        from reportlab.lib import colors
+        from reportlab.lib.pagesizes import A4,landscape
+        from reportlab.lib.styles import getSampleStyleSheet
+        from reportlab.platypus import SimpleDocTemplate,Paragraph,Spacer,Table,TableStyle
+    except ModuleNotFoundError:return None
+    h=read_df('SELECT * FROM entregas_turno WHERE id=?',(eid,));d=read_df('SELECT * FROM entregas_turno_lineas WHERE entrega_id=? ORDER BY orden_fila',(eid,));m=read_df('SELECT * FROM matriz_entrega WHERE entrega_id=?',(eid,))
+    if h.empty:return None
+    r=h.iloc[0];b=BytesIO();doc=SimpleDocTemplate(b,pagesize=landscape(A4),leftMargin=28,rightMargin=28,topMargin=28,bottomMargin=28);sty=getSampleStyleSheet();story=[Paragraph('REPORTE DE ENTREGA DE TURNO',sty['Title']),Spacer(1,8)]
+    meta=[['Registro',eid,'Fecha',r.fecha,'Analista',r.analista,'Turno',r.turno],['Nave',r.nave,'Referencia',r.referencia,'Creado por',r.creado_por,'Creado en',r.creado_en]];t=Table(meta);t.setStyle(TableStyle([('GRID',(0,0),(-1,-1),.4,colors.grey),('BACKGROUND',(0,0),(-1,0),colors.HexColor('#DDF4EF'))]));story+=[t,Spacer(1,10)]
+    if not m.empty:
+        x=m.iloc[0];mt=Table([['Total carga','Horas Nave 1','Horas Nave 2','Horas Nave 3'],[f'{x.total_carga_datos:.2f}',f'{x.horas_nave1:.2f}',f'{x.horas_nave2:.2f}',f'{x.horas_nave3:.2f}']],colWidths=[165]*4);mt.setStyle(TableStyle([('BACKGROUND',(0,0),(-1,0),colors.HexColor('#062C36')),('TEXTCOLOR',(0,0),(-1,0),colors.white),('ALIGN',(0,0),(-1,-1),'CENTER'),('GRID',(0,0),(-1,-1),.4,colors.grey)]));story+=[mt,Spacer(1,10)]
+    data=[['Nave','Grupo','Línea/Sector','Producto/Análisis','Horas','Carga','Observaciones']]
+    for q in d.itertuples():data.append([str(getattr(q,'nave_catalogo','') or ''),q.grupo or '',q.linea or '',q.producto_descripcion or '',f'{float(q.horas_trabajadas or 0):.2f}',f'{float(q.carga_spac or 0):.2f}',q.observaciones or ''])
+    dt=Table(data,colWidths=[55,85,145,145,45,45,190],repeatRows=1);dt.setStyle(TableStyle([('BACKGROUND',(0,0),(-1,0),colors.HexColor('#0A4652')),('TEXTCOLOR',(0,0),(-1,0),colors.white),('FONTSIZE',(0,0),(-1,-1),7),('GRID',(0,0),(-1,-1),.3,colors.grey),('VALIGN',(0,0),(-1,-1),'MIDDLE')]));story.append(dt);doc.build(story);return b.getvalue()
+
+def matriz_entregas():
+    df=read_df('SELECT id,fecha,analista,entrega_id,total_carga_datos,horas_nave1,horas_nave2,horas_nave3 FROM matriz_entrega ORDER BY fecha,analista')
+    if df.empty:st.info('Todavía no hay indicadores registrados.');return
+    df['fecha_dt']=pd.to_datetime(df.fecha,errors='coerce').dt.date;valid=df.fecha_dt.dropna();mn,mx=min(valid),max(valid);a,b=st.columns(2);desde=a.date_input('Fecha inicial',mn,key='mx_desde');hasta=b.date_input('Fecha final',mx,key='mx_hasta')
+    if desde>hasta:st.error('La fecha inicial no puede ser posterior a la fecha final.');return
+    f=df[(df.fecha_dt>=desde)&(df.fecha_dt<=hasta)].copy();names=st.multiselect('Analista',sorted(df.analista.unique()),key='mx_names')
+    if names:f=f[f.analista.isin(names)]
+    vista=f.drop(columns=['fecha_dt']).rename(columns={'id':'ID','fecha':'Fecha','analista':'Analista','total_carga_datos':'Total carga','horas_nave1':'Horas Nave 1','horas_nave2':'Horas Nave 2','horas_nave3':'Horas Nave 3'})
+    ev=st.dataframe(vista,use_container_width=True,hide_index=True,on_select='rerun',selection_mode='single-row',key='mx_table')
+    st.download_button('Descargar matriz en Excel',excel_matriz(f.drop(columns=['id','entrega_id','fecha_dt'])),f'matriz_{desde}_{hasta}.xlsx','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    rows=getattr(ev,'selection',{}).get('rows',[]) if ev is not None else []
+    if rows:
+        rid=int(vista.iloc[rows[0]].ID);row=f[f.id==rid].iloc[0]
+        if st.button('Eliminar día seleccionado',key=f'mx_del_{rid}'):st.session_state.mx_confirm=rid
+        if st.session_state.get('mx_confirm')==rid:
+            st.warning('Se eliminará la matriz y la entrega relacionada.')
+            x,y=st.columns(2)
+            if x.button('Sí, eliminar definitivamente',key=f'mx_ok_{rid}'):
+                c=conn();cur=c.cursor();eid=int(row.entrega_id) if pd.notna(row.entrega_id) else None
+                if eid:cur.execute('DELETE FROM entregas_turno_seguimientos WHERE entrega_id=?',(eid,));cur.execute('DELETE FROM entregas_turno_lineas WHERE entrega_id=?',(eid,));cur.execute('DELETE FROM entregas_turno WHERE id=?',(eid,))
+                cur.execute('DELETE FROM matriz_entrega WHERE id=?',(rid,));c.commit();c.close();audit(st.session_state.auth['usuario'],'ELIMINAR_DIA_MATRIZ',f'ID {rid}');st.session_state.pop('mx_confirm',None);st.rerun()
+            if y.button('Cancelar',key=f'mx_cancel_{rid}'):st.session_state.pop('mx_confirm',None);st.rerun()
+    for c,n in [('total_carga_datos','Total de carga de datos'),('horas_nave1','Horas Nave 1'),('horas_nave2','Horas Nave 2'),('horas_nave3','Horas Nave 3')]:st.markdown(f'**{n}**');st.dataframe(f.pivot_table(index='analista',columns='fecha',values=c,aggfunc='sum',fill_value=0),use_container_width=True)
 
 def init_db():
     UPLOAD_DIR.mkdir(exist_ok=True)
@@ -213,7 +217,7 @@ def init_db():
     cur.execute("CREATE TABLE IF NOT EXISTS muestras_18_meses(id INTEGER PRIMARY KEY AUTOINCREMENT, item TEXT NOT NULL, descripcion TEXT NOT NULL, lote TEXT NOT NULL, destino TEXT NOT NULL, numero_muestras REAL NOT NULL DEFAULT 0, numero_corrugado REAL NOT NULL DEFAULT 0, responsable TEXT NOT NULL, observaciones TEXT, creado_por TEXT, creado_en TEXT, actualizado_por TEXT, actualizado_en TEXT)")
     cur.execute("CREATE TABLE IF NOT EXISTS muestras_24_meses(id INTEGER PRIMARY KEY AUTOINCREMENT, item TEXT NOT NULL, descripcion TEXT NOT NULL, lote TEXT NOT NULL, destino TEXT NOT NULL, numero_muestras REAL NOT NULL DEFAULT 0, numero_corrugado REAL NOT NULL DEFAULT 0, responsable TEXT NOT NULL, observaciones TEXT, creado_por TEXT, creado_en TEXT, actualizado_por TEXT, actualizado_en TEXT)")
     cur.execute("CREATE TABLE IF NOT EXISTS catalogo_naves_lineas(id INTEGER PRIMARY KEY AUTOINCREMENT,nave TEXT,linea TEXT,sector TEXT,linea_norm TEXT,sector_norm TEXT,orden INTEGER DEFAULT 0,activo INTEGER DEFAULT 1,UNIQUE(nave,linea,sector))")
-    cur.execute("CREATE TABLE IF NOT EXISTS matriz_entrega(id INTEGER PRIMARY KEY AUTOINCREMENT,fecha TEXT NOT NULL,analista TEXT NOT NULL,entrega_id INTEGER,total_carga_datos REAL DEFAULT 0,horas_nave1 REAL DEFAULT 0,horas_nave2 REAL DEFAULT 0,horas_nave3 REAL DEFAULT 0,actualizado_en TEXT,UNIQUE(fecha,analista))")
+    cur.execute("CREATE TABLE IF NOT EXISTS matriz_entrega(id INTEGER PRIMARY KEY AUTOINCREMENT,fecha TEXT UNIQUE,analista TEXT,entrega_id INTEGER,total_carga_datos REAL DEFAULT 0,horas_nave1 REAL DEFAULT 0,horas_nave2 REAL DEFAULT 0,horas_nave3 REAL DEFAULT 0,actualizado_en TEXT)")
     cur.execute("CREATE TABLE IF NOT EXISTS entregas_turno(id INTEGER PRIMARY KEY AUTOINCREMENT, nave TEXT, fecha TEXT, analista TEXT, turno TEXT, referencia TEXT, total_carga_datos REAL DEFAULT 0, total_horas_trabajadas REAL DEFAULT 0, creado_por TEXT, creado_en TEXT)")
     cur.execute("CREATE TABLE IF NOT EXISTS entregas_turno_lineas(id INTEGER PRIMARY KEY AUTOINCREMENT, entrega_id INTEGER, grupo TEXT, linea TEXT, producto_descripcion TEXT, horas_trabajadas REAL DEFAULT 0, carga_spac REAL DEFAULT 0, observaciones TEXT, orden_fila INTEGER DEFAULT 0)")
     cur.execute("CREATE TABLE IF NOT EXISTS entregas_turno_seguimientos(id INTEGER PRIMARY KEY AUTOINCREMENT, entrega_id INTEGER, bloque TEXT, registro_numero TEXT, hoja_fisica TEXT, carga_electronica TEXT, correo TEXT, descripcion_seguimiento TEXT, orden_fila INTEGER DEFAULT 0)")
@@ -231,8 +235,7 @@ def init_db():
     for codigo,defecto,tipo,clas in SEED_DEFECTS: cur.execute("INSERT OR IGNORE INTO defectos(codigo,defecto,tipo_defecto,clasificacion,activo) VALUES(?,?,?,?,1)",(codigo,defecto,tipo,clas))
     for cat, vals in SEED_CATALOGS.items():
         for val in vals: cur.execute("INSERT OR IGNORE INTO catalogos(categoria,valor,activo) VALUES(?,?,1)",(cat,val))
-    for nave_cat,linea_cat,sector_cat,orden_cat in SEED_NAVES_LINEAS:
-        cur.execute('INSERT OR IGNORE INTO catalogo_naves_lineas(nave,linea,sector,linea_norm,sector_norm,orden,activo) VALUES(?,?,?,?,?,?,1)',(nave_cat,linea_cat,sector_cat,normalizar_catalogo(linea_cat),normalizar_catalogo(sector_cat),orden_cat))
+    for nv,li,se,ordn in SEED_NAVES_LINEAS: cur.execute('INSERT OR IGNORE INTO catalogo_naves_lineas(nave,linea,sector,linea_norm,sector_norm,orden,activo) VALUES(?,?,?,?,?,?,1)',(nv,li,se,normalizar_catalogo(li),normalizar_catalogo(se),ordn))
     c.commit(); c.close()
 
 def reset_admin():
@@ -956,11 +959,12 @@ def consulta_muestras_retencion():
 
 def page_entrega_turno():
     referencia='RE-CAL01-2301-00002-2013 Rev. 1'
-    pdf_id=st.session_state.get('pdf_entrega_id')
-    if pdf_id:
-        pdf_bytes=generar_pdf_entrega(pdf_id)
-        if pdf_bytes: st.download_button('📄 Descargar PDF del último registro',pdf_bytes,f'entrega_turno_{pdf_id}.pdf','application/pdf',key=f'pdf_entrega_{pdf_id}')
-    with st.expander('Matriz histórica por fecha y analista',expanded=False): mostrar_matriz_indicadores()
+    pid=st.session_state.get('pdf_entrega_id')
+    if pid:
+        pb=pdf_entrega(pid)
+        if pb:st.download_button('Descargar PDF del último registro',pb,f'entrega_turno_{pid}.pdf','application/pdf')
+        else:st.warning('Instala reportlab para habilitar la descarga PDF.')
+    with st.expander('Matriz histórica por fecha y analista',expanded=False):matriz_entregas()
     grupos={
       'MD - Car. Duros - FABRIMA':['MD - Car. Duros - FABRIMA'],
       'BON O BON':['MD - BOB - CENTRO DE MASA','MD - BOB - HORNO','MD - BOB - DEPOSITADORA','MD - BOB - TROQUEL','MD - BOB - BAÑADORA 1','MD - BOB - BAÑADORA 2','MD - BOB - FLOW PACK 1','MD - BOB - FLOW PACK 2','MD - BOB - FLOW PACK 3','MD - BOB - FLOW PACK 4','MD - BOB - FLOW PACK 5','MD - BOB - HIGH DREAM'],
@@ -1027,23 +1031,25 @@ def page_entrega_turno():
             analisis=[('FISICOQUÍMICOS','HUEVITO','% Humedad'),('FISICOQUÍMICOS','POOSH','% Humedad'),('FISICOQUÍMICOS','POOSH','°BX / pH')]
         resultados=[]
         for ai,(grupo,linea,tipo_analisis) in enumerate(analisis):
-            cc=st.columns([1.2,2,1.5,1,2]);cc[0].text_input('Grupo',grupo,disabled=True,key=f'et23_ag_{nave}_{ai}_{n}',label_visibility='collapsed');cc[1].text_input('Línea',linea,disabled=True,key=f'et23_al_{nave}_{ai}_{n}',label_visibility='collapsed');cc[2].text_input('Análisis',tipo_analisis,disabled=True,key=f'et23_at_{nave}_{ai}_{n}',label_visibility='collapsed');resultado=cc[3].text_input('Resultado',key=f'et23_ar_{nave}_{ai}_{n}',label_visibility='collapsed');obs=cc[4].text_input('Observaciones',key=f'et23_ao_{nave}_{ai}_{n}',label_visibility='collapsed');contador=st.number_input(f'Cantidad de análisis - {linea} - {tipo_analisis}',min_value=0.0,step=1.0,format='%.2f',key=f'et23_ac_{nave}_{ai}_{n}');resultados.append((grupo,linea,tipo_analisis,resultado,obs,float(contador)))
+            cc=st.columns([1.2,2,1.5,1,2]);cc[0].text_input('Grupo',grupo,disabled=True,key=f'et23_ag_{nave}_{ai}_{n}',label_visibility='collapsed');cc[1].text_input('Línea',linea,disabled=True,key=f'et23_al_{nave}_{ai}_{n}',label_visibility='collapsed');cc[2].text_input('Análisis',tipo_analisis,disabled=True,key=f'et23_at_{nave}_{ai}_{n}',label_visibility='collapsed');resultado=cc[3].text_input('Resultado',key=f'et23_ar_{nave}_{ai}_{n}',label_visibility='collapsed');obs=cc[4].text_input('Observaciones',key=f'et23_ao_{nave}_{ai}_{n}',label_visibility='collapsed');contador=st.number_input(f'Cantidad de análisis - {linea} - {tipo_analisis}',min_value=0.0,step=1.0,format='%.2f',key=f'et23_cnt_{nave}_{ai}_{n}');resultados.append((grupo,linea,tipo_analisis,resultado,obs,float(contador)))
         seguimientos=[];st.markdown('### Seguimientos')
         for bi,bloque in enumerate(['Seguimiento a Contaminaciones','Seguimiento a PNC´S','Limpiezas','Seguimiento a ORDENES DE FALLO','GIRO / JUNTA DE EQUIPO']):
             with st.expander(bloque,expanded=bi<2):
                 base=pd.DataFrame([{'Registro #':'','Hoja física':'','Carga electrónica':'','Correo':'','Descripción del seguimiento':''} for _ in range(3)])
                 ed=st.data_editor(base,num_rows='dynamic',use_container_width=True,hide_index=True,key=f'et23_s_{nave}_{bi}_{n}',column_config={'Hoja física':st.column_config.SelectboxColumn(options=['','Sí','No','N/A']),'Carga electrónica':st.column_config.SelectboxColumn(options=['','Sí','No','N/A']),'Correo':st.column_config.SelectboxColumn(options=['','Sí','No','N/A'])});seguimientos.append((bloque,ed))
-        totales_nave,filas_clasificadas=clasificar_filas_y_totales(filas); total_h=sum(totales_nave.values()); total_c=sum(x[4] for x in filas)+sum(x[5] for x in resultados)
-        m1,m2=st.columns(2);m1.metric('TOTAL DE CARGA DE DATOS',f'{total_c:.2f}');m2.metric('TOTAL GENERAL DE HORAS',f'{total_h:.2f}'); k1,k2,k3=st.columns(3);k1.metric('HORAS NAVE 1',f"{totales_nave['Nave 1']:.2f}");k2.metric('HORAS NAVE 2',f"{totales_nave['Nave 2']:.2f}");k3.metric('HORAS NAVE 3',f"{totales_nave['Nave 3']:.2f}")
+        totales_nave,filas_clasificadas=clasificar_filas(filas);total_h=sum(totales_nave.values());total_c=sum(x[4] for x in filas)+sum(x[5] for x in resultados)
+        m1,m2=st.columns(2);m1.metric('TOTAL DE CARGA DE DATOS',f'{total_c:.2f}');m2.metric('TOTAL GENERAL DE HORAS',f'{total_h:.2f}');q1,q2,q3=st.columns(3);q1.metric('HORAS NAVE 1',f"{totales_nave['Nave 1']:.2f}");q2.metric('HORAS NAVE 2',f"{totales_nave['Nave 2']:.2f}");q3.metric('HORAS NAVE 3',f"{totales_nave['Nave 3']:.2f}")
         if st.button('Guardar entrega de turno',type='primary',key=f'et23_g_{nave}_{n}'):
+            repetida=not read_df('SELECT id FROM matriz_entrega WHERE fecha=?',(fecha.isoformat(),)).empty
             faltan=[]
             if not analista:faltan.append('Analista')
             if not turno:faltan.append('Turno')
-            if faltan:st.error('Completa: '+', '.join(faltan)+'.')
+            if repetida:st.error('Fecha repetida. Ya existe una entrega de turno para esta fecha. Corrige la fecha o elimina ese día desde la matriz.')
+            elif faltan:st.error('Completa: '+', '.join(faltan)+'.')
             else:
                 eid=exec_sql('INSERT INTO entregas_turno(nave,fecha,analista,turno,referencia,total_carga_datos,total_horas_trabajadas,creado_por,creado_en) VALUES(?,?,?,?,?,?,?,?,?)',(nave,fecha.isoformat(),analista,turno,referencia,total_c,total_h,st.session_state.auth['usuario'],now_iso()))
-                for grupo,linea,producto,horas,carga,obs,orden,nave_catalogo in filas_clasificadas:
-                    if producto.strip() or horas or carga or obs.strip():exec_sql('INSERT INTO entregas_turno_lineas(entrega_id,grupo,linea,producto_descripcion,horas_trabajadas,carga_spac,observaciones,orden_fila,nave_catalogo) VALUES(?,?,?,?,?,?,?,?,?)',(eid,grupo,linea,producto.strip(),horas,carga,obs.strip(),orden,nave_catalogo))
+                for grupo,linea,producto,horas,carga,obs,orden,nvcat in filas_clasificadas:
+                    if producto.strip() or horas or carga or obs.strip():exec_sql('INSERT INTO entregas_turno_lineas(entrega_id,grupo,linea,producto_descripcion,horas_trabajadas,carga_spac,observaciones,orden_fila,nave_catalogo) VALUES(?,?,?,?,?,?,?,?,?)',(eid,grupo,linea,producto.strip(),horas,carga,obs.strip(),orden,nvcat))
                 base_orden=len(filas)
                 for j,(grupo,linea,tipo_analisis,resultado,obs,contador) in enumerate(resultados):
                     if resultado.strip() or obs.strip():exec_sql('INSERT INTO entregas_turno_lineas(entrega_id,grupo,linea,producto_descripcion,horas_trabajadas,carga_spac,observaciones,orden_fila) VALUES(?,?,?,?,?,?,?,?)',(eid,'ANÁLISIS '+grupo,linea,tipo_analisis,0,contador,(resultado+' | '+obs).strip(' |'),base_orden+j))
@@ -1051,7 +1057,7 @@ def page_entrega_turno():
                     for orden,row in df.iterrows():
                         vals=[str(row.get(c,'') or '') for c in ['Registro #','Hoja física','Carga electrónica','Correo','Descripción del seguimiento']]
                         if any(v.strip() for v in vals):exec_sql('INSERT INTO entregas_turno_seguimientos(entrega_id,bloque,registro_numero,hoja_fisica,carga_electronica,correo,descripcion_seguimiento,orden_fila) VALUES(?,?,?,?,?,?,?,?)',(eid,bloque,*vals,int(orden)))
-                registrar_indicadores_entrega(eid,fecha.isoformat(),analista,total_c,totales_nave); audit(st.session_state.auth['usuario'],'CREAR_ENTREGA_TURNO',f'{nave} | ID {eid}'); st.session_state['pdf_entrega_id']=eid; st.session_state.entrega_nonce+=1;st.success(f'Entrega guardada: Número {eid}');st.rerun()
+                guardar_matriz(eid,fecha.isoformat(),analista,total_c,totales_nave);audit(st.session_state.auth['usuario'],'CREAR_ENTREGA_TURNO',f'{nave} | ID {eid}');st.session_state.pdf_entrega_id=eid;st.session_state.entrega_nonce+=1;st.success(f'Entrega guardada: Número {eid}');st.rerun()
         st.markdown('</div>',unsafe_allow_html=True)
         return
     n=st.session_state.entrega_nonce
@@ -1077,22 +1083,24 @@ def page_entrega_turno():
         with st.expander(bloque,expanded=bi<2):
             base=pd.DataFrame([{'Registro #':'','Hoja física':'','Carga electrónica':'','Correo':'','Descripción del seguimiento':''} for _ in range(3)])
             ed=st.data_editor(base,num_rows='dynamic',use_container_width=True,hide_index=True,key=f'et_s_{bi}_{n}',column_config={'Hoja física':st.column_config.SelectboxColumn(options=['','Sí','No','N/A']),'Carga electrónica':st.column_config.SelectboxColumn(options=['','Sí','No','N/A']),'Correo':st.column_config.SelectboxColumn(options=['','Sí','No','N/A'])}); seguimientos.append((bloque,ed))
-    totales_nave,filas_clasificadas=clasificar_filas_y_totales(filas); total_h=sum(totales_nave.values()); total_c=sum(x[4] for x in filas)
-    m1,m2=st.columns(2);m1.metric('TOTAL DE CARGA DE DATOS',f'{total_c:.2f}');m2.metric('TOTAL GENERAL DE HORAS',f'{total_h:.2f}'); k1,k2,k3=st.columns(3);k1.metric('HORAS NAVE 1',f"{totales_nave['Nave 1']:.2f}");k2.metric('HORAS NAVE 2',f"{totales_nave['Nave 2']:.2f}");k3.metric('HORAS NAVE 3',f"{totales_nave['Nave 3']:.2f}")
+    totales_nave,filas_clasificadas=clasificar_filas(filas);total_h=sum(totales_nave.values());total_c=sum(x[4] for x in filas)
+    m1,m2=st.columns(2);m1.metric('TOTAL DE CARGA DE DATOS',f'{total_c:.2f}');m2.metric('TOTAL GENERAL DE HORAS',f'{total_h:.2f}');q1,q2,q3=st.columns(3);q1.metric('HORAS NAVE 1',f"{totales_nave['Nave 1']:.2f}");q2.metric('HORAS NAVE 2',f"{totales_nave['Nave 2']:.2f}");q3.metric('HORAS NAVE 3',f"{totales_nave['Nave 3']:.2f}")
     if st.button('Guardar entrega de turno',type='primary',key=f'et_g_{n}'):
+        repetida=not read_df('SELECT id FROM matriz_entrega WHERE fecha=?',(fecha.isoformat(),)).empty
         faltan=[]
         if not analista: faltan.append('Analista')
         if not turno: faltan.append('Turno')
-        if faltan: st.error('Completa: '+', '.join(faltan)+'.')
+        if repetida:st.error('Fecha repetida. Ya existe una entrega de turno para esta fecha. Corrige la fecha o elimina ese día desde la matriz.')
+        elif faltan: st.error('Completa: '+', '.join(faltan)+'.')
         else:
             eid=exec_sql('INSERT INTO entregas_turno(nave,fecha,analista,turno,referencia,total_carga_datos,total_horas_trabajadas,creado_por,creado_en) VALUES(?,?,?,?,?,?,?,?,?)',(nave,fecha.isoformat(),analista,turno,referencia,total_c,total_h,st.session_state.auth['usuario'],now_iso()))
-            for grupo,linea,producto,horas,carga,obs,orden,nave_catalogo in filas_clasificadas:
-                if producto.strip() or horas or carga or obs.strip(): exec_sql('INSERT INTO entregas_turno_lineas(entrega_id,grupo,linea,producto_descripcion,horas_trabajadas,carga_spac,observaciones,orden_fila,nave_catalogo) VALUES(?,?,?,?,?,?,?,?,?)',(eid,grupo,linea,producto.strip(),horas,carga,obs.strip(),orden,nave_catalogo))
+            for grupo,linea,producto,horas,carga,obs,orden,nvcat in filas_clasificadas:
+                if producto.strip() or horas or carga or obs.strip(): exec_sql('INSERT INTO entregas_turno_lineas(entrega_id,grupo,linea,producto_descripcion,horas_trabajadas,carga_spac,observaciones,orden_fila,nave_catalogo) VALUES(?,?,?,?,?,?,?,?,?)',(eid,grupo,linea,producto.strip(),horas,carga,obs.strip(),orden,nvcat))
             for bloque,df in seguimientos:
                 for orden,row in df.iterrows():
                     vals=[str(row.get(c,'') or '') for c in ['Registro #','Hoja física','Carga electrónica','Correo','Descripción del seguimiento']]
                     if any(v.strip() for v in vals): exec_sql('INSERT INTO entregas_turno_seguimientos(entrega_id,bloque,registro_numero,hoja_fisica,carga_electronica,correo,descripcion_seguimiento,orden_fila) VALUES(?,?,?,?,?,?,?,?)',(eid,bloque,*vals,int(orden)))
-            registrar_indicadores_entrega(eid,fecha.isoformat(),analista,total_c,totales_nave); audit(st.session_state.auth['usuario'],'CREAR_ENTREGA_TURNO',f'Nave 1 | ID {eid}'); st.session_state['pdf_entrega_id']=eid; st.session_state.entrega_nonce+=1;st.success(f'Entrega guardada: Número {eid}');st.rerun()
+            guardar_matriz(eid,fecha.isoformat(),analista,total_c,totales_nave);audit(st.session_state.auth['usuario'],'CREAR_ENTREGA_TURNO',f'Nave 1 | ID {eid}');st.session_state.pdf_entrega_id=eid;st.session_state.entrega_nonce+=1;st.success(f'Entrega guardada: Número {eid}');st.rerun()
     st.markdown('</div>',unsafe_allow_html=True)
 
 def admin_required():
