@@ -1,12 +1,18 @@
 import streamlit as st
 import pandas as pd
 import sqlite3, hashlib, os, base64, threading
+from io import BytesIO
 from openpyxl import Workbook, load_workbook
 from openpyxl.styles import Font, PatternFill, Alignment
 from openpyxl.utils import get_column_letter
 from datetime import datetime, date
 from pathlib import Path
 from uuid import uuid4
+from reportlab.lib import colors
+from reportlab.lib.pagesizes import A4, landscape
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.enums import TA_CENTER
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, PageBreak
 
 APP_NAME = "Calidad MD | PNC y ME"
 DB_PATH = "calidad.db"
@@ -91,79 +97,69 @@ def idx_or_zero(options, value):
     return options.index(value) if value in options else 0
 
 def normalizar_catalogo(valor):
-    """Normaliza textos solo para comparar, sin modificar el valor visible."""
     import unicodedata
-    texto = str(valor or '').strip().upper()
-    texto = unicodedata.normalize('NFKD', texto)
-    texto = ''.join(ch for ch in texto if not unicodedata.combining(ch))
-    return ' '.join(texto.replace('´', "'").split())
+    t=unicodedata.normalize('NFKD',str(valor or '').strip().upper())
+    return ' '.join(''.join(c for c in t if not unicodedata.combining(c)).replace('´',"'").split())
 
-
-def leer_catalogo_naves_excel(origen):
-    """Lee la hoja Naves del formato corporativo: D:E, G:H y K:L."""
-    wb = load_workbook(origen, data_only=True)
-    if 'Naves' not in wb.sheetnames:
-        raise ValueError('El archivo debe contener una hoja llamada Naves.')
-    ws = wb['Naves']
-    bloques = [('Nave 1', 4, 5), ('Nave 2', 7, 8), ('Nave 3', 11, 12)]
-    registros = []
-    for nave, col_linea, col_sector in bloques:
-        linea_actual = ''
-        orden = 0
-        for fila in range(6, ws.max_row + 1):
-            linea = str(ws.cell(fila, col_linea).value or '').strip()
-            sector = str(ws.cell(fila, col_sector).value or '').strip()
-            if linea:
-                linea_actual = linea
-            if not linea_actual and not sector:
-                continue
-            if linea_actual or sector:
-                registros.append((nave, linea_actual, sector, orden))
-                orden += 1
-    if not registros:
-        raise ValueError('No se encontraron líneas o sectores en la hoja Naves.')
-    return registros
-
-
-def importar_catalogo_naves(origen, usuario='sistema'):
-    registros = leer_catalogo_naves_excel(origen)
-    c = conn(); cur = c.cursor()
-    try:
-        cur.execute('DELETE FROM catalogo_naves_lineas')
-        for nave, linea, sector, orden in registros:
-            cur.execute("INSERT OR IGNORE INTO catalogo_naves_lineas (nave,linea,sector,linea_norm,sector_norm,orden,activo) VALUES(?,?,?,?,?,?,1)",
-                (nave,linea,sector,normalizar_catalogo(linea),normalizar_catalogo(sector),orden))
-        c.commit()
-    finally:
-        c.close()
-    return len(registros)
-
-
-def obtener_nave_catalogo(linea, grupo=''):
-    """Identifica la nave por sector y, como respaldo, por línea/grupo."""
-    linea_norm = normalizar_catalogo(linea)
-    grupo_norm = normalizar_catalogo(grupo)
-    df = read_df('SELECT nave,linea_norm,sector_norm FROM catalogo_naves_lineas WHERE activo=1 ORDER BY orden')
-    if df.empty:
-        return ''
-    for valor in (linea_norm, grupo_norm):
-        if not valor:
-            continue
-        exacto = df[(df['sector_norm'] == valor) | (df['linea_norm'] == valor)]
-        if not exacto.empty:
-            return str(exacto.iloc[0]['nave'])
+def obtener_nave_catalogo(linea,grupo=''):
+    df=read_df('SELECT nave,linea_norm,sector_norm FROM catalogo_naves_lineas WHERE activo=1 ORDER BY orden')
+    for valor in (normalizar_catalogo(linea),normalizar_catalogo(grupo)):
+        if valor and not df.empty:
+            x=df[(df.linea_norm==valor)|(df.sector_norm==valor)]
+            if not x.empty:return str(x.iloc[0].nave)
     return ''
 
+def clasificar_filas_y_totales(filas):
+    tot={'Nave 1':0.0,'Nave 2':0.0,'Nave 3':0.0,'Sin clasificar':0.0}; detalle=[]
+    for grupo,linea,producto,horas,carga,obs,orden in filas:
+        nav=obtener_nave_catalogo(linea,grupo) or 'Sin clasificar'; tot[nav]+=float(horas or 0)
+        detalle.append((grupo,linea,producto,horas,carga,obs,orden,nav))
+    return tot,detalle
 
-def totales_horas_por_nave(filas):
-    totales = {'Nave 1': 0.0, 'Nave 2': 0.0, 'Nave 3': 0.0, 'Sin clasificar': 0.0}
-    detalle = []
-    for grupo, linea, producto, horas, carga, obs, orden in filas:
-        nave_catalogo = obtener_nave_catalogo(linea, grupo) or 'Sin clasificar'
-        totales[nave_catalogo] = totales.get(nave_catalogo, 0.0) + float(horas or 0)
-        detalle.append((grupo,linea,producto,horas,carga,obs,orden,nave_catalogo))
-    return totales, detalle
+def registrar_indicadores_entrega(entrega_id,fecha,analista,total_carga,totales):
+    exec_sql('INSERT INTO matriz_entrega(fecha,analista,entrega_id,total_carga_datos,horas_nave1,horas_nave2,horas_nave3,actualizado_en) VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(fecha,analista) DO UPDATE SET entrega_id=excluded.entrega_id,total_carga_datos=excluded.total_carga_datos,horas_nave1=excluded.horas_nave1,horas_nave2=excluded.horas_nave2,horas_nave3=excluded.horas_nave3,actualizado_en=excluded.actualizado_en',
+        (fecha,analista,entrega_id,float(total_carga),float(totales.get('Nave 1',0)),float(totales.get('Nave 2',0)),float(totales.get('Nave 3',0)),now_iso()))
 
+def generar_pdf_entrega(entrega_id):
+    cab=read_df('SELECT * FROM entregas_turno WHERE id=?',(entrega_id,))
+    det=read_df('SELECT * FROM entregas_turno_lineas WHERE entrega_id=? ORDER BY orden_fila,id',(entrega_id,))
+    seg=read_df('SELECT * FROM entregas_turno_seguimientos WHERE entrega_id=? ORDER BY bloque,orden_fila,id',(entrega_id,))
+    ind=read_df('SELECT * FROM matriz_entrega WHERE entrega_id=?',(entrega_id,))
+    if cab.empty:return b''
+    r=cab.iloc[0]; buf=BytesIO(); doc=SimpleDocTemplate(buf,pagesize=landscape(A4),rightMargin=28,leftMargin=28,topMargin=28,bottomMargin=28)
+    styles=getSampleStyleSheet(); title=ParagraphStyle('T',parent=styles['Title'],fontName='Helvetica-Bold',fontSize=18,textColor=colors.HexColor('#062C36'),alignment=TA_CENTER,spaceAfter=12)
+    h=ParagraphStyle('H',parent=styles['Heading2'],fontName='Helvetica-Bold',fontSize=11,textColor=colors.HexColor('#0A4652'),spaceBefore=8,spaceAfter=6)
+    body=ParagraphStyle('B',parent=styles['BodyText'],fontSize=8,leading=10)
+    story=[Paragraph('REPORTE DE ENTREGA DE TURNO - CALIDAD PROCESOS',title)]
+    meta=[['Registro',str(entrega_id),'Fecha',str(r.fecha),'Analista',str(r.analista),'Turno',str(r.turno)],['Nave del formato',str(r.nave),'Referencia',str(r.referencia),'Creado por',str(r.creado_por),'Creado en',str(r.creado_en)]]
+    t=Table(meta,colWidths=[58,72,52,72,55,120,50,95]); t.setStyle(TableStyle([('BACKGROUND',(0,0),(-1,0),colors.HexColor('#DDF4EF')),('GRID',(0,0),(-1,-1),.35,colors.HexColor('#B8C7D1')),('FONTNAME',(0,0),(-1,-1),'Helvetica'),('FONTNAME',(0,0),(-1,-1),'Helvetica-Bold'),('FONTSIZE',(0,0),(-1,-1),7),('VALIGN',(0,0),(-1,-1),'MIDDLE'),('LEFTPADDING',(0,0),(-1,-1),5),('RIGHTPADDING',(0,0),(-1,-1),5)])); story += [t,Spacer(1,10)]
+    if not ind.empty:
+        x=ind.iloc[0]; mat=[['Total carga de datos','Horas Nave 1','Horas Nave 2','Horas Nave 3'],[f'{x.total_carga_datos:.2f}',f'{x.horas_nave1:.2f}',f'{x.horas_nave2:.2f}',f'{x.horas_nave3:.2f}']]
+        mt=Table(mat,colWidths=[170]*4); mt.setStyle(TableStyle([('BACKGROUND',(0,0),(-1,0),colors.HexColor('#062C36')),('TEXTCOLOR',(0,0),(-1,0),colors.white),('BACKGROUND',(0,1),(-1,1),colors.HexColor('#ECFDF8')),('ALIGN',(0,0),(-1,-1),'CENTER'),('FONTNAME',(0,0),(-1,0),'Helvetica-Bold'),('FONTSIZE',(0,0),(-1,-1),9),('GRID',(0,0),(-1,-1),.5,colors.HexColor('#8FA5B2')),('TOPPADDING',(0,0),(-1,-1),7),('BOTTOMPADDING',(0,0),(-1,-1),7)])); story += [Paragraph('Matriz de indicadores',h),mt,Spacer(1,8)]
+    if not det.empty:
+        data=[['Nave','Grupo','Línea / sector','Producto / análisis','Horas','Carga','Observaciones']]
+        for q in det.itertuples(): data.append([str(getattr(q,'nave_catalogo','') or ''),str(q.grupo or ''),str(q.linea or ''),str(q.producto_descripcion or ''),f'{float(q.horas_trabajadas or 0):.2f}',f'{float(q.carga_spac or 0):.2f}',str(q.observaciones or '')])
+        dt=Table([[Paragraph(str(v),body) for v in row] for row in data],colWidths=[55,90,150,150,42,42,180],repeatRows=1)
+        dt.setStyle(TableStyle([('BACKGROUND',(0,0),(-1,0),colors.HexColor('#0A4652')),('TEXTCOLOR',(0,0),(-1,0),colors.white),('FONTNAME',(0,0),(-1,0),'Helvetica-Bold'),('GRID',(0,0),(-1,-1),.3,colors.HexColor('#B8C7D1')),('VALIGN',(0,0),(-1,-1),'MIDDLE'),('ROWBACKGROUNDS',(0,1),(-1,-1),[colors.white,colors.HexColor('#F5F8FA')]),('LEFTPADDING',(0,0),(-1,-1),4),('RIGHTPADDING',(0,0),(-1,-1),4),('TOPPADDING',(0,0),(-1,-1),4),('BOTTOMPADDING',(0,0),(-1,-1),4)])); story += [Paragraph('Detalle registrado',h),dt]
+    if not seg.empty:
+        story += [PageBreak(),Paragraph('Seguimientos',h)]
+        sd=[['Bloque','Registro','Hoja física','Carga electrónica','Correo','Descripción']]
+        for q in seg.itertuples(): sd.append([str(q.bloque or ''),str(q.registro_numero or ''),str(q.hoja_fisica or ''),str(q.carga_electronica or ''),str(q.correo or ''),str(q.descripcion_seguimiento or '')])
+        stbl=Table([[Paragraph(str(v),body) for v in row] for row in sd],colWidths=[120,60,65,75,55,300],repeatRows=1); stbl.setStyle(TableStyle([('BACKGROUND',(0,0),(-1,0),colors.HexColor('#0A4652')),('TEXTCOLOR',(0,0),(-1,0),colors.white),('GRID',(0,0),(-1,-1),.3,colors.HexColor('#B8C7D1')),('VALIGN',(0,0),(-1,-1),'MIDDLE'),('ROWBACKGROUNDS',(0,1),(-1,-1),[colors.white,colors.HexColor('#F5F8FA')])]))
+        story.append(stbl)
+    doc.build(story); return buf.getvalue()
+
+def mostrar_matriz_indicadores():
+    st.markdown('### Matriz de indicadores por fecha y analista')
+    df=read_df('SELECT fecha,analista,total_carga_datos,horas_nave1,horas_nave2,horas_nave3 FROM matriz_entrega ORDER BY fecha,analista')
+    if df.empty: st.info('Todavía no hay indicadores registrados.'); return
+    a,b=st.columns(2); nombres=sorted(df.analista.dropna().unique()); fechas=sorted(df.fecha.dropna().unique())
+    fn=a.multiselect('Buscar por analista',nombres,key='mat_analista'); ff=b.multiselect('Buscar por fecha',fechas,key='mat_fecha')
+    if fn:df=df[df.analista.isin(fn)]
+    if ff:df=df[df.fecha.isin(ff)]
+    for campo,titulo in [('total_carga_datos','Total de carga de datos'),('horas_nave1','Horas trabajadas Nave 1'),('horas_nave2','Horas trabajadas Nave 2'),('horas_nave3','Horas trabajadas Nave 3')]:
+        mat=df.pivot_table(index='analista',columns='fecha',values=campo,aggfunc='sum',fill_value=0)
+        st.markdown(f'**{titulo}**'); st.dataframe(mat,use_container_width=True)
 
 def init_db():
     UPLOAD_DIR.mkdir(exist_ok=True)
@@ -216,7 +212,8 @@ def init_db():
     cur.execute("CREATE TABLE IF NOT EXISTS muestras_15_meses(id INTEGER PRIMARY KEY AUTOINCREMENT, item TEXT NOT NULL, descripcion TEXT NOT NULL, lote TEXT NOT NULL, destino TEXT NOT NULL, numero_muestras REAL NOT NULL DEFAULT 0, numero_corrugado REAL NOT NULL DEFAULT 0, responsable TEXT NOT NULL, observaciones TEXT, creado_por TEXT, creado_en TEXT, actualizado_por TEXT, actualizado_en TEXT)")
     cur.execute("CREATE TABLE IF NOT EXISTS muestras_18_meses(id INTEGER PRIMARY KEY AUTOINCREMENT, item TEXT NOT NULL, descripcion TEXT NOT NULL, lote TEXT NOT NULL, destino TEXT NOT NULL, numero_muestras REAL NOT NULL DEFAULT 0, numero_corrugado REAL NOT NULL DEFAULT 0, responsable TEXT NOT NULL, observaciones TEXT, creado_por TEXT, creado_en TEXT, actualizado_por TEXT, actualizado_en TEXT)")
     cur.execute("CREATE TABLE IF NOT EXISTS muestras_24_meses(id INTEGER PRIMARY KEY AUTOINCREMENT, item TEXT NOT NULL, descripcion TEXT NOT NULL, lote TEXT NOT NULL, destino TEXT NOT NULL, numero_muestras REAL NOT NULL DEFAULT 0, numero_corrugado REAL NOT NULL DEFAULT 0, responsable TEXT NOT NULL, observaciones TEXT, creado_por TEXT, creado_en TEXT, actualizado_por TEXT, actualizado_en TEXT)")
-    cur.execute("CREATE TABLE IF NOT EXISTS catalogo_naves_lineas(id INTEGER PRIMARY KEY AUTOINCREMENT, nave TEXT NOT NULL, linea TEXT, sector TEXT, linea_norm TEXT, sector_norm TEXT, orden INTEGER DEFAULT 0, activo INTEGER DEFAULT 1, UNIQUE(nave,linea,sector))")
+    cur.execute("CREATE TABLE IF NOT EXISTS catalogo_naves_lineas(id INTEGER PRIMARY KEY AUTOINCREMENT,nave TEXT,linea TEXT,sector TEXT,linea_norm TEXT,sector_norm TEXT,orden INTEGER DEFAULT 0,activo INTEGER DEFAULT 1,UNIQUE(nave,linea,sector))")
+    cur.execute("CREATE TABLE IF NOT EXISTS matriz_entrega(id INTEGER PRIMARY KEY AUTOINCREMENT,fecha TEXT NOT NULL,analista TEXT NOT NULL,entrega_id INTEGER,total_carga_datos REAL DEFAULT 0,horas_nave1 REAL DEFAULT 0,horas_nave2 REAL DEFAULT 0,horas_nave3 REAL DEFAULT 0,actualizado_en TEXT,UNIQUE(fecha,analista))")
     cur.execute("CREATE TABLE IF NOT EXISTS entregas_turno(id INTEGER PRIMARY KEY AUTOINCREMENT, nave TEXT, fecha TEXT, analista TEXT, turno TEXT, referencia TEXT, total_carga_datos REAL DEFAULT 0, total_horas_trabajadas REAL DEFAULT 0, creado_por TEXT, creado_en TEXT)")
     cur.execute("CREATE TABLE IF NOT EXISTS entregas_turno_lineas(id INTEGER PRIMARY KEY AUTOINCREMENT, entrega_id INTEGER, grupo TEXT, linea TEXT, producto_descripcion TEXT, horas_trabajadas REAL DEFAULT 0, carga_spac REAL DEFAULT 0, observaciones TEXT, orden_fila INTEGER DEFAULT 0)")
     cur.execute("CREATE TABLE IF NOT EXISTS entregas_turno_seguimientos(id INTEGER PRIMARY KEY AUTOINCREMENT, entrega_id INTEGER, bloque TEXT, registro_numero TEXT, hoja_fisica TEXT, carga_electronica TEXT, correo TEXT, descripcion_seguimiento TEXT, orden_fila INTEGER DEFAULT 0)")
@@ -234,17 +231,9 @@ def init_db():
     for codigo,defecto,tipo,clas in SEED_DEFECTS: cur.execute("INSERT OR IGNORE INTO defectos(codigo,defecto,tipo_defecto,clasificacion,activo) VALUES(?,?,?,?,1)",(codigo,defecto,tipo,clas))
     for cat, vals in SEED_CATALOGS.items():
         for val in vals: cur.execute("INSERT OR IGNORE INTO catalogos(categoria,valor,activo) VALUES(?,?,1)",(cat,val))
+    for nave_cat,linea_cat,sector_cat,orden_cat in SEED_NAVES_LINEAS:
+        cur.execute('INSERT OR IGNORE INTO catalogo_naves_lineas(nave,linea,sector,linea_norm,sector_norm,orden,activo) VALUES(?,?,?,?,?,?,1)',(nave_cat,linea_cat,sector_cat,normalizar_catalogo(linea_cat),normalizar_catalogo(sector_cat),orden_cat))
     c.commit(); c.close()
-    # Catálogo integrado directamente en el código. No requiere un Excel externo.
-    if read_df('SELECT id FROM catalogo_naves_lineas LIMIT 1').empty:
-        c = conn(); cur = c.cursor()
-        try:
-            for nave_cat, linea_cat, sector_cat, orden_cat in SEED_NAVES_LINEAS:
-                cur.execute('INSERT OR IGNORE INTO catalogo_naves_lineas(nave,linea,sector,linea_norm,sector_norm,orden,activo) VALUES(?,?,?,?,?,?,1)',
-                    (nave_cat,linea_cat,sector_cat,normalizar_catalogo(linea_cat),normalizar_catalogo(sector_cat),orden_cat))
-            c.commit()
-        finally:
-            c.close()
 
 def reset_admin():
     pw=hash_password(ADMIN_PASS); c=conn(); cur=c.cursor(); cur.execute("SELECT id FROM usuarios WHERE usuario=?",(ADMIN_USER,)); exists=cur.fetchone()
@@ -967,6 +956,11 @@ def consulta_muestras_retencion():
 
 def page_entrega_turno():
     referencia='RE-CAL01-2301-00002-2013 Rev. 1'
+    pdf_id=st.session_state.get('pdf_entrega_id')
+    if pdf_id:
+        pdf_bytes=generar_pdf_entrega(pdf_id)
+        if pdf_bytes: st.download_button('📄 Descargar PDF del último registro',pdf_bytes,f'entrega_turno_{pdf_id}.pdf','application/pdf',key=f'pdf_entrega_{pdf_id}')
+    with st.expander('Matriz histórica por fecha y analista',expanded=False): mostrar_matriz_indicadores()
     grupos={
       'MD - Car. Duros - FABRIMA':['MD - Car. Duros - FABRIMA'],
       'BON O BON':['MD - BOB - CENTRO DE MASA','MD - BOB - HORNO','MD - BOB - DEPOSITADORA','MD - BOB - TROQUEL','MD - BOB - BAÑADORA 1','MD - BOB - BAÑADORA 2','MD - BOB - FLOW PACK 1','MD - BOB - FLOW PACK 2','MD - BOB - FLOW PACK 3','MD - BOB - FLOW PACK 4','MD - BOB - FLOW PACK 5','MD - BOB - HIGH DREAM'],
@@ -1033,21 +1027,14 @@ def page_entrega_turno():
             analisis=[('FISICOQUÍMICOS','HUEVITO','% Humedad'),('FISICOQUÍMICOS','POOSH','% Humedad'),('FISICOQUÍMICOS','POOSH','°BX / pH')]
         resultados=[]
         for ai,(grupo,linea,tipo_analisis) in enumerate(analisis):
-            cc=st.columns([1.2,2,1.5,1,2]);cc[0].text_input('Grupo',grupo,disabled=True,key=f'et23_ag_{nave}_{ai}_{n}',label_visibility='collapsed');cc[1].text_input('Línea',linea,disabled=True,key=f'et23_al_{nave}_{ai}_{n}',label_visibility='collapsed');cc[2].text_input('Análisis',tipo_analisis,disabled=True,key=f'et23_at_{nave}_{ai}_{n}',label_visibility='collapsed');resultado=cc[3].text_input('Resultado',key=f'et23_ar_{nave}_{ai}_{n}',label_visibility='collapsed');obs=cc[4].text_input('Observaciones',key=f'et23_ao_{nave}_{ai}_{n}',label_visibility='collapsed');resultados.append((grupo,linea,tipo_analisis,resultado,obs))
+            cc=st.columns([1.2,2,1.5,1,2]);cc[0].text_input('Grupo',grupo,disabled=True,key=f'et23_ag_{nave}_{ai}_{n}',label_visibility='collapsed');cc[1].text_input('Línea',linea,disabled=True,key=f'et23_al_{nave}_{ai}_{n}',label_visibility='collapsed');cc[2].text_input('Análisis',tipo_analisis,disabled=True,key=f'et23_at_{nave}_{ai}_{n}',label_visibility='collapsed');resultado=cc[3].text_input('Resultado',key=f'et23_ar_{nave}_{ai}_{n}',label_visibility='collapsed');obs=cc[4].text_input('Observaciones',key=f'et23_ao_{nave}_{ai}_{n}',label_visibility='collapsed');contador=st.number_input(f'Cantidad de análisis - {linea} - {tipo_analisis}',min_value=0.0,step=1.0,format='%.2f',key=f'et23_ac_{nave}_{ai}_{n}');resultados.append((grupo,linea,tipo_analisis,resultado,obs,float(contador)))
         seguimientos=[];st.markdown('### Seguimientos')
         for bi,bloque in enumerate(['Seguimiento a Contaminaciones','Seguimiento a PNC´S','Limpiezas','Seguimiento a ORDENES DE FALLO','GIRO / JUNTA DE EQUIPO']):
             with st.expander(bloque,expanded=bi<2):
                 base=pd.DataFrame([{'Registro #':'','Hoja física':'','Carga electrónica':'','Correo':'','Descripción del seguimiento':''} for _ in range(3)])
                 ed=st.data_editor(base,num_rows='dynamic',use_container_width=True,hide_index=True,key=f'et23_s_{nave}_{bi}_{n}',column_config={'Hoja física':st.column_config.SelectboxColumn(options=['','Sí','No','N/A']),'Carga electrónica':st.column_config.SelectboxColumn(options=['','Sí','No','N/A']),'Correo':st.column_config.SelectboxColumn(options=['','Sí','No','N/A'])});seguimientos.append((bloque,ed))
-        totales_nave, filas_clasificadas = totales_horas_por_nave(filas)
-        total_h=sum(totales_nave.values());total_c=sum(x[4] for x in filas)
-        m1,m2=st.columns(2);m1.metric('TOTAL DE CARGA DE DATOS',f'{total_c:.2f}');m2.metric('TOTAL GENERAL DE HORAS',f'{total_h:.2f}')
-        st.markdown('#### Horas trabajadas por nave según catálogo')
-        k1,k2,k3=st.columns(3)
-        k1.metric('NAVE 1',f"{totales_nave['Nave 1']:.2f}")
-        k2.metric('NAVE 2',f"{totales_nave['Nave 2']:.2f}")
-        k3.metric('NAVE 3',f"{totales_nave['Nave 3']:.2f}")
-        if totales_nave.get('Sin clasificar',0)>0: st.warning(f"Horas sin clasificación de nave: {totales_nave['Sin clasificar']:.2f}. Revisa el catálogo.")
+        totales_nave,filas_clasificadas=clasificar_filas_y_totales(filas); total_h=sum(totales_nave.values()); total_c=sum(x[4] for x in filas)+sum(x[5] for x in resultados)
+        m1,m2=st.columns(2);m1.metric('TOTAL DE CARGA DE DATOS',f'{total_c:.2f}');m2.metric('TOTAL GENERAL DE HORAS',f'{total_h:.2f}'); k1,k2,k3=st.columns(3);k1.metric('HORAS NAVE 1',f"{totales_nave['Nave 1']:.2f}");k2.metric('HORAS NAVE 2',f"{totales_nave['Nave 2']:.2f}");k3.metric('HORAS NAVE 3',f"{totales_nave['Nave 3']:.2f}")
         if st.button('Guardar entrega de turno',type='primary',key=f'et23_g_{nave}_{n}'):
             faltan=[]
             if not analista:faltan.append('Analista')
@@ -1058,13 +1045,13 @@ def page_entrega_turno():
                 for grupo,linea,producto,horas,carga,obs,orden,nave_catalogo in filas_clasificadas:
                     if producto.strip() or horas or carga or obs.strip():exec_sql('INSERT INTO entregas_turno_lineas(entrega_id,grupo,linea,producto_descripcion,horas_trabajadas,carga_spac,observaciones,orden_fila,nave_catalogo) VALUES(?,?,?,?,?,?,?,?,?)',(eid,grupo,linea,producto.strip(),horas,carga,obs.strip(),orden,nave_catalogo))
                 base_orden=len(filas)
-                for j,(grupo,linea,tipo_analisis,resultado,obs) in enumerate(resultados):
-                    if resultado.strip() or obs.strip():exec_sql('INSERT INTO entregas_turno_lineas(entrega_id,grupo,linea,producto_descripcion,horas_trabajadas,carga_spac,observaciones,orden_fila) VALUES(?,?,?,?,?,?,?,?)',(eid,'ANÁLISIS '+grupo,linea,tipo_analisis,0,0,(resultado+' | '+obs).strip(' |'),base_orden+j))
+                for j,(grupo,linea,tipo_analisis,resultado,obs,contador) in enumerate(resultados):
+                    if resultado.strip() or obs.strip():exec_sql('INSERT INTO entregas_turno_lineas(entrega_id,grupo,linea,producto_descripcion,horas_trabajadas,carga_spac,observaciones,orden_fila) VALUES(?,?,?,?,?,?,?,?)',(eid,'ANÁLISIS '+grupo,linea,tipo_analisis,0,contador,(resultado+' | '+obs).strip(' |'),base_orden+j))
                 for bloque,df in seguimientos:
                     for orden,row in df.iterrows():
                         vals=[str(row.get(c,'') or '') for c in ['Registro #','Hoja física','Carga electrónica','Correo','Descripción del seguimiento']]
                         if any(v.strip() for v in vals):exec_sql('INSERT INTO entregas_turno_seguimientos(entrega_id,bloque,registro_numero,hoja_fisica,carga_electronica,correo,descripcion_seguimiento,orden_fila) VALUES(?,?,?,?,?,?,?,?)',(eid,bloque,*vals,int(orden)))
-                audit(st.session_state.auth['usuario'],'CREAR_ENTREGA_TURNO',f'{nave} | ID {eid}');st.session_state.entrega_nonce+=1;st.success(f'Entrega guardada: Número {eid}');st.rerun()
+                registrar_indicadores_entrega(eid,fecha.isoformat(),analista,total_c,totales_nave); audit(st.session_state.auth['usuario'],'CREAR_ENTREGA_TURNO',f'{nave} | ID {eid}'); st.session_state['pdf_entrega_id']=eid; st.session_state.entrega_nonce+=1;st.success(f'Entrega guardada: Número {eid}');st.rerun()
         st.markdown('</div>',unsafe_allow_html=True)
         return
     n=st.session_state.entrega_nonce
@@ -1090,15 +1077,8 @@ def page_entrega_turno():
         with st.expander(bloque,expanded=bi<2):
             base=pd.DataFrame([{'Registro #':'','Hoja física':'','Carga electrónica':'','Correo':'','Descripción del seguimiento':''} for _ in range(3)])
             ed=st.data_editor(base,num_rows='dynamic',use_container_width=True,hide_index=True,key=f'et_s_{bi}_{n}',column_config={'Hoja física':st.column_config.SelectboxColumn(options=['','Sí','No','N/A']),'Carga electrónica':st.column_config.SelectboxColumn(options=['','Sí','No','N/A']),'Correo':st.column_config.SelectboxColumn(options=['','Sí','No','N/A'])}); seguimientos.append((bloque,ed))
-    totales_nave, filas_clasificadas = totales_horas_por_nave(filas)
-    total_h=sum(totales_nave.values()); total_c=sum(x[4] for x in filas)
-    m1,m2=st.columns(2);m1.metric('TOTAL DE CARGA DE DATOS',f'{total_c:.2f}');m2.metric('TOTAL GENERAL DE HORAS',f'{total_h:.2f}')
-    st.markdown('#### Horas trabajadas por nave según catálogo')
-    k1,k2,k3=st.columns(3)
-    k1.metric('NAVE 1',f"{totales_nave['Nave 1']:.2f}")
-    k2.metric('NAVE 2',f"{totales_nave['Nave 2']:.2f}")
-    k3.metric('NAVE 3',f"{totales_nave['Nave 3']:.2f}")
-    if totales_nave.get('Sin clasificar',0)>0: st.warning(f"Horas sin clasificación de nave: {totales_nave['Sin clasificar']:.2f}. Revisa el catálogo.")
+    totales_nave,filas_clasificadas=clasificar_filas_y_totales(filas); total_h=sum(totales_nave.values()); total_c=sum(x[4] for x in filas)
+    m1,m2=st.columns(2);m1.metric('TOTAL DE CARGA DE DATOS',f'{total_c:.2f}');m2.metric('TOTAL GENERAL DE HORAS',f'{total_h:.2f}'); k1,k2,k3=st.columns(3);k1.metric('HORAS NAVE 1',f"{totales_nave['Nave 1']:.2f}");k2.metric('HORAS NAVE 2',f"{totales_nave['Nave 2']:.2f}");k3.metric('HORAS NAVE 3',f"{totales_nave['Nave 3']:.2f}")
     if st.button('Guardar entrega de turno',type='primary',key=f'et_g_{n}'):
         faltan=[]
         if not analista: faltan.append('Analista')
@@ -1112,7 +1092,7 @@ def page_entrega_turno():
                 for orden,row in df.iterrows():
                     vals=[str(row.get(c,'') or '') for c in ['Registro #','Hoja física','Carga electrónica','Correo','Descripción del seguimiento']]
                     if any(v.strip() for v in vals): exec_sql('INSERT INTO entregas_turno_seguimientos(entrega_id,bloque,registro_numero,hoja_fisica,carga_electronica,correo,descripcion_seguimiento,orden_fila) VALUES(?,?,?,?,?,?,?,?)',(eid,bloque,*vals,int(orden)))
-            audit(st.session_state.auth['usuario'],'CREAR_ENTREGA_TURNO',f'Nave 1 | ID {eid}');st.session_state.entrega_nonce+=1;st.success(f'Entrega guardada: Número {eid}');st.rerun()
+            registrar_indicadores_entrega(eid,fecha.isoformat(),analista,total_c,totales_nave); audit(st.session_state.auth['usuario'],'CREAR_ENTREGA_TURNO',f'Nave 1 | ID {eid}'); st.session_state['pdf_entrega_id']=eid; st.session_state.entrega_nonce+=1;st.success(f'Entrega guardada: Número {eid}');st.rerun()
     st.markdown('</div>',unsafe_allow_html=True)
 
 def admin_required():
@@ -1126,201 +1106,40 @@ def general_catalog_dataframe():
     return pd.DataFrame({h:v+['']*(mx-len(v)) for h,v in data.items()})
 
 def page_catalogos():
-    st.title('Catálogos')
-    st.caption('Selecciona una fila para editarla o eliminarla. Los cambios se reflejan automáticamente en los registros vinculados.')
-
-    def fila_seleccionada(df_vista, key):
-        if df_vista.empty:
-            st.info('No hay valores disponibles.')
-            return None
-        evento = st.dataframe(
-            df_vista,
-            use_container_width=True,
-            hide_index=True,
-            on_select='rerun',
-            selection_mode='single-row',
-            key=f'catalogo_tabla_{key}'
-        )
-        filas = getattr(evento, 'selection', {}).get('rows', []) if evento is not None else []
-        if filas:
-            return int(df_vista.iloc[filas[0]]['ID'])
-        return None
-
-    def solicitar_eliminacion(tabla, rid, etiqueta, audit_action, key):
-        if st.button('Eliminar', key=f'cat_del_{key}_{rid}'):
-            st.session_state[f'cat_confirm_{key}'] = rid
-        if st.session_state.get(f'cat_confirm_{key}') == rid:
-            st.warning(f'Confirma la eliminación de: {etiqueta}. Los registros históricos conservarán la información previamente guardada.')
-            c1, c2 = st.columns(2)
-            if c1.button('Sí, eliminar definitivamente', key=f'cat_del_ok_{key}_{rid}'):
-                exec_sql(f'UPDATE {tabla} SET activo=0 WHERE id=?', (rid,))
-                audit(st.session_state.auth['usuario'], audit_action, f'ID {rid} | {etiqueta}')
-                st.session_state.pop(f'cat_confirm_{key}', None)
-                st.success('Valor eliminado correctamente.')
-                st.rerun()
-            if c2.button('Cancelar', key=f'cat_del_cancel_{key}_{rid}'):
-                st.session_state.pop(f'cat_confirm_{key}', None)
-                st.rerun()
-
-    tab1, tab2, tab3, tab4 = st.tabs([
-        'Productos', 'Defectos', 'Datos generales', 'Naves, líneas y sectores'
-    ])
-
+    st.title('Catálogos'); st.caption('Datos precargados desde el Excel adjunto. El administrador puede agregar o eliminar elementos.')
+    tab1,tab2,tab3=st.tabs(['Productos','Defectos','Datos generales'])
     with tab1:
-        df = read_df('SELECT id,item,descripcion,cliente,familia FROM productos WHERE activo=1 ORDER BY descripcion')
-        vista = df.rename(columns={'id':'ID','item':'ITEM','descripcion':'Descripción','cliente':'Cliente','familia':'Familia'})
-        selected = fila_seleccionada(vista, 'productos')
+        df=read_df('SELECT id,item,descripcion,cliente,familia FROM productos WHERE activo=1 ORDER BY descripcion'); st.dataframe(df,use_container_width=True,hide_index=True)
         if admin_required():
-            with st.expander('Agregar producto', expanded=False):
-                with st.form('cat_add_producto', clear_on_submit=True):
-                    a,b=st.columns(2)
-                    item=a.text_input('ITEM *'); descripcion=b.text_input('Descripción *')
-                    c,d=st.columns(2)
-                    cliente=c.text_input('Cliente *'); familia=d.text_input('Familia *')
-                    agregar=st.form_submit_button('Agregar producto', type='primary')
-                if agregar:
-                    faltan=[k for k,v in {'ITEM':item,'Descripción':descripcion,'Cliente':cliente,'Familia':familia}.items() if not v.strip()]
-                    if faltan: st.error('Completa: '+', '.join(faltan)+'.')
-                    elif not read_df('SELECT id FROM productos WHERE item=? AND activo=1',(item.strip(),)).empty: st.error('Ya existe un producto activo con ese ITEM.')
-                    else:
-                        existente=read_df('SELECT id FROM productos WHERE item=?',(item.strip(),))
-                        if existente.empty:
-                            rid=exec_sql('INSERT INTO productos(item,descripcion,cliente,familia,activo) VALUES(?,?,?,?,1)',(item.strip(),descripcion.strip(),cliente.strip(),familia.strip()))
-                        else:
-                            rid=int(existente.iloc[0]['id']); exec_sql('UPDATE productos SET descripcion=?,cliente=?,familia=?,activo=1 WHERE id=?',(descripcion.strip(),cliente.strip(),familia.strip(),rid))
-                        audit(st.session_state.auth['usuario'],'AGREGAR_PRODUCTO',f'ID {rid} | ITEM {item.strip()}'); st.success('Producto agregado correctamente.'); st.rerun()
-            if selected:
-                row=df[df['id']==selected].iloc[0]
-                with st.expander(f'Editar producto seleccionado: {row["item"]}', expanded=True):
-                    with st.form(f'cat_edit_producto_{selected}'):
-                        a,b=st.columns(2)
-                        item_e=a.text_input('ITEM *',value=str(row['item'] or '')); desc_e=b.text_input('Descripción *',value=str(row['descripcion'] or ''))
-                        c,d=st.columns(2)
-                        cliente_e=c.text_input('Cliente *',value=str(row['cliente'] or '')); familia_e=d.text_input('Familia *',value=str(row['familia'] or ''))
-                        editar=st.form_submit_button('Guardar cambios',type='primary')
-                    if editar:
-                        vals={'ITEM':item_e,'Descripción':desc_e,'Cliente':cliente_e,'Familia':familia_e}; faltan=[k for k,v in vals.items() if not v.strip()]
-                        duplicado=read_df('SELECT id FROM productos WHERE item=? AND id<>? AND activo=1',(item_e.strip(),selected))
-                        if faltan: st.error('Completa: '+', '.join(faltan)+'.')
-                        elif not duplicado.empty: st.error('Ya existe otro producto activo con ese ITEM.')
-                        else:
-                            exec_sql('UPDATE productos SET item=?,descripcion=?,cliente=?,familia=? WHERE id=?',(item_e.strip(),desc_e.strip(),cliente_e.strip(),familia_e.strip(),selected))
-                            audit(st.session_state.auth['usuario'],'EDITAR_PRODUCTO',f'ID {selected} | ITEM {item_e.strip()}'); st.success('Producto actualizado correctamente.'); st.rerun()
-                solicitar_eliminacion('productos',selected,str(row['item']),'ELIMINAR_PRODUCTO','productos')
-
+            with st.expander('Agregar producto'):
+                with st.form('add_prod'):
+                    item=st.text_input('Item'); desc=st.text_input('Descripción'); cliente=st.text_input('Cliente'); familia=st.text_input('Familia')
+                    if st.form_submit_button('Agregar producto') and item and desc: exec_sql('INSERT OR REPLACE INTO productos(item,descripcion,cliente,familia,activo) VALUES(?,?,?,?,1)',(item.strip(),desc.strip(),cliente.strip(),familia.strip())); st.rerun()
+            if not df.empty:
+                opt=st.selectbox('Producto a eliminar',[f'{r.id} | {r.item} | {r.descripcion}' for r in df.itertuples()],key='del_prod')
+                if st.button('Eliminar producto seleccionado'): exec_sql('UPDATE productos SET activo=0 WHERE id=?',(int(opt.split('|')[0].strip()),)); st.rerun()
     with tab2:
-        df = read_df('SELECT id,codigo,defecto,tipo_defecto,clasificacion FROM defectos WHERE activo=1 ORDER BY CAST(codigo AS INTEGER),codigo')
-        vista=df.rename(columns={'id':'ID','codigo':'Código','defecto':'Defecto','tipo_defecto':'Tipo de defecto','clasificacion':'Clasificación'})
-        selected=fila_seleccionada(vista,'defectos')
+        df=read_df('SELECT id,codigo,defecto,tipo_defecto,clasificacion FROM defectos WHERE activo=1 ORDER BY CAST(codigo AS INTEGER)'); st.dataframe(df,use_container_width=True,hide_index=True)
         if admin_required():
-            tipos=opt_blank(catalog('tipo_defecto')) or ['','Funcional','Contaminación']
-            clasificaciones=['','Inocuidad','Calidad','Salubridad','Legalidad']
-            with st.expander('Agregar defecto',expanded=False):
-                with st.form('cat_add_defecto',clear_on_submit=True):
-                    a,b=st.columns(2); codigo=a.text_input('Código *'); defecto=b.text_input('Defecto *')
-                    c,d=st.columns(2); tipo=c.selectbox('Tipo de defecto *',tipos); clas=d.selectbox('Clasificación *',clasificaciones)
-                    agregar=st.form_submit_button('Agregar defecto',type='primary')
-                if agregar:
-                    vals={'Código':codigo,'Defecto':defecto,'Tipo de defecto':tipo,'Clasificación':clas}; faltan=[k for k,v in vals.items() if not str(v).strip()]
-                    if faltan: st.error('Completa: '+', '.join(faltan)+'.')
-                    elif not read_df('SELECT id FROM defectos WHERE codigo=? AND activo=1',(codigo.strip(),)).empty: st.error('Ya existe un defecto activo con ese código.')
-                    else:
-                        existente=read_df('SELECT id FROM defectos WHERE codigo=?',(codigo.strip(),))
-                        if existente.empty: rid=exec_sql('INSERT INTO defectos(codigo,defecto,tipo_defecto,clasificacion,activo) VALUES(?,?,?,?,1)',(codigo.strip(),defecto.strip(),tipo,clas))
-                        else:
-                            rid=int(existente.iloc[0]['id']); exec_sql('UPDATE defectos SET defecto=?,tipo_defecto=?,clasificacion=?,activo=1 WHERE id=?',(defecto.strip(),tipo,clas,rid))
-                        audit(st.session_state.auth['usuario'],'AGREGAR_DEFECTO',f'ID {rid} | Código {codigo.strip()}'); st.success('Defecto agregado correctamente.'); st.rerun()
-            if selected:
-                row=df[df['id']==selected].iloc[0]
-                with st.expander(f'Editar defecto seleccionado: {row["codigo"]}',expanded=True):
-                    with st.form(f'cat_edit_defecto_{selected}'):
-                        a,b=st.columns(2); codigo_e=a.text_input('Código *',value=str(row['codigo'] or '')); defecto_e=b.text_input('Defecto *',value=str(row['defecto'] or ''))
-                        tipo_opts=list(dict.fromkeys(tipos+[str(row['tipo_defecto'] or '')])); clas_opts=list(dict.fromkeys(clasificaciones+[str(row['clasificacion'] or '')]))
-                        c,d=st.columns(2); tipo_e=c.selectbox('Tipo de defecto *',tipo_opts,index=idx_or_zero(tipo_opts,str(row['tipo_defecto'] or ''))); clas_e=d.selectbox('Clasificación *',clas_opts,index=idx_or_zero(clas_opts,str(row['clasificacion'] or '')))
-                        editar=st.form_submit_button('Guardar cambios',type='primary')
-                    if editar:
-                        vals={'Código':codigo_e,'Defecto':defecto_e,'Tipo de defecto':tipo_e,'Clasificación':clas_e}; faltan=[k for k,v in vals.items() if not str(v).strip()]
-                        duplicado=read_df('SELECT id FROM defectos WHERE codigo=? AND id<>? AND activo=1',(codigo_e.strip(),selected))
-                        if faltan: st.error('Completa: '+', '.join(faltan)+'.')
-                        elif not duplicado.empty: st.error('Ya existe otro defecto activo con ese código.')
-                        else:
-                            exec_sql('UPDATE defectos SET codigo=?,defecto=?,tipo_defecto=?,clasificacion=? WHERE id=?',(codigo_e.strip(),defecto_e.strip(),tipo_e,clas_e,selected))
-                            audit(st.session_state.auth['usuario'],'EDITAR_DEFECTO',f'ID {selected} | Código {codigo_e.strip()}'); st.success('Defecto actualizado correctamente.'); st.rerun()
-                solicitar_eliminacion('defectos',selected,str(row['codigo'])+' | '+str(row['defecto']),'ELIMINAR_DEFECTO','defectos')
-
+            with st.expander('Agregar defecto'):
+                with st.form('add_def'):
+                    codigo=st.text_input('Código'); defecto=st.text_input('Defecto'); tipo=st.selectbox('Tipo',catalog('tipo_defecto') or ['Funcional','Contaminación']); clas=st.selectbox('Clasificación',['Inocuidad','Calidad','Salubridad','Legalidad'])
+                    if st.form_submit_button('Agregar defecto') and codigo and defecto: exec_sql('INSERT OR REPLACE INTO defectos(codigo,defecto,tipo_defecto,clasificacion,activo) VALUES(?,?,?,?,1)',(codigo.strip(),defecto.strip(),tipo,clas)); st.rerun()
+            if not df.empty:
+                opt=st.selectbox('Defecto a eliminar',[f'{r.id} | {r.codigo} | {r.defecto}' for r in df.itertuples()],key='del_def')
+                if st.button('Eliminar defecto seleccionado'): exec_sql('UPDATE defectos SET activo=0 WHERE id=?',(int(opt.split('|')[0].strip()),)); st.rerun()
     with tab3:
-        labels={'Supervisores':'supervisor','Analistas':'analista','Nave':'nave','Status':'status','Responsable de detectar PNC':'responsable_detecta','Etapa':'etapa','Línea/Sector':'linea_sector','Turno':'turno','Tipo de defecto':'tipo_defecto','Disposición':'disposicion'}
-        inverso={v:k for k,v in labels.items()}
-        raw=read_df('SELECT id,categoria,valor FROM catalogos WHERE activo=1 ORDER BY categoria,valor')
-        raw=raw[raw['categoria'].isin(labels.values())].copy()
-        raw['lista']=raw['categoria'].map(inverso)
-        vista=raw[['id','lista','valor']].rename(columns={'id':'ID','lista':'Catálogo','valor':'Valor'})
-        selected=fila_seleccionada(vista,'generales')
+        st.subheader('Datos generales'); st.dataframe(general_catalog_dataframe(),use_container_width=True,hide_index=True)
         if admin_required():
-            with st.expander('Agregar valor',expanded=False):
-                with st.form('cat_add_general',clear_on_submit=True):
-                    lista=st.selectbox('Catálogo *',list(labels.keys())); valor=st.text_input('Nuevo valor *'); agregar=st.form_submit_button('Agregar valor',type='primary')
-                if agregar:
-                    cat=labels[lista]
-                    if not valor.strip(): st.error('Ingresa el nuevo valor.')
-                    elif not read_df('SELECT id FROM catalogos WHERE categoria=? AND valor=? AND activo=1',(cat,valor.strip())).empty: st.error('Ese valor ya existe en el catálogo seleccionado.')
-                    else:
-                        existente=read_df('SELECT id FROM catalogos WHERE categoria=? AND valor=?',(cat,valor.strip()))
-                        if existente.empty: rid=exec_sql('INSERT INTO catalogos(categoria,valor,activo) VALUES(?,?,1)',(cat,valor.strip()))
-                        else:
-                            rid=int(existente.iloc[0]['id']); exec_sql('UPDATE catalogos SET activo=1 WHERE id=?',(rid,))
-                        audit(st.session_state.auth['usuario'],'AGREGAR_CATALOGO',f'{lista} | {valor.strip()}'); st.success('Valor agregado correctamente.'); st.rerun()
-            if selected:
-                row=raw[raw['id']==selected].iloc[0]
-                with st.expander(f'Editar valor seleccionado: {row["valor"]}',expanded=True):
-                    with st.form(f'cat_edit_general_{selected}'):
-                        lista_opts=list(labels.keys()); lista_e=st.selectbox('Catálogo *',lista_opts,index=idx_or_zero(lista_opts,str(row['lista']))); valor_e=st.text_input('Valor *',value=str(row['valor'] or '')); editar=st.form_submit_button('Guardar cambios',type='primary')
-                    if editar:
-                        cat_e=labels[lista_e]; duplicado=read_df('SELECT id FROM catalogos WHERE categoria=? AND valor=? AND id<>? AND activo=1',(cat_e,valor_e.strip(),selected))
-                        if not valor_e.strip(): st.error('Ingresa el valor.')
-                        elif not duplicado.empty: st.error('Ese valor ya existe en el catálogo seleccionado.')
-                        else:
-                            exec_sql('UPDATE catalogos SET categoria=?,valor=? WHERE id=?',(cat_e,valor_e.strip(),selected))
-                            audit(st.session_state.auth['usuario'],'EDITAR_CATALOGO',f'ID {selected} | {lista_e} | {valor_e.strip()}'); st.success('Valor actualizado correctamente.'); st.rerun()
-                solicitar_eliminacion('catalogos',selected,str(row['lista'])+' | '+str(row['valor']),'ELIMINAR_CATALOGO','generales')
-
-    with tab4:
-        st.subheader('Catálogo de naves, líneas y sectores')
-        st.caption('La asignación de horas por nave utiliza estas relaciones.')
-        df=read_df('SELECT id,nave,linea,sector,orden FROM catalogo_naves_lineas WHERE activo=1 ORDER BY nave,orden,id')
-        vista=df.rename(columns={'id':'ID','nave':'Nave','linea':'Línea','sector':'Sector','orden':'Orden'})
-        selected=fila_seleccionada(vista,'naves')
-        if admin_required():
-            archivo=st.file_uploader('Actualizar catálogo desde Excel (opcional)',type=['xlsx'],key='upload_catalogo_naves')
-            if archivo is not None and st.button('Importar y reemplazar catálogo',type='primary',key='importar_catalogo_naves'):
-                try:
-                    cantidad=importar_catalogo_naves(archivo,st.session_state.auth['usuario']); audit(st.session_state.auth['usuario'],'IMPORTAR_CATALOGO_NAVES',f'{cantidad} relaciones importadas'); st.success(f'Catálogo actualizado: {cantidad} relaciones.'); st.rerun()
-                except Exception as e: st.error(f'No fue posible importar el archivo: {e}')
-            with st.expander('Agregar relación',expanded=False):
-                with st.form('cat_add_nave_relacion',clear_on_submit=True):
-                    nave=st.selectbox('Nave *',['Nave 1','Nave 2','Nave 3']); linea=st.text_input('Línea *'); sector=st.text_input('Sector *'); agregar=st.form_submit_button('Agregar relación',type='primary')
-                if agregar:
-                    if not linea.strip() or not sector.strip(): st.error('Completa Línea y Sector.')
-                    else:
-                        duplicado=read_df('SELECT id FROM catalogo_naves_lineas WHERE nave=? AND linea_norm=? AND sector_norm=? AND activo=1',(nave,normalizar_catalogo(linea),normalizar_catalogo(sector)))
-                        if not duplicado.empty: st.error('Esa relación ya existe.')
-                        else:
-                            orden=int(read_df('SELECT COALESCE(MAX(orden),-1)+1 AS n FROM catalogo_naves_lineas WHERE nave=?',(nave,)).iloc[0]['n'])
-                            rid=exec_sql('INSERT INTO catalogo_naves_lineas(nave,linea,sector,linea_norm,sector_norm,orden,activo) VALUES(?,?,?,?,?,?,1)',(nave,linea.strip(),sector.strip(),normalizar_catalogo(linea),normalizar_catalogo(sector),orden))
-                            audit(st.session_state.auth['usuario'],'AGREGAR_RELACION_NAVE',f'ID {rid} | {nave} | {linea.strip()} | {sector.strip()}'); st.success('Relación agregada correctamente.'); st.rerun()
-            if selected:
-                row=df[df['id']==selected].iloc[0]
-                with st.expander(f'Editar relación seleccionada: {row["nave"]} | {row["sector"]}',expanded=True):
-                    with st.form(f'cat_edit_nave_{selected}'):
-                        nav_opts=['Nave 1','Nave 2','Nave 3']; nave_e=st.selectbox('Nave *',nav_opts,index=idx_or_zero(nav_opts,str(row['nave']))); linea_e=st.text_input('Línea *',value=str(row['linea'] or '')); sector_e=st.text_input('Sector *',value=str(row['sector'] or '')); orden_e=st.number_input('Orden',min_value=0,step=1,value=int(row['orden'] or 0)); editar=st.form_submit_button('Guardar cambios',type='primary')
-                    if editar:
-                        duplicado=read_df('SELECT id FROM catalogo_naves_lineas WHERE nave=? AND linea_norm=? AND sector_norm=? AND id<>? AND activo=1',(nave_e,normalizar_catalogo(linea_e),normalizar_catalogo(sector_e),selected))
-                        if not linea_e.strip() or not sector_e.strip(): st.error('Completa Línea y Sector.')
-                        elif not duplicado.empty: st.error('Ya existe otra relación con esos datos.')
-                        else:
-                            exec_sql('UPDATE catalogo_naves_lineas SET nave=?,linea=?,sector=?,linea_norm=?,sector_norm=?,orden=? WHERE id=?',(nave_e,linea_e.strip(),sector_e.strip(),normalizar_catalogo(linea_e),normalizar_catalogo(sector_e),int(orden_e),selected))
-                            audit(st.session_state.auth['usuario'],'EDITAR_RELACION_NAVE',f'ID {selected} | {nave_e} | {linea_e.strip()} | {sector_e.strip()}'); st.success('Relación actualizada correctamente.'); st.rerun()
-                solicitar_eliminacion('catalogo_naves_lineas',selected,str(row['nave'])+' | '+str(row['linea'])+' | '+str(row['sector']),'ELIMINAR_RELACION_NAVE','naves')
+            labels={'Supervisores':'supervisor','Analistas':'analista','Nave':'nave','Status':'status','Responsable de detectar PNC':'responsable_detecta','Etapa':'etapa','Línea':'linea_sector','Turno':'turno','Defecto':'tipo_defecto','Disposición':'disposicion'}
+            with st.expander('Agregar valor a datos generales'):
+                with st.form('add_general'):
+                    lab=st.selectbox('Lista',list(labels.keys())); val=st.text_input('Nuevo valor')
+                    if st.form_submit_button('Agregar valor') and val.strip(): exec_sql('INSERT OR IGNORE INTO catalogos(categoria,valor,activo) VALUES(?,?,1)',(labels[lab],val.strip())); st.rerun()
+            raw=read_df('SELECT id,categoria,valor FROM catalogos WHERE activo=1 ORDER BY categoria,valor'); raw['lista']=raw['categoria'].map({v:k for k,v in labels.items()}); raw=raw.dropna(subset=['lista'])
+            if not raw.empty:
+                opt=st.selectbox('Valor a eliminar',[f'{r.id} | {r.lista} | {r.valor}' for r in raw.itertuples()],key='del_general')
+                if st.button('Eliminar valor seleccionado'): exec_sql('UPDATE catalogos SET activo=0 WHERE id=?',(int(opt.split('|')[0].strip()),)); st.rerun()
 
 def page_usuarios():
     if not is_dev():
