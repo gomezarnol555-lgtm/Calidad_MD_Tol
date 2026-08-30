@@ -149,20 +149,58 @@ def matriz_entregas():
     f=df[(df.fecha_dt>=desde)&(df.fecha_dt<=hasta)].copy();names=st.multiselect('Analista',sorted(df.analista.unique()),key='mx_names')
     if names:f=f[f.analista.isin(names)]
     vista=f.drop(columns=['fecha_dt']).rename(columns={'id':'ID','fecha':'Fecha','analista':'Analista','total_carga_datos':'Total carga','horas_nave1':'Horas Nave 1','horas_nave2':'Horas Nave 2','horas_nave3':'Horas Nave 3'})
-    ev=st.dataframe(vista,use_container_width=True,hide_index=True,on_select='rerun',selection_mode='single-row',key='mx_table')
+    nonce_matriz = st.session_state.get('mx_table_nonce', 0)
+    ev=st.dataframe(vista,use_container_width=True,hide_index=True,on_select='rerun',selection_mode='single-row',key=f'mx_table_{nonce_matriz}')
     st.download_button('Descargar matriz en Excel',excel_matriz(f.drop(columns=['id','entrega_id','fecha_dt'])),f'matriz_{desde}_{hasta}.xlsx','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
-    rows=getattr(ev,'selection',{}).get('rows',[]) if ev is not None else []
-    if rows:
-        rid=int(vista.iloc[rows[0]].ID);row=f[f.id==rid].iloc[0]
-        if st.button('Eliminar día seleccionado',key=f'mx_del_{rid}'):st.session_state.mx_confirm=rid
-        if st.session_state.get('mx_confirm')==rid:
-            st.warning('Se eliminará la matriz y la entrega relacionada.')
-            x,y=st.columns(2)
-            if x.button('Sí, eliminar definitivamente',key=f'mx_ok_{rid}'):
-                c=conn();cur=c.cursor();eid=int(row.entrega_id) if pd.notna(row.entrega_id) else None
-                if eid:cur.execute('DELETE FROM entregas_turno_seguimientos WHERE entrega_id=?',(eid,));cur.execute('DELETE FROM entregas_turno_lineas WHERE entrega_id=?',(eid,));cur.execute('DELETE FROM entregas_turno WHERE id=?',(eid,))
-                cur.execute('DELETE FROM matriz_entrega WHERE id=?',(rid,));c.commit();c.close();audit(st.session_state.auth['usuario'],'ELIMINAR_DIA_MATRIZ',f'ID {rid}');st.session_state.pop('mx_confirm',None);st.rerun()
-            if y.button('Cancelar',key=f'mx_cancel_{rid}'):st.session_state.pop('mx_confirm',None);st.rerun()
+    rows = getattr(ev, 'selection', {}).get('rows', []) if ev is not None else []
+    posicion_valida = bool(rows) and isinstance(rows[0], int) and 0 <= rows[0] < len(vista)
+
+    if posicion_valida:
+        rid = int(vista.iloc[rows[0]]['ID'])
+        coincidencia = f[f['id'] == rid]
+
+        if not coincidencia.empty:
+            row = coincidencia.iloc[0]
+            st.markdown(f"**Seleccionado:** {row['fecha']} | {row['analista']}")
+
+            if st.button('Eliminar día seleccionado', key=f'mx_del_{rid}'):
+                st.session_state.mx_confirm = rid
+
+            if st.session_state.get('mx_confirm') == rid:
+                st.warning('Se eliminará la matriz y la entrega relacionada. Después podrás registrar nuevamente esa fecha.')
+                x, y = st.columns(2)
+
+                if x.button('Sí, eliminar definitivamente', key=f'mx_ok_{rid}'):
+                    c = conn()
+                    cur = c.cursor()
+                    try:
+                        eid = int(row['entrega_id']) if pd.notna(row['entrega_id']) else None
+                        if eid is not None:
+                            cur.execute('DELETE FROM entregas_turno_seguimientos WHERE entrega_id=?', (eid,))
+                            cur.execute('DELETE FROM entregas_turno_lineas WHERE entrega_id=?', (eid,))
+                            cur.execute('DELETE FROM entregas_turno WHERE id=?', (eid,))
+                        cur.execute('DELETE FROM matriz_entrega WHERE id=?', (rid,))
+                        c.commit()
+                    except Exception:
+                        c.rollback()
+                        raise
+                    finally:
+                        c.close()
+
+                    audit(st.session_state.auth['usuario'], 'ELIMINAR_DIA_MATRIZ', f'ID {rid}')
+                    st.session_state.pop('mx_confirm', None)
+                    st.session_state.mx_table_nonce = st.session_state.get('mx_table_nonce', 0) + 1
+                    st.session_state.pop('pdf_entrega_id', None)
+                    st.rerun()
+
+                if y.button('Cancelar', key=f'mx_cancel_{rid}'):
+                    st.session_state.pop('mx_confirm', None)
+                    st.session_state.mx_table_nonce = st.session_state.get('mx_table_nonce', 0) + 1
+                    st.rerun()
+    elif rows:
+        # La selección pertenecía a la tabla anterior al rerun. Se renueva la tabla sin intentar usar iloc.
+        st.session_state.mx_table_nonce = st.session_state.get('mx_table_nonce', 0) + 1
+        st.rerun()
     for c,n in [('total_carga_datos','Total de carga de datos'),('horas_nave1','Horas Nave 1'),('horas_nave2','Horas Nave 2'),('horas_nave3','Horas Nave 3')]:st.markdown(f'**{n}**');st.dataframe(f.pivot_table(index='analista',columns='fecha',values=c,aggfunc='sum',fill_value=0),use_container_width=True)
 
 def init_db():
@@ -705,9 +743,17 @@ def page_consulta():
             st.info('No hay registros para mostrar.'); return None,df
         v=prep(df)
         try:
-            ev=st.dataframe(v,use_container_width=True,hide_index=True,on_select='rerun',selection_mode='single-row',key=f'table_{key}')
+            nonce_key=f'table_nonce_{key}'
+            nonce=st.session_state.get(nonce_key,0)
+            ev=st.dataframe(v,use_container_width=True,hide_index=True,on_select='rerun',selection_mode='single-row',key=f'table_{key}_{nonce}')
             rows=getattr(ev,'selection',{}).get('rows',[]) if ev is not None else []
-            if rows: return int(v.iloc[rows[0]]['Número']),df
+            posicion_valida=bool(rows) and isinstance(rows[0],int) and 0 <= rows[0] < len(v)
+            if posicion_valida:
+                numero=v.iloc[rows[0]].get('Número')
+                if pd.notna(numero): return int(numero),df
+            elif rows:
+                st.session_state[nonce_key]=nonce+1
+                st.rerun()
         except Exception:
             st.dataframe(v,use_container_width=True,hide_index=True)
         return None,df
@@ -719,7 +765,7 @@ def page_consulta():
             c1,c2=st.columns(2)
             with c1:
                 if st.button('Sí, eliminar definitivamente',key=f'ok_del_{key}_{selected}'):
-                    exec_sql(f'DELETE FROM {table_name} WHERE id=?',(selected,)); reset_autoincrement(table_name); audit(st.session_state.auth['usuario'],audit_name,f'ID {selected}'); st.session_state.pop(f'confirm_del_{key}',None); st.success(f'Registro eliminado correctamente: Número {selected}'); st.rerun()
+                    exec_sql(f'DELETE FROM {table_name} WHERE id=?',(selected,)); reset_autoincrement(table_name); audit(st.session_state.auth['usuario'],audit_name,f'ID {selected}'); st.session_state.pop(f'confirm_del_{key}',None); st.session_state[f'table_nonce_{key}']=st.session_state.get(f'table_nonce_{key}',0)+1; st.success(f'Registro eliminado correctamente: Número {selected}'); st.rerun()
             with c2:
                 if st.button('Cancelar eliminación',key=f'cancel_del_{key}_{selected}'):
                     st.session_state.pop(f'confirm_del_{key}',None); st.rerun()
@@ -910,13 +956,28 @@ def consulta_muestras_retencion():
                 st.info('No hay registros para mostrar.')
                 continue
             vista=mostrado[['id','item','descripcion','lote','destino','numero_muestras','numero_corrugado','responsable','observaciones']].rename(columns={'id':'N°','item':'ITEM','descripcion':'Descripción','lote':'Lote','destino':'Destino','numero_muestras':'# De muestras','numero_corrugado':'# Corrugado','responsable':'Responsable','observaciones':'Observaciones'})
-            evento=st.dataframe(vista,use_container_width=True,hide_index=True,on_select='rerun',selection_mode='single-row',key=f'table_{tabla}')
+            nonce_key=f'table_nonce_{tabla}'
+            nonce=st.session_state.get(nonce_key,0)
+            evento=st.dataframe(vista,use_container_width=True,hide_index=True,on_select='rerun',selection_mode='single-row',key=f'table_{tabla}_{nonce}')
             st.download_button('Descargar CSV',vista.to_csv(index=False).encode('utf-8-sig'),f'{tabla}_{datetime.now().strftime("%Y%m%d_%H%M%S")}.csv','text/csv',key=f'download_{tabla}')
             filas=getattr(evento,'selection',{}).get('rows',[]) if evento is not None else []
-            if not filas: continue
+            posicion_valida=bool(filas) and isinstance(filas[0],int) and 0 <= filas[0] < len(vista)
+            if not posicion_valida:
+                if filas:
+                    st.session_state[nonce_key]=nonce+1
+                    st.rerun()
+                continue
             rid=int(vista.iloc[filas[0]]['N°'])
+            coincidencia=mostrado[mostrado['id']==rid]
+            if coincidencia.empty:
+                st.session_state[nonce_key]=nonce+1
+                st.rerun()
             st.markdown(f'### Registro seleccionado: Número {rid}')
-            original=read_df(f'SELECT * FROM {tabla} WHERE id=?',(rid,)).iloc[0].to_dict()
+            original_df=read_df(f'SELECT * FROM {tabla} WHERE id=?',(rid,))
+            if original_df.empty:
+                st.session_state[nonce_key]=nonce+1
+                st.rerun()
+            original=original_df.iloc[0].to_dict()
             with st.expander(f'✏️ Editar registro N° {rid}',expanded=True):
                 actual=next((x for x in opciones_item if x and x.split('|')[0].strip()==str(original['item'])),'')
                 elegido=st.selectbox('ITEM *',opciones_item,index=idx_or_zero(opciones_item,actual),key=f'edit_item_{tabla}_{rid}')
@@ -953,9 +1014,9 @@ def consulta_muestras_retencion():
                 if d1.button('Sí, eliminar definitivamente',key=f'ok_{tabla}_{rid}'):
                     exec_sql(f'DELETE FROM {tabla} WHERE id=?',(rid,)); reset_autoincrement(tabla)
                     audit(st.session_state.auth['usuario'],'ELIMINAR_MUESTRA_RETENCION',f'{nombre} | ID {rid}')
-                    st.session_state.pop(f'confirm_{tabla}',None); st.rerun()
+                    st.session_state.pop(f'confirm_{tabla}',None); st.session_state[nonce_key]=st.session_state.get(nonce_key,0)+1; st.rerun()
                 if d2.button('Cancelar',key=f'cancel_{tabla}_{rid}'):
-                    st.session_state.pop(f'confirm_{tabla}',None); st.rerun()
+                    st.session_state.pop(f'confirm_{tabla}',None); st.session_state[nonce_key]=st.session_state.get(nonce_key,0)+1; st.rerun()
 
 def page_entrega_turno():
     referencia='RE-CAL01-2301-00002-2013 Rev. 1'
