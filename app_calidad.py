@@ -142,66 +142,91 @@ def pdf_entrega(eid):
     dt=Table(data,colWidths=[55,85,145,145,45,45,190],repeatRows=1);dt.setStyle(TableStyle([('BACKGROUND',(0,0),(-1,0),colors.HexColor('#0A4652')),('TEXTCOLOR',(0,0),(-1,0),colors.white),('FONTSIZE',(0,0),(-1,-1),7),('GRID',(0,0),(-1,-1),.3,colors.grey),('VALIGN',(0,0),(-1,-1),'MIDDLE')]));story.append(dt);doc.build(story);return b.getvalue()
 
 def matriz_entregas():
-    df=read_df('SELECT id,fecha,analista,entrega_id,total_carga_datos,horas_nave1,horas_nave2,horas_nave3 FROM matriz_entrega ORDER BY fecha,analista')
-    if df.empty:st.info('Todavía no hay indicadores registrados.');return
-    df['fecha_dt']=pd.to_datetime(df.fecha,errors='coerce').dt.date;valid=df.fecha_dt.dropna();mn,mx=min(valid),max(valid);a,b=st.columns(2);desde=a.date_input('Fecha inicial',mn,key='mx_desde');hasta=b.date_input('Fecha final',mx,key='mx_hasta')
-    if desde>hasta:st.error('La fecha inicial no puede ser posterior a la fecha final.');return
-    f=df[(df.fecha_dt>=desde)&(df.fecha_dt<=hasta)].copy();names=st.multiselect('Analista',sorted(df.analista.unique()),key='mx_names')
-    if names:f=f[f.analista.isin(names)]
-    vista=f.drop(columns=['fecha_dt']).rename(columns={'id':'ID','fecha':'Fecha','analista':'Analista','total_carga_datos':'Total carga','horas_nave1':'Horas Nave 1','horas_nave2':'Horas Nave 2','horas_nave3':'Horas Nave 3'})
-    nonce_matriz = st.session_state.get('mx_table_nonce', 0)
-    ev=st.dataframe(vista,use_container_width=True,hide_index=True,on_select='rerun',selection_mode='single-row',key=f'mx_table_{nonce_matriz}')
-    st.download_button('Descargar matriz en Excel',excel_matriz(f.drop(columns=['id','entrega_id','fecha_dt'])),f'matriz_{desde}_{hasta}.xlsx','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
-    rows = getattr(ev, 'selection', {}).get('rows', []) if ev is not None else []
-    posicion_valida = bool(rows) and isinstance(rows[0], int) and 0 <= rows[0] < len(vista)
-
-    if posicion_valida:
-        rid = int(vista.iloc[rows[0]]['ID'])
-        coincidencia = f[f['id'] == rid]
-
+    st.markdown('## Entregas de turno y matriz histórica')
+    st.caption('Consulta los registros de las tres naves, descarga cualquier PDF y exporta la matriz del rango seleccionado.')
+    df=read_df("SELECT m.id,m.fecha,m.analista,m.entrega_id,m.total_carga_datos,m.horas_nave1,m.horas_nave2,m.horas_nave3,COALESCE(e.nave,'') AS nave,COALESCE(e.turno,'') AS turno FROM matriz_entrega m LEFT JOIN entregas_turno e ON e.id=m.entrega_id ORDER BY m.fecha DESC,m.analista")
+    if df.empty:
+        st.info('Todavía no hay entregas de turno registradas.')
+        return
+    df['fecha_dt']=pd.to_datetime(df['fecha'],errors='coerce').dt.date
+    validas=df['fecha_dt'].dropna()
+    if validas.empty:
+        st.warning('Los registros existentes no contienen fechas válidas.')
+        return
+    mn,mx=min(validas),max(validas)
+    a,b,c=st.columns(3)
+    desde=a.date_input('Fecha inicial',mn,min_value=mn,max_value=mx,key='mx_desde')
+    hasta=b.date_input('Fecha final',mx,min_value=mn,max_value=mx,key='mx_hasta')
+    naves=c.multiselect('Nave',['Nave 1','Nave 2','Nave 3'],key='mx_naves')
+    if desde>hasta:
+        st.error('La fecha inicial no puede ser posterior a la fecha final.')
+        return
+    nombres=sorted(df['analista'].dropna().astype(str).unique())
+    analistas=st.multiselect('Analista',nombres,key='mx_names')
+    f=df[(df['fecha_dt']>=desde)&(df['fecha_dt']<=hasta)].copy()
+    if naves:f=f[f['nave'].isin(naves)]
+    if analistas:f=f[f['analista'].isin(analistas)]
+    if f.empty:
+        st.info('No existen registros para los filtros seleccionados.')
+        return
+    vista=f[['id','entrega_id','fecha','nave','turno','analista','total_carga_datos','horas_nave1','horas_nave2','horas_nave3']].copy()
+    vista['PDF']='Disponible'
+    vista=vista.rename(columns={'id':'ID matriz','entrega_id':'Registro','fecha':'Fecha','nave':'Nave','turno':'Turno','analista':'Analista','total_carga_datos':'Total carga','horas_nave1':'Horas Nave 1','horas_nave2':'Horas Nave 2','horas_nave3':'Horas Nave 3'})
+    nonce=st.session_state.get('mx_table_nonce',0)
+    evento=st.dataframe(vista,use_container_width=True,hide_index=True,on_select='rerun',selection_mode='single-row',key=f'mx_table_{nonce}',column_config={'PDF':st.column_config.TextColumn('PDF del registro',help='Selecciona la fila para descargar el PDF.')})
+    excel_df=f[['fecha','nave','turno','analista','total_carga_datos','horas_nave1','horas_nave2','horas_nave3']].copy()
+    st.download_button('Descargar matriz en Excel',excel_matriz(excel_df),f'matriz_entregas_{desde}_{hasta}.xlsx','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',key='mx_excel')
+    rows=getattr(evento,'selection',{}).get('rows',[]) if evento is not None else []
+    valida=bool(rows) and isinstance(rows[0],int) and 0<=rows[0]<len(vista)
+    if valida:
+        seleccion=vista.iloc[rows[0]]
+        rid=int(seleccion['ID matriz'])
+        coincidencia=f[f['id']==rid]
         if not coincidencia.empty:
-            row = coincidencia.iloc[0]
-            st.markdown(f"**Seleccionado:** {row['fecha']} | {row['analista']}")
-
-            if st.button('Eliminar día seleccionado', key=f'mx_del_{rid}'):
-                st.session_state.mx_confirm = rid
-
-            if st.session_state.get('mx_confirm') == rid:
-                st.warning('Se eliminará la matriz y la entrega relacionada. Después podrás registrar nuevamente esa fecha.')
-                x, y = st.columns(2)
-
-                if x.button('Sí, eliminar definitivamente', key=f'mx_ok_{rid}'):
-                    c = conn()
-                    cur = c.cursor()
+            row=coincidencia.iloc[0]
+            eid=int(row['entrega_id']) if pd.notna(row['entrega_id']) else None
+            st.markdown(f"### Registro seleccionado: {eid or 'Sin número'} | {row['fecha']} | {row['nave']} | {row['analista']}")
+            if eid:
+                contenido_pdf=pdf_entrega(eid)
+                if contenido_pdf:
+                    st.download_button('Descargar PDF de este registro',contenido_pdf,f'entrega_turno_{eid}_{row["fecha"]}.pdf','application/pdf',key=f'mx_pdf_{rid}_{eid}')
+                else:
+                    st.warning('No fue posible generar el PDF. Verifica que reportlab esté incluido en requirements.txt.')
+            else:
+                st.warning('Este indicador no tiene una entrega de turno relacionada.')
+            if st.button('Eliminar día seleccionado',key=f'mx_del_{rid}'):
+                st.session_state.mx_confirm=rid
+            if st.session_state.get('mx_confirm')==rid:
+                st.warning('Se eliminará la matriz y toda la entrega de turno relacionada. Después podrás registrar nuevamente esa fecha.')
+                x,y=st.columns(2)
+                if x.button('Sí, eliminar definitivamente',key=f'mx_ok_{rid}'):
+                    cdb=conn();cur=cdb.cursor()
                     try:
-                        eid = int(row['entrega_id']) if pd.notna(row['entrega_id']) else None
-                        if eid is not None:
-                            cur.execute('DELETE FROM entregas_turno_seguimientos WHERE entrega_id=?', (eid,))
-                            cur.execute('DELETE FROM entregas_turno_lineas WHERE entrega_id=?', (eid,))
-                            cur.execute('DELETE FROM entregas_turno WHERE id=?', (eid,))
-                        cur.execute('DELETE FROM matriz_entrega WHERE id=?', (rid,))
-                        c.commit()
+                        if eid:
+                            cur.execute('DELETE FROM entregas_turno_seguimientos WHERE entrega_id=?',(eid,))
+                            cur.execute('DELETE FROM entregas_turno_lineas WHERE entrega_id=?',(eid,))
+                            cur.execute('DELETE FROM entregas_turno WHERE id=?',(eid,))
+                        cur.execute('DELETE FROM matriz_entrega WHERE id=?',(rid,))
+                        cdb.commit()
                     except Exception:
-                        c.rollback()
-                        raise
-                    finally:
-                        c.close()
-
-                    audit(st.session_state.auth['usuario'], 'ELIMINAR_DIA_MATRIZ', f'ID {rid}')
-                    st.session_state.pop('mx_confirm', None)
-                    st.session_state.mx_table_nonce = st.session_state.get('mx_table_nonce', 0) + 1
-                    st.session_state.pop('pdf_entrega_id', None)
+                        cdb.rollback();raise
+                    finally:cdb.close()
+                    audit(st.session_state.auth['usuario'],'ELIMINAR_DIA_MATRIZ',f'Matriz {rid} | Entrega {eid}')
+                    st.session_state.pop('mx_confirm',None)
+                    st.session_state.mx_table_nonce=nonce+1
                     st.rerun()
-
-                if y.button('Cancelar', key=f'mx_cancel_{rid}'):
-                    st.session_state.pop('mx_confirm', None)
-                    st.session_state.mx_table_nonce = st.session_state.get('mx_table_nonce', 0) + 1
+                if y.button('Cancelar',key=f'mx_cancel_{rid}'):
+                    st.session_state.pop('mx_confirm',None)
+                    st.session_state.mx_table_nonce=nonce+1
                     st.rerun()
     elif rows:
-        # La selección pertenecía a la tabla anterior al rerun. Se renueva la tabla sin intentar usar iloc.
-        st.session_state.mx_table_nonce = st.session_state.get('mx_table_nonce', 0) + 1
+        st.session_state.mx_table_nonce=nonce+1
         st.rerun()
-    for c,n in [('total_carga_datos','Total de carga de datos'),('horas_nave1','Horas Nave 1'),('horas_nave2','Horas Nave 2'),('horas_nave3','Horas Nave 3')]:st.markdown(f'**{n}**');st.dataframe(f.pivot_table(index='analista',columns='fecha',values=c,aggfunc='sum',fill_value=0),use_container_width=True)
+    st.markdown('### Matrices por fecha y analista')
+    for campo,titulo in [('total_carga_datos','Total de carga de datos'),('horas_nave1','Horas trabajadas Nave 1'),('horas_nave2','Horas trabajadas Nave 2'),('horas_nave3','Horas trabajadas Nave 3')]:
+        st.markdown(f'**{titulo}**')
+        st.dataframe(f.pivot_table(index='analista',columns='fecha',values=campo,aggfunc='sum',fill_value=0),use_container_width=True)
+
 
 def init_db():
     UPLOAD_DIR.mkdir(exist_ok=True)
@@ -875,6 +900,9 @@ def page_consulta():
             delete_confirm('ddm_rx_registros','ddm','ELIMINAR_DDM_RX',selected)
     st.divider()
     consulta_muestras_retencion()
+    st.divider()
+    matriz_entregas()
+
 def page_muestras_retencion():
     periodos=[
         ('muestras_10_meses','10 Meses','🗓️'),
@@ -1020,12 +1048,6 @@ def consulta_muestras_retencion():
 
 def page_entrega_turno():
     referencia='RE-CAL01-2301-00002-2013 Rev. 1'
-    pid=st.session_state.get('pdf_entrega_id')
-    if pid:
-        pb=pdf_entrega(pid)
-        if pb:st.download_button('Descargar PDF del último registro',pb,f'entrega_turno_{pid}.pdf','application/pdf')
-        else:st.warning('Instala reportlab para habilitar la descarga PDF.')
-    with st.expander('Matriz histórica por fecha y analista',expanded=False):matriz_entregas()
     grupos={
       'MD - Car. Duros - FABRIMA':['MD - Car. Duros - FABRIMA'],
       'BON O BON':['MD - BOB - CENTRO DE MASA','MD - BOB - HORNO','MD - BOB - DEPOSITADORA','MD - BOB - TROQUEL','MD - BOB - BAÑADORA 1','MD - BOB - BAÑADORA 2','MD - BOB - FLOW PACK 1','MD - BOB - FLOW PACK 2','MD - BOB - FLOW PACK 3','MD - BOB - FLOW PACK 4','MD - BOB - FLOW PACK 5','MD - BOB - HIGH DREAM'],
@@ -1118,7 +1140,7 @@ def page_entrega_turno():
                     for orden,row in df.iterrows():
                         vals=[str(row.get(c,'') or '') for c in ['Registro #','Hoja física','Carga electrónica','Correo','Descripción del seguimiento']]
                         if any(v.strip() for v in vals):exec_sql('INSERT INTO entregas_turno_seguimientos(entrega_id,bloque,registro_numero,hoja_fisica,carga_electronica,correo,descripcion_seguimiento,orden_fila) VALUES(?,?,?,?,?,?,?,?)',(eid,bloque,*vals,int(orden)))
-                guardar_matriz(eid,fecha.isoformat(),analista,total_c,totales_nave);audit(st.session_state.auth['usuario'],'CREAR_ENTREGA_TURNO',f'{nave} | ID {eid}');st.session_state.pdf_entrega_id=eid;st.session_state.entrega_nonce+=1;st.success(f'Entrega guardada: Número {eid}');st.rerun()
+                guardar_matriz(eid,fecha.isoformat(),analista,total_c,totales_nave);audit(st.session_state.auth['usuario'],'CREAR_ENTREGA_TURNO',f'{nave} | ID {eid}');st.session_state.entrega_nonce+=1;st.success(f'Entrega guardada: Número {eid}');st.rerun()
         st.markdown('</div>',unsafe_allow_html=True)
         return
     n=st.session_state.entrega_nonce
@@ -1161,7 +1183,7 @@ def page_entrega_turno():
                 for orden,row in df.iterrows():
                     vals=[str(row.get(c,'') or '') for c in ['Registro #','Hoja física','Carga electrónica','Correo','Descripción del seguimiento']]
                     if any(v.strip() for v in vals): exec_sql('INSERT INTO entregas_turno_seguimientos(entrega_id,bloque,registro_numero,hoja_fisica,carga_electronica,correo,descripcion_seguimiento,orden_fila) VALUES(?,?,?,?,?,?,?,?)',(eid,bloque,*vals,int(orden)))
-            guardar_matriz(eid,fecha.isoformat(),analista,total_c,totales_nave);audit(st.session_state.auth['usuario'],'CREAR_ENTREGA_TURNO',f'Nave 1 | ID {eid}');st.session_state.pdf_entrega_id=eid;st.session_state.entrega_nonce+=1;st.success(f'Entrega guardada: Número {eid}');st.rerun()
+            guardar_matriz(eid,fecha.isoformat(),analista,total_c,totales_nave);audit(st.session_state.auth['usuario'],'CREAR_ENTREGA_TURNO',f'Nave 1 | ID {eid}');st.session_state.entrega_nonce+=1;st.success(f'Entrega guardada: Número {eid}');st.rerun()
     st.markdown('</div>',unsafe_allow_html=True)
 
 def admin_required():
