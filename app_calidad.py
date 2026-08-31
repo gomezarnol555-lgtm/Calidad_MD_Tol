@@ -257,17 +257,12 @@ def migrar_matriz_fecha_analista(cur):
     cur.execute('DROP TABLE matriz_entrega_anterior')
 
 def formato_entrega(nave,tipo='PROCESO'):
-    if tipo=='PROCESO':
-        df=read_df("SELECT linea,sector,orden,id FROM catalogo_naves_lineas WHERE nave=? AND activo=1 AND TRIM(COALESCE(linea,''))<>'' AND TRIM(COALESCE(sector,''))<>'' ORDER BY orden,id",(nave,))
-        resultado={}
-        for r in df.itertuples():
-            linea=str(r.linea or '').strip(); sector=str(r.sector or '').strip()
-            if linea and sector:
-                resultado.setdefault(linea,[])
-                if sector not in resultado[linea]: resultado[linea].append(sector)
-        return resultado
-    df=read_df("SELECT linea,sector,tipo_analisis,orden_linea,orden_sector FROM catalogo_formatos_entrega WHERE formato_nave=? AND tipo='ANALISIS' AND activo=1 ORDER BY orden_linea,orden_sector,id",(nave,))
-    return [(str(r.linea),str(r.sector),str(r.tipo_analisis or '')) for r in df.itertuples()]
+    df=read_df("SELECT linea,sector,tipo_analisis,orden_linea,orden_sector FROM catalogo_formatos_entrega WHERE formato_nave=? AND tipo=? AND activo=1 ORDER BY orden_linea,orden_sector,id",(nave,tipo))
+    if tipo=='ANALISIS':
+        return [(str(r.linea),str(r.sector),str(r.tipo_analisis or '')) for r in df.itertuples()]
+    resultado={}
+    for r in df.itertuples(): resultado.setdefault(str(r.linea),[]).append(str(r.sector))
+    return resultado
 
 def migrar_catalogo_formatos_entrega(cur):
     """Migra cualquier versión anterior sin perder los formatos existentes."""
@@ -344,38 +339,64 @@ def asegurar_columnas_catalogos(cur):
     cur.execute("UPDATE catalogo_naves_lineas SET linea_norm=UPPER(TRIM(COALESCE(linea,''))) WHERE linea_norm IS NULL OR TRIM(linea_norm)='' ")
     cur.execute("UPDATE catalogo_naves_lineas SET sector_norm=UPPER(TRIM(COALESCE(sector,''))) WHERE sector_norm IS NULL OR TRIM(sector_norm)='' ")
 
-def sincronizar_lineas_sectores_formatos(cur):
-    # Migracion unica para separar TROQUEL DE POOSH y ENVASADO en Nave 2 y Nave 3.
-    if cur.execute("SELECT 1 FROM app_config WHERE clave='sincronizacion_lineas_sectores_v2'").fetchone(): return
-    sectores=['HIGH DREAM','ENVASADO VITROLEROS C2','PFM','PFM Multiformato','Flow Pack Bosch','Yamato de Poosh','Encajillado GD´s','MBP 700']
+def normalizar_estructura_formatos_entrega(cur):
+    """Separa TROQUEL DE POOSH y ENVASADO en los formatos, sin alterar registros históricos."""
+    if cur.execute("SELECT 1 FROM app_config WHERE clave='estructura_formatos_entrega_v3'").fetchone():
+        return
+    columnas={r[1] for r in cur.execute('PRAGMA table_info(catalogo_formatos_entrega)').fetchall()}
+    necesarias={'id','formato_nave','tipo','linea','sector','tipo_analisis','orden_linea','orden_sector','activo'}
+    if not necesarias.issubset(columnas):
+        return
+    sectores_envasado=[
+        'HIGH DREAM','ENVASADO VITROLEROS C2','PFM','PFM Multiformato',
+        'Flow Pack Bosch','Yamato de Poosh','Encajillado GD´s','MBP 700'
+    ]
     for nave in ('Nave 2','Nave 3'):
-        filas=cur.execute("SELECT id,sector FROM catalogo_naves_lineas WHERE nave=? AND activo=1 AND UPPER(TRIM(linea))='TROQUEL DE POOSH' AND UPPER(TRIM(sector))<>'TROQUEL DE POOSH'",(nave,)).fetchall()
-        for rid,sector in filas:
-            destino=str(sector or '').strip()
-            mapa={'ENVASADO HIGH DREAM':'HIGH DREAM','ENVASADO   VITROLEROS C2':'ENVASADO VITROLEROS C2','EENCAJILLADO GD´S':'Encajillado GD´s'}
-            destino=mapa.get(normalizar_catalogo(destino),destino)
-            cur.execute("UPDATE catalogo_naves_lineas SET linea='ENVASADO',sector=?,linea_norm=?,sector_norm=? WHERE id=?",(destino,normalizar_catalogo('ENVASADO'),normalizar_catalogo(destino),rid))
-        # Normaliza nombres ya existentes dentro de ENVASADO y elimina duplicados.
-        existentes_env=cur.execute("SELECT id,sector FROM catalogo_naves_lineas WHERE nave=? AND activo=1 AND UPPER(TRIM(linea))='ENVASADO' ORDER BY id",(nave,)).fetchall()
-        vistos=set()
-        mapa_env={'ENVASADO HIGH DREAM':'HIGH DREAM','ENVASADO VITROLEROS C2':'ENVASADO VITROLEROS C2','EENCAJILLADO GD´S':'Encajillado GD´s'}
-        for rid_env,sector_env in existentes_env:
-            clave_original=normalizar_catalogo(sector_env)
-            if 'ENCAJILLADO GD' in clave_original: nombre='Encajillado GD´s'
-            else: nombre=mapa_env.get(clave_original,str(sector_env or '').strip())
-            clave=normalizar_catalogo(nombre)
-            if clave in vistos:
-                cur.execute('UPDATE catalogo_naves_lineas SET activo=0 WHERE id=?',(rid_env,))
+        # Traslada al encabezado ENVASADO los sectores que estaban bajo TROQUEL DE POOSH.
+        filas=cur.execute("""SELECT id,sector,orden_linea,orden_sector
+            FROM catalogo_formatos_entrega
+            WHERE formato_nave=? AND tipo='PROCESO' AND activo=1
+              AND UPPER(TRIM(linea))='TROQUEL DE POOSH'
+              AND UPPER(TRIM(sector))<>'TROQUEL DE POOSH'""",(nave,)).fetchall()
+        for rid,sector,orden_linea,orden_sector in filas:
+            original=normalizar_catalogo(sector)
+            if original=='ENVASADO HIGH DREAM': destino='HIGH DREAM'
+            elif 'VITROLEROS C2' in original: destino='ENVASADO VITROLEROS C2'
+            elif 'ENCAJILLADO GD' in original: destino='Encajillado GD´s'
+            else: destino=str(sector or '').strip()
+            duplicado=cur.execute("""SELECT id FROM catalogo_formatos_entrega
+                WHERE formato_nave=? AND tipo='PROCESO' AND activo=1
+                  AND UPPER(TRIM(linea))='ENVASADO'
+                  AND UPPER(TRIM(sector))=UPPER(TRIM(?)) AND id<>? LIMIT 1""",
+                (nave,destino,rid)).fetchone()
+            if duplicado:
+                cur.execute('UPDATE catalogo_formatos_entrega SET activo=0 WHERE id=?',(rid,))
             else:
-                vistos.add(clave)
-                cur.execute("UPDATE catalogo_naves_lineas SET sector=?,linea_norm=?,sector_norm=? WHERE id=?",(nombre,normalizar_catalogo('ENVASADO'),clave,rid_env))
-        maxorden=int(cur.execute('SELECT COALESCE(MAX(orden),-1) FROM catalogo_naves_lineas WHERE nave=?',(nave,)).fetchone()[0])
-        for pos,sector in enumerate(sectores,1):
-            existe=cur.execute("SELECT id FROM catalogo_naves_lineas WHERE nave=? AND UPPER(TRIM(linea))='ENVASADO' AND UPPER(TRIM(sector))=UPPER(TRIM(?)) LIMIT 1",(nave,sector)).fetchone()
-            if not existe: cur.execute('INSERT OR IGNORE INTO catalogo_naves_lineas(nave,linea,sector,linea_norm,sector_norm,orden,activo) VALUES(?,?,?,?,?,?,1)',(nave,'ENVASADO',sector,normalizar_catalogo('ENVASADO'),normalizar_catalogo(sector),maxorden+pos))
-        propio=cur.execute("SELECT id FROM catalogo_naves_lineas WHERE nave=? AND UPPER(TRIM(linea))='TROQUEL DE POOSH' AND UPPER(TRIM(sector))='TROQUEL DE POOSH' LIMIT 1",(nave,)).fetchone()
-        if not propio: cur.execute('INSERT OR IGNORE INTO catalogo_naves_lineas(nave,linea,sector,linea_norm,sector_norm,orden,activo) VALUES(?,?,?,?,?,?,1)',(nave,'TROQUEL DE POOSH','TROQUEL DE POOSH',normalizar_catalogo('TROQUEL DE POOSH'),normalizar_catalogo('TROQUEL DE POOSH'),maxorden+20))
-    cur.execute("INSERT OR REPLACE INTO app_config(clave,valor,actualizado_en) VALUES('sincronizacion_lineas_sectores_v2','1',?)",(now_iso(),))
+                cur.execute("""UPDATE catalogo_formatos_entrega
+                    SET linea='ENVASADO',sector=?,orden_linea=8,orden_sector=? WHERE id=?""",
+                    (destino,int(orden_sector or 0),rid))
+        # Garantiza un único valor para TROQUEL DE POOSH.
+        propio=cur.execute("""SELECT id FROM catalogo_formatos_entrega
+            WHERE formato_nave=? AND tipo='PROCESO'
+              AND UPPER(TRIM(linea))='TROQUEL DE POOSH'
+              AND UPPER(TRIM(sector))='TROQUEL DE POOSH' LIMIT 1""",(nave,)).fetchone()
+        if propio:
+            cur.execute('UPDATE catalogo_formatos_entrega SET activo=1 WHERE id=?',(propio[0],))
+        else:
+            cur.execute("""INSERT OR IGNORE INTO catalogo_formatos_entrega
+                (formato_nave,tipo,linea,sector,tipo_analisis,orden_linea,orden_sector,activo)
+                VALUES(?,?,?,?,?,?,?,1)""",(nave,'PROCESO','TROQUEL DE POOSH','TROQUEL DE POOSH','',7,0))
+        # Completa ENVASADO sin duplicar y solo para esta migración inicial.
+        for pos,sector in enumerate(sectores_envasado):
+            existe=cur.execute("""SELECT id FROM catalogo_formatos_entrega
+                WHERE formato_nave=? AND tipo='PROCESO'
+                  AND UPPER(TRIM(linea))='ENVASADO'
+                  AND UPPER(TRIM(sector))=UPPER(TRIM(?)) LIMIT 1""",(nave,sector)).fetchone()
+            if not existe:
+                cur.execute("""INSERT OR IGNORE INTO catalogo_formatos_entrega
+                    (formato_nave,tipo,linea,sector,tipo_analisis,orden_linea,orden_sector,activo)
+                    VALUES(?,?,?,?,?,?,?,1)""",(nave,'PROCESO','ENVASADO',sector,'',8,pos))
+    cur.execute("INSERT OR REPLACE INTO app_config(clave,valor,actualizado_en) VALUES('estructura_formatos_entrega_v3','1',?)",(now_iso(),))
 
 def init_db():
     UPLOAD_DIR.mkdir(exist_ok=True)
@@ -469,7 +490,7 @@ def init_db():
         for nv,tipo,linea,sector,analisis,ol,os in SEED_FORMATOS_ENTREGA:
             cur.execute('INSERT OR IGNORE INTO catalogo_formatos_entrega(formato_nave,tipo,linea,sector,tipo_analisis,orden_linea,orden_sector,activo) VALUES(?,?,?,?,?,?,?,1)',(nv,tipo,linea,sector,analisis,ol,os))
         cur.execute("INSERT OR REPLACE INTO app_config(clave,valor,actualizado_en) VALUES('formatos_entrega_linea_sector_v2','1',?)",(now_iso(),))
-    sincronizar_lineas_sectores_formatos(cur)
+    normalizar_estructura_formatos_entrega(cur)
     c.commit(); c.close()
 
 def reset_admin():
@@ -1414,7 +1435,7 @@ def page_catalogos():
 
     with tab4:
         st.subheader('Naves, líneas y sectores')
-        st.caption('Este catálogo determina los encabezados de Línea, sus Sectores y la nave de los indicadores. Los cambios se reflejan automáticamente en el formato correspondiente.')
+        st.caption('Este catálogo clasifica cada Línea y Sector para calcular por separado las horas generales de Nave 1, Nave 2 y Nave 3. No modifica la estructura visible del formato.')
         f1,f2=st.columns([1,2])
         filtro_nave=f1.multiselect('Filtrar por nave',['Nave 1','Nave 2','Nave 3'],key='cat_general_naves')
         buscar=f2.text_input('Buscar línea o sector',key='cat_general_buscar')
@@ -1495,7 +1516,7 @@ def page_catalogos():
 
     with tab5:
         st.subheader('Formatos de entrega de turno')
-        st.caption('Los procesos se sincronizan desde Naves, líneas y sectores. Aquí se administran los análisis fisicoquímicos de cada formato.')
+        st.caption('Este catálogo define la estructura visible de cada formato y el TOTAL DE CARGA DE DATOS individual del analista. Cada Línea se muestra como encabezado y sus Sectores como filas.')
         nave_fmt=st.radio('Formato',['Nave 1','Nave 2','Nave 3'],horizontal=True,key='fmt_nave')
         tipo_fmt=st.radio('Sección',['PROCESO','ANALISIS'],format_func=lambda x:'Líneas y sectores' if x=='PROCESO' else 'Análisis fisicoquímicos',horizontal=True,key='fmt_tipo')
         df=read_df('SELECT id,linea,sector,tipo_analisis,orden_linea,orden_sector FROM catalogo_formatos_entrega WHERE formato_nave=? AND tipo=? AND activo=1 ORDER BY orden_linea,orden_sector,id',(nave_fmt,tipo_fmt))
