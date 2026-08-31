@@ -153,30 +153,69 @@ def clave_periodo(fecha,tipo):
         iso=fecha.isocalendar(); return f'{iso.year}-S{iso.week:02d}'
     return fecha.strftime('%Y-%m')
 
-def editor_metas_cumplimiento(tipo_entidad, entidades, actuales, periodo_tipo, periodo_clave, key):
-    metas=read_df('SELECT entidad,meta FROM metas_carga_spac WHERE tipo_entidad=? AND periodo_tipo=? AND periodo_clave=?',(tipo_entidad,periodo_tipo,periodo_clave))
-    mapa={str(r.entidad):float(r.meta or 0) for r in metas.itertuples()}
+def editor_metas_cumplimiento(tipo_entidad, entidades, teoricos, periodo_tipo, periodo_clave, key):
+    """Datos teóricos vienen de registros; datos cargados se capturan manualmente."""
+    guardados=read_df('SELECT entidad,meta FROM metas_carga_spac WHERE tipo_entidad=? AND periodo_tipo=? AND periodo_clave=?',(tipo_entidad,periodo_tipo,periodo_clave))
+    mapa={str(r.entidad):float(r.meta or 0) for r in guardados.itertuples()}
     filas=[]
     for entidad in entidades:
-        cargados=float(actuales.get(entidad,0) or 0); teoricos=float(mapa.get(entidad,0) or 0)
-        porcentaje=(cargados/teoricos*100) if teoricos>0 else None
-        filas.append({'Entidad':entidad,'Datos teóricos':teoricos,'Datos cargados':cargados,'Cumplimiento %':porcentaje})
+        teorico=float(teoricos.get(entidad,0) or 0)
+        cargado=float(mapa.get(entidad,0) or 0)
+        porcentaje=(cargado/teorico*100) if teorico>0 else None
+        filas.append({'Entidad':entidad,'Datos teóricos':teorico,'Datos cargados':cargado,'Cumplimiento %':porcentaje})
     base=pd.DataFrame(filas)
     if is_dev():
-        editado=st.data_editor(base,use_container_width=True,hide_index=True,key=key,disabled=['Entidad','Datos cargados','Cumplimiento %'],column_config={'Datos teóricos':st.column_config.NumberColumn(min_value=0.0,step=1.0,format='%.2f'),'Datos cargados':st.column_config.NumberColumn(format='%.2f'),'Cumplimiento %':st.column_config.NumberColumn(format='%.1f%%')})
-        if st.button('Guardar datos teóricos',key=key+'_guardar',type='primary'):
+        editado=st.data_editor(base,use_container_width=True,hide_index=True,key=key,disabled=['Entidad','Datos teóricos','Cumplimiento %'],column_config={'Datos teóricos':st.column_config.NumberColumn(format='%.2f'),'Datos cargados':st.column_config.NumberColumn(min_value=0.0,step=1.0,format='%.2f'),'Cumplimiento %':st.column_config.NumberColumn(format='%.1f%%')})
+        if st.button('Guardar datos cargados y calcular cumplimiento',key=key+'_guardar',type='primary'):
             c=conn();cur=c.cursor()
             try:
                 for _,r in editado.iterrows():
-                    cur.execute('INSERT INTO metas_carga_spac(tipo_entidad,entidad,periodo_tipo,periodo_clave,meta,actualizado_por,actualizado_en) VALUES(?,?,?,?,?,?,?) ON CONFLICT(tipo_entidad,entidad,periodo_tipo,periodo_clave) DO UPDATE SET meta=excluded.meta,actualizado_por=excluded.actualizado_por,actualizado_en=excluded.actualizado_en',(tipo_entidad,str(r['Entidad']),periodo_tipo,periodo_clave,float(r['Datos teóricos'] or 0),st.session_state.auth['usuario'],now_iso()))
+                    cur.execute('INSERT INTO metas_carga_spac(tipo_entidad,entidad,periodo_tipo,periodo_clave,meta,actualizado_por,actualizado_en) VALUES(?,?,?,?,?,?,?) ON CONFLICT(tipo_entidad,entidad,periodo_tipo,periodo_clave) DO UPDATE SET meta=excluded.meta,actualizado_por=excluded.actualizado_por,actualizado_en=excluded.actualizado_en',(tipo_entidad,str(r['Entidad']),periodo_tipo,periodo_clave,float(r['Datos cargados'] or 0),st.session_state.auth['usuario'],now_iso()))
                 c.commit()
-            except Exception: c.rollback(); raise
-            finally: c.close()
-            audit(st.session_state.auth['usuario'],'ACTUALIZAR_DATOS_TEORICOS_SPAC',f'{tipo_entidad} | {periodo_tipo} | {periodo_clave}')
-            st.success('Datos teóricos guardados. El porcentaje fue recalculado.'); st.rerun()
+            except Exception:
+                c.rollback();raise
+            finally:c.close()
+            audit(st.session_state.auth['usuario'],'ACTUALIZAR_DATOS_CARGADOS_SPAC',f'{tipo_entidad} | {periodo_tipo} | {periodo_clave}')
+            st.success('Datos cargados guardados. Cumplimiento recalculado.'); st.rerun()
     else:
         vista=base.copy(); vista['Cumplimiento %']=vista['Cumplimiento %'].map(lambda x:'' if pd.isna(x) else f'{x:.1f}%')
         st.dataframe(vista,use_container_width=True,hide_index=True)
+
+def aplicar_ajustes_diarios(tabla,tipo_entidad,columna_entidad):
+    ajustes=read_df('SELECT entidad,fecha,valor FROM ajustes_diarios_spac WHERE tipo_entidad=?',(tipo_entidad,))
+    for r in ajustes.itertuples():
+        if str(r.entidad) in tabla.index and str(r.fecha) in tabla.columns:
+            tabla.loc[str(r.entidad),str(r.fecha)]=float(r.valor) if pd.notna(r.valor) else None
+    return tabla
+
+def tabla_diaria_editable(tabla,tipo_entidad,columna_entidad,key):
+    """Permite al desarrollador justificar faltantes con 0 u otro valor sin alterar entregas históricas."""
+    vista=tabla.reset_index().rename(columns={tabla.index.name or 'index':columna_entidad})
+    if not is_dev():
+        st.dataframe(estilo_faltantes_matriz(vista),use_container_width=True,hide_index=True)
+        return
+    editado=st.data_editor(vista,use_container_width=True,hide_index=True,key=key,disabled=[columna_entidad],num_rows='fixed')
+    justificacion=st.text_input('Justificación del ajuste',placeholder='Ejemplo: Vacaciones, incapacidad, día no laborable',key=key+'_justificacion')
+    if st.button('Guardar ajustes diarios',key=key+'_guardar',type='primary'):
+        c=conn();cur=c.cursor()
+        try:
+            for _,r in editado.iterrows():
+                entidad=str(r[columna_entidad])
+                for fecha_columna in [x for x in editado.columns if x!=columna_entidad]:
+                    valor=r[fecha_columna]
+                    original=tabla.loc[entidad,fecha_columna] if entidad in tabla.index and fecha_columna in tabla.columns else None
+                    igual=(pd.isna(valor) and pd.isna(original)) or (pd.notna(valor) and pd.notna(original) and float(valor)==float(original))
+                    if not igual:
+                        if pd.isna(valor) or str(valor).strip()=='':
+                            cur.execute('DELETE FROM ajustes_diarios_spac WHERE tipo_entidad=? AND entidad=? AND fecha=?',(tipo_entidad,entidad,fecha_columna))
+                        else:
+                            cur.execute('INSERT INTO ajustes_diarios_spac(tipo_entidad,entidad,fecha,valor,justificacion,actualizado_por,actualizado_en) VALUES(?,?,?,?,?,?,?) ON CONFLICT(tipo_entidad,entidad,fecha) DO UPDATE SET valor=excluded.valor,justificacion=excluded.justificacion,actualizado_por=excluded.actualizado_por,actualizado_en=excluded.actualizado_en',(tipo_entidad,entidad,fecha_columna,float(valor),justificacion.strip(),st.session_state.auth['usuario'],now_iso()))
+            c.commit()
+        except Exception:
+            c.rollback();raise
+        finally:c.close()
+        audit(st.session_state.auth['usuario'],'AJUSTAR_MATRIZ_DIARIA_SPAC',f'{tipo_entidad} | {justificacion.strip()}')
+        st.success('Ajustes diarios guardados.');st.rerun()
 
 def matriz_entregas():
     st.markdown('## Entregas de turno y matriz histórica')
@@ -270,16 +309,18 @@ def matriz_entregas():
     analistas_catalogo=catalog('analista')
     datos_rango=df[(df['fecha_dt']>=desde)&(df['fecha_dt']<=hasta)].copy()
     pa=datos_rango.pivot_table(index='analista',columns='fecha',values='total_carga_datos',aggfunc='sum').reindex(index=analistas_catalogo,columns=columnas_fecha)
+    pa.index.name='Analista'; pa=aplicar_ajustes_diarios(pa,'ANALISTA','Analista')
     st.markdown('### TOTAL DE CARGA DE DATOS diario por analista')
-    st.dataframe(estilo_faltantes_matriz(pa.reset_index().rename(columns={'analista':'Analista'})),use_container_width=True,hide_index=True)
+    tabla_diaria_editable(pa,'ANALISTA','Analista','tabla_diaria_analistas')
     filas_nave=[]
     for nv,campo in [('Nave 1','horas_nave1'),('Nave 2','horas_nave2'),('Nave 3','horas_nave3')]:
         serie=datos_rango.groupby('fecha')[campo].sum(min_count=1).reindex(columnas_fecha)
         fila={'Nave':nv}; fila.update({f:(float(serie.get(f)) if pd.notna(serie.get(f)) and float(serie.get(f))>0 else None) for f in columnas_fecha}); filas_nave.append(fila)
+    pn=pd.DataFrame(filas_nave,columns=['Nave']+columnas_fecha).set_index('Nave'); pn=aplicar_ajustes_diarios(pn,'NAVE','Nave')
     st.markdown('### Horas diarias consolidadas por nave')
-    st.dataframe(estilo_faltantes_matriz(pd.DataFrame(filas_nave,columns=['Nave']+columnas_fecha)),use_container_width=True,hide_index=True)
+    tabla_diaria_editable(pn,'NAVE','Nave','tabla_diaria_naves')
     st.markdown('## Datos teóricos, datos cargados y cumplimiento SPAC')
-    st.info('Fórmula: Cumplimiento (%) = Datos cargados / Datos teóricos × 100. Si Datos teóricos es 0, el porcentaje queda pendiente.')
+    st.info('Fórmula: Cumplimiento (%) = Datos cargados ÷ Datos teóricos × 100. Los datos teóricos provienen de los registros y ajustes diarios. Los datos cargados se capturan manualmente.')
     pt=st.radio('Periodo de evaluación',['SEMANA','MES'],horizontal=True,format_func=lambda x:'Semana' if x=='SEMANA' else 'Mes',key='meta_periodo_tipo')
     opciones=[]
     for x in pd.date_range(desde,hasta,freq='D').date:
@@ -291,13 +332,21 @@ def matriz_entregas():
     else:
         inicio=datetime.strptime(pc+'-01','%Y-%m-%d').date(); fin=(pd.Timestamp(inicio)+pd.offsets.MonthBegin(1)).date()-timedelta(days=1)
     dp=df[(df['fecha_dt']>=inicio)&(df['fecha_dt']<=fin)].copy()
-    reales_a=dp.groupby('analista')['total_carga_datos'].sum().to_dict()
-    reales_n={'Nave 1':float(dp['horas_nave1'].fillna(0).sum()),'Nave 2':float(dp['horas_nave2'].fillna(0).sum()),'Nave 3':float(dp['horas_nave3'].fillna(0).sum())}
+    fechas_meta=[x.date().isoformat() for x in pd.date_range(inicio,fin,freq='D')]
+    pa_meta=dp.pivot_table(index='analista',columns='fecha',values='total_carga_datos',aggfunc='sum').reindex(index=analistas_catalogo,columns=fechas_meta)
+    pa_meta.index.name='Analista'; pa_meta=aplicar_ajustes_diarios(pa_meta,'ANALISTA','Analista')
+    teoricos_a=pa_meta.fillna(0).sum(axis=1).to_dict()
+    filas_meta=[]
+    for nv,campo in [('Nave 1','horas_nave1'),('Nave 2','horas_nave2'),('Nave 3','horas_nave3')]:
+        serie=dp.groupby('fecha')[campo].sum(min_count=1).reindex(fechas_meta)
+        filas_meta.append([float(v) if pd.notna(v) and float(v)>0 else None for v in serie])
+    pn_meta=pd.DataFrame(filas_meta,index=['Nave 1','Nave 2','Nave 3'],columns=fechas_meta); pn_meta.index.name='Nave'; pn_meta=aplicar_ajustes_diarios(pn_meta,'NAVE','Nave')
+    teoricos_n=pn_meta.fillna(0).sum(axis=1).to_dict()
     ca,cn=st.columns(2)
     with ca:
-        st.markdown('### Cumplimiento por analista'); editor_metas_cumplimiento('ANALISTA',analistas_catalogo,reales_a,pt,pc,f'meta_a_{pt}_{pc}')
+        st.markdown('### Cumplimiento por analista'); editor_metas_cumplimiento('ANALISTA',analistas_catalogo,teoricos_a,pt,pc,f'meta_a_{pt}_{pc}')
     with cn:
-        st.markdown('### Cumplimiento por nave'); editor_metas_cumplimiento('NAVE',['Nave 1','Nave 2','Nave 3'],reales_n,pt,pc,f'meta_n_{pt}_{pc}')
+        st.markdown('### Cumplimiento por nave'); editor_metas_cumplimiento('NAVE',['Nave 1','Nave 2','Nave 3'],teoricos_n,pt,pc,f'meta_n_{pt}_{pc}')
 
 
 def migrar_matriz_fecha_analista(cur):
@@ -527,6 +576,7 @@ def init_db():
     cur.execute("CREATE TABLE IF NOT EXISTS catalogo_naves_lineas(id INTEGER PRIMARY KEY AUTOINCREMENT,nave TEXT,linea TEXT,sector TEXT,linea_norm TEXT,sector_norm TEXT,orden INTEGER DEFAULT 0,activo INTEGER DEFAULT 1,UNIQUE(nave,linea,sector))")
     cur.execute("CREATE TABLE IF NOT EXISTS matriz_entrega(id INTEGER PRIMARY KEY AUTOINCREMENT,fecha TEXT NOT NULL,analista TEXT NOT NULL,entrega_id INTEGER,total_carga_datos REAL DEFAULT 0,horas_nave1 REAL DEFAULT 0,horas_nave2 REAL DEFAULT 0,horas_nave3 REAL DEFAULT 0,actualizado_en TEXT,UNIQUE(fecha,analista))")
     cur.execute("CREATE TABLE IF NOT EXISTS metas_carga_spac(id INTEGER PRIMARY KEY AUTOINCREMENT,tipo_entidad TEXT NOT NULL,entidad TEXT NOT NULL,periodo_tipo TEXT NOT NULL,periodo_clave TEXT NOT NULL,meta REAL NOT NULL DEFAULT 0,actualizado_por TEXT,actualizado_en TEXT,UNIQUE(tipo_entidad,entidad,periodo_tipo,periodo_clave))")
+    cur.execute("CREATE TABLE IF NOT EXISTS ajustes_diarios_spac(id INTEGER PRIMARY KEY AUTOINCREMENT,tipo_entidad TEXT NOT NULL,entidad TEXT NOT NULL,fecha TEXT NOT NULL,valor REAL,justificacion TEXT,actualizado_por TEXT,actualizado_en TEXT,UNIQUE(tipo_entidad,entidad,fecha))")
     migrar_matriz_fecha_analista(cur)
     cur.execute("CREATE TABLE IF NOT EXISTS entregas_turno(id INTEGER PRIMARY KEY AUTOINCREMENT, nave TEXT, fecha TEXT, analista TEXT, turno TEXT, referencia TEXT, total_carga_datos REAL DEFAULT 0, total_horas_trabajadas REAL DEFAULT 0, creado_por TEXT, creado_en TEXT)")
     cur.execute("CREATE TABLE IF NOT EXISTS entregas_turno_lineas(id INTEGER PRIMARY KEY AUTOINCREMENT, entrega_id INTEGER, grupo TEXT, linea TEXT, producto_descripcion TEXT, horas_trabajadas REAL DEFAULT 0, carga_spac REAL DEFAULT 0, observaciones TEXT, orden_fila INTEGER DEFAULT 0)")
