@@ -1327,7 +1327,31 @@ def page_catalogos():
                         with st.form(f'fmt_edit_{rid}'):
                             a,b=st.columns(2);linea=a.text_input('Línea *',str(r.linea));sector=b.text_input('Sector *',str(r.sector));c,d,e=st.columns(3);analisis=c.text_input('Tipo de análisis',str(r.tipo_analisis or ''),disabled=tipo_fmt!='ANALISIS');ol=d.number_input('Orden línea',0,value=int(r.orden_linea));os=e.number_input('Orden sector',0,value=int(r.orden_sector));guardar=st.form_submit_button('Guardar cambios',type='primary')
                         if guardar:
-                            exec_sql('UPDATE catalogo_formatos_entrega SET linea=?,sector=?,tipo_analisis=?,orden_linea=?,orden_sector=? WHERE id=?',(linea.strip(),sector.strip(),analisis.strip() if tipo_fmt=='ANALISIS' else '',int(ol),int(os),rid));audit(st.session_state.auth['usuario'],'EDITAR_FORMATO_ENTREGA',f'ID {rid}');st.session_state.fmt_nonce=nonce+1;st.rerun()
+                            linea_editada=linea.strip()
+                            sector_editado=sector.strip()
+                            analisis_editado=analisis.strip() if tipo_fmt=='ANALISIS' else ''
+                            if not linea_editada or not sector_editado or (tipo_fmt=='ANALISIS' and not analisis_editado):
+                                st.error('Completa Línea, Sector y Tipo de análisis cuando corresponda.')
+                            else:
+                                duplicado=read_df('''SELECT id FROM catalogo_formatos_entrega
+                                    WHERE formato_nave=? AND tipo=? AND linea=? AND sector=?
+                                    AND tipo_analisis=? AND id<>? AND activo=1 LIMIT 1''',
+                                    (nave_fmt,tipo_fmt,linea_editada,sector_editado,analisis_editado,rid))
+                                if not duplicado.empty:
+                                    st.error('No se puede guardar porque ya existe otro elemento activo con la misma Nave, Línea, Sector y Tipo de análisis.')
+                                else:
+                                    try:
+                                        exec_sql('''UPDATE catalogo_formatos_entrega
+                                            SET linea=?,sector=?,tipo_analisis=?,orden_linea=?,orden_sector=?
+                                            WHERE id=?''',
+                                            (linea_editada,sector_editado,analisis_editado,int(ol),int(os),rid))
+                                    except sqlite3.IntegrityError:
+                                        st.error('No se pudo guardar porque esa combinación ya existe en el catálogo. Modifica la Línea, el Sector o el Tipo de análisis.')
+                                    else:
+                                        audit(st.session_state.auth['usuario'],'EDITAR_FORMATO_ENTREGA',f'ID {rid} | {nave_fmt} | {tipo_fmt} | {linea_editada} | {sector_editado} | {analisis_editado}')
+                                        st.session_state.fmt_nonce=nonce+1
+                                        st.success('Elemento actualizado correctamente.')
+                                        st.rerun()
                     if st.button('Eliminar del formato',key=f'fmt_del_{rid}'):st.session_state.fmt_confirm=rid
                     if st.session_state.get('fmt_confirm')==rid:
                         st.warning('El elemento dejará de aparecer en el formato correspondiente.')
