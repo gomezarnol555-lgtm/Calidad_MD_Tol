@@ -264,12 +264,52 @@ def formato_entrega(nave,tipo='PROCESO'):
     for r in df.itertuples(): resultado.setdefault(str(r.linea),[]).append(str(r.sector))
     return resultado
 
+def migrar_catalogo_formatos_entrega(cur):
+    """Migra cualquier versión anterior sin perder los formatos existentes."""
+    fila=cur.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='catalogo_formatos_entrega'").fetchone()
+    if not fila:
+        cur.execute("CREATE TABLE catalogo_formatos_entrega(id INTEGER PRIMARY KEY AUTOINCREMENT,formato_nave TEXT NOT NULL,tipo TEXT NOT NULL,linea TEXT NOT NULL,sector TEXT NOT NULL,tipo_analisis TEXT DEFAULT '',orden_linea INTEGER DEFAULT 0,orden_sector INTEGER DEFAULT 0,activo INTEGER DEFAULT 1,UNIQUE(formato_nave,tipo,linea,sector,tipo_analisis))")
+        return
+    columnas={r[1] for r in cur.execute('PRAGMA table_info(catalogo_formatos_entrega)').fetchall()}
+    requeridas={'id','formato_nave','tipo','linea','sector','tipo_analisis','orden_linea','orden_sector','activo'}
+    if requeridas.issubset(columnas):
+        return
+    cur.execute('ALTER TABLE catalogo_formatos_entrega RENAME TO catalogo_formatos_entrega_anterior')
+    cur.execute("CREATE TABLE catalogo_formatos_entrega(id INTEGER PRIMARY KEY AUTOINCREMENT,formato_nave TEXT NOT NULL,tipo TEXT NOT NULL,linea TEXT NOT NULL,sector TEXT NOT NULL,tipo_analisis TEXT DEFAULT '',orden_linea INTEGER DEFAULT 0,orden_sector INTEGER DEFAULT 0,activo INTEGER DEFAULT 1,UNIQUE(formato_nave,tipo,linea,sector,tipo_analisis))")
+    anteriores={r[1] for r in cur.execute('PRAGMA table_info(catalogo_formatos_entrega_anterior)').fetchall()}
+    # Versión antigua: grupo representaba Línea y linea representaba Sector.
+    if 'grupo' in anteriores:
+        expr_linea="CASE WHEN TRIM(COALESCE(grupo,''))='MD - Car. Duros - FABRIMA' THEN 'FABRIMA' WHEN TRIM(COALESCE(grupo,''))='CAVE1000 / MOLDEO' THEN 'CV1000' ELSE TRIM(COALESCE(grupo,'')) END"
+        expr_sector="TRIM(COALESCE(linea,''))"
+        expr_orden_linea='COALESCE(orden_grupo,0)' if 'orden_grupo' in anteriores else '0'
+        expr_orden_sector='COALESCE(orden_linea,0)' if 'orden_linea' in anteriores else '0'
+    else:
+        expr_linea="TRIM(COALESCE(linea,''))" if 'linea' in anteriores else "''"
+        expr_sector="TRIM(COALESCE(sector,''))" if 'sector' in anteriores else expr_linea
+        expr_orden_linea='COALESCE(orden_linea,0)' if 'orden_linea' in anteriores else '0'
+        expr_orden_sector='COALESCE(orden_sector,0)' if 'orden_sector' in anteriores else '0'
+    expr_tipo="COALESCE(NULLIF(TRIM(tipo),''),'PROCESO')" if 'tipo' in anteriores else "'PROCESO'"
+    expr_analisis="COALESCE(tipo_analisis,'')" if 'tipo_analisis' in anteriores else "''"
+    expr_activo='COALESCE(activo,1)' if 'activo' in anteriores else '1'
+    expr_nave="TRIM(COALESCE(formato_nave,''))" if 'formato_nave' in anteriores else "''"
+    expr_id='id' if 'id' in anteriores else 'NULL'
+    cur.execute(f"""INSERT OR IGNORE INTO catalogo_formatos_entrega
+        (id,formato_nave,tipo,linea,sector,tipo_analisis,orden_linea,orden_sector,activo)
+        SELECT {expr_id},{expr_nave},{expr_tipo},{expr_linea},{expr_sector},{expr_analisis},
+               {expr_orden_linea},{expr_orden_sector},{expr_activo}
+        FROM catalogo_formatos_entrega_anterior
+        WHERE {expr_nave}<>'' AND {expr_linea}<>'' AND {expr_sector}<>''""")
+    cur.execute('DROP TABLE catalogo_formatos_entrega_anterior')
+    # Fuerza la revisión de semillas para completar formatos faltantes sin duplicar los existentes.
+    cur.execute("DELETE FROM app_config WHERE clave='formatos_entrega_linea_sector_v2'")
+
 def init_db():
     UPLOAD_DIR.mkdir(exist_ok=True)
     c=conn(); cur=c.cursor()
     cur.execute("CREATE TABLE IF NOT EXISTS usuarios(id INTEGER PRIMARY KEY AUTOINCREMENT, usuario TEXT UNIQUE, nombre TEXT, password_hash TEXT, rol TEXT, activo INTEGER DEFAULT 1, creado_en TEXT)")
     cur.execute("CREATE TABLE IF NOT EXISTS app_config(clave TEXT PRIMARY KEY,valor TEXT,actualizado_en TEXT)")
     cur.execute("CREATE TABLE IF NOT EXISTS catalogo_formatos_entrega(id INTEGER PRIMARY KEY AUTOINCREMENT,formato_nave TEXT NOT NULL,tipo TEXT NOT NULL,linea TEXT NOT NULL,sector TEXT NOT NULL,tipo_analisis TEXT DEFAULT '',orden_linea INTEGER DEFAULT 0,orden_sector INTEGER DEFAULT 0,activo INTEGER DEFAULT 1,UNIQUE(formato_nave,tipo,linea,sector,tipo_analisis))")
+    migrar_catalogo_formatos_entrega(cur)
     cur.execute("CREATE TABLE IF NOT EXISTS catalogos(id INTEGER PRIMARY KEY AUTOINCREMENT, categoria TEXT, valor TEXT, activo INTEGER DEFAULT 1, UNIQUE(categoria,valor))")
     cur.execute("CREATE TABLE IF NOT EXISTS productos(id INTEGER PRIMARY KEY AUTOINCREMENT, item TEXT UNIQUE, descripcion TEXT, cliente TEXT, familia TEXT, activo INTEGER DEFAULT 1)")
     cur.execute("CREATE TABLE IF NOT EXISTS defectos(id INTEGER PRIMARY KEY AUTOINCREMENT, codigo TEXT UNIQUE, defecto TEXT, tipo_defecto TEXT, clasificacion TEXT, activo INTEGER DEFAULT 1)")
@@ -339,9 +379,8 @@ def init_db():
         for val in vals: cur.execute("INSERT OR IGNORE INTO catalogos(categoria,valor,activo) VALUES(?,?,1)",(cat,val))
     for nv,li,se,ordn in SEED_NAVES_LINEAS: cur.execute('INSERT OR IGNORE INTO catalogo_naves_lineas(nave,linea,sector,linea_norm,sector_norm,orden,activo) VALUES(?,?,?,?,?,?,1)',(nv,li,se,normalizar_catalogo(li),normalizar_catalogo(se),ordn))
     if not cur.execute("SELECT 1 FROM app_config WHERE clave='formatos_entrega_linea_sector_v2'").fetchone():
-        if cur.execute('SELECT COUNT(*) FROM catalogo_formatos_entrega').fetchone()[0]==0:
-            for nv,tipo,linea,sector,analisis,ol,os in SEED_FORMATOS_ENTREGA:
-                cur.execute('INSERT OR IGNORE INTO catalogo_formatos_entrega(formato_nave,tipo,linea,sector,tipo_analisis,orden_linea,orden_sector,activo) VALUES(?,?,?,?,?,?,?,1)',(nv,tipo,linea,sector,analisis,ol,os))
+        for nv,tipo,linea,sector,analisis,ol,os in SEED_FORMATOS_ENTREGA:
+            cur.execute('INSERT OR IGNORE INTO catalogo_formatos_entrega(formato_nave,tipo,linea,sector,tipo_analisis,orden_linea,orden_sector,activo) VALUES(?,?,?,?,?,?,?,1)',(nv,tipo,linea,sector,analisis,ol,os))
         cur.execute("INSERT OR REPLACE INTO app_config(clave,valor,actualizado_en) VALUES('formatos_entrega_linea_sector_v2','1',?)",(now_iso(),))
     c.commit(); c.close()
 
