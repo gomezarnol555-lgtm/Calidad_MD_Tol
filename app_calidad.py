@@ -303,6 +303,42 @@ def migrar_catalogo_formatos_entrega(cur):
     # Fuerza la revisión de semillas para completar formatos faltantes sin duplicar los existentes.
     cur.execute("DELETE FROM app_config WHERE clave='formatos_entrega_linea_sector_v2'")
 
+def asegurar_columnas_catalogos(cur):
+    """Completa esquemas antiguos antes de insertar o consultar catálogos."""
+    migraciones={
+        'productos':{
+            'item':'TEXT','descripcion':'TEXT','cliente':'TEXT',
+            'familia':'TEXT','activo':'INTEGER DEFAULT 1'
+        },
+        'defectos':{
+            'codigo':'TEXT','defecto':'TEXT','tipo_defecto':'TEXT',
+            'clasificacion':'TEXT','activo':'INTEGER DEFAULT 1'
+        },
+        'catalogos':{
+            'categoria':'TEXT','valor':'TEXT','activo':'INTEGER DEFAULT 1'
+        },
+        'catalogo_naves_lineas':{
+            'nave':'TEXT','linea':'TEXT','sector':'TEXT',
+            'linea_norm':'TEXT','sector_norm':'TEXT',
+            'orden':'INTEGER DEFAULT 0','activo':'INTEGER DEFAULT 1'
+        }
+    }
+    for tabla,columnas in migraciones.items():
+        existe=cur.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",(tabla,)).fetchone()
+        if not existe:
+            continue
+        actuales={r[1] for r in cur.execute(f'PRAGMA table_info({tabla})').fetchall()}
+        for columna,tipo_sql in columnas.items():
+            if columna not in actuales:
+                cur.execute(f'ALTER TABLE {tabla} ADD COLUMN {columna} {tipo_sql}')
+    # Normaliza nulos de bases anteriores.
+    cur.execute('UPDATE productos SET activo=1 WHERE activo IS NULL')
+    cur.execute('UPDATE defectos SET activo=1 WHERE activo IS NULL')
+    cur.execute('UPDATE catalogos SET activo=1 WHERE activo IS NULL')
+    cur.execute('UPDATE catalogo_naves_lineas SET activo=1 WHERE activo IS NULL')
+    cur.execute("UPDATE catalogo_naves_lineas SET linea_norm=UPPER(TRIM(COALESCE(linea,''))) WHERE linea_norm IS NULL OR TRIM(linea_norm)='' ")
+    cur.execute("UPDATE catalogo_naves_lineas SET sector_norm=UPPER(TRIM(COALESCE(sector,''))) WHERE sector_norm IS NULL OR TRIM(sector_norm)='' ")
+
 def init_db():
     UPLOAD_DIR.mkdir(exist_ok=True)
     c=conn(); cur=c.cursor()
@@ -310,6 +346,7 @@ def init_db():
     cur.execute("CREATE TABLE IF NOT EXISTS app_config(clave TEXT PRIMARY KEY,valor TEXT,actualizado_en TEXT)")
     cur.execute("CREATE TABLE IF NOT EXISTS catalogo_formatos_entrega(id INTEGER PRIMARY KEY AUTOINCREMENT,formato_nave TEXT NOT NULL,tipo TEXT NOT NULL,linea TEXT NOT NULL,sector TEXT NOT NULL,tipo_analisis TEXT DEFAULT '',orden_linea INTEGER DEFAULT 0,orden_sector INTEGER DEFAULT 0,activo INTEGER DEFAULT 1,UNIQUE(formato_nave,tipo,linea,sector,tipo_analisis))")
     migrar_catalogo_formatos_entrega(cur)
+    asegurar_columnas_catalogos(cur)
     cur.execute("CREATE TABLE IF NOT EXISTS catalogos(id INTEGER PRIMARY KEY AUTOINCREMENT, categoria TEXT, valor TEXT, activo INTEGER DEFAULT 1, UNIQUE(categoria,valor))")
     cur.execute("CREATE TABLE IF NOT EXISTS productos(id INTEGER PRIMARY KEY AUTOINCREMENT, item TEXT UNIQUE, descripcion TEXT, cliente TEXT, familia TEXT, activo INTEGER DEFAULT 1)")
     cur.execute("CREATE TABLE IF NOT EXISTS defectos(id INTEGER PRIMARY KEY AUTOINCREMENT, codigo TEXT UNIQUE, defecto TEXT, tipo_defecto TEXT, clasificacion TEXT, activo INTEGER DEFAULT 1)")
@@ -373,11 +410,22 @@ def init_db():
             if columna not in existentes: cur.execute(f'ALTER TABLE {tabla} ADD COLUMN {columna} {tipo_sql}')
     cur.execute("CREATE TABLE IF NOT EXISTS adjuntos(id INTEGER PRIMARY KEY AUTOINCREMENT, registro_id INTEGER, folio TEXT, nombre_original TEXT, ruta_archivo TEXT, tipo_archivo TEXT, subido_por TEXT, subido_en TEXT)")
     cur.execute("CREATE TABLE IF NOT EXISTS auditoria(id INTEGER PRIMARY KEY AUTOINCREMENT, usuario TEXT, accion TEXT, detalle TEXT, fecha_hora TEXT)")
-    for item,desc,cliente,familia in SEED_PRODUCTS: cur.execute("INSERT OR IGNORE INTO productos(item,descripcion,cliente,familia,activo) VALUES(?,?,?,?,1)",(item,desc,cliente,familia))
-    for codigo,defecto,tipo,clas in SEED_DEFECTS: cur.execute("INSERT OR IGNORE INTO defectos(codigo,defecto,tipo_defecto,clasificacion,activo) VALUES(?,?,?,?,1)",(codigo,defecto,tipo,clas))
-    for cat, vals in SEED_CATALOGS.items():
-        for val in vals: cur.execute("INSERT OR IGNORE INTO catalogos(categoria,valor,activo) VALUES(?,?,1)",(cat,val))
-    for nv,li,se,ordn in SEED_NAVES_LINEAS: cur.execute('INSERT OR IGNORE INTO catalogo_naves_lineas(nave,linea,sector,linea_norm,sector_norm,orden,activo) VALUES(?,?,?,?,?,?,1)',(nv,li,se,normalizar_catalogo(li),normalizar_catalogo(se),ordn))
+    # Los catálogos base se cargan una sola vez. Las ediciones y eliminaciones posteriores no se revierten.
+    if not cur.execute("SELECT 1 FROM app_config WHERE clave='catalogos_base_inicializados_v3'").fetchone():
+        if cur.execute('SELECT COUNT(*) FROM productos').fetchone()[0]==0:
+            for item,desc,cliente,familia in SEED_PRODUCTS:
+                cur.execute("INSERT OR IGNORE INTO productos(item,descripcion,cliente,familia,activo) VALUES(?,?,?,?,1)",(item,desc,cliente,familia))
+        if cur.execute('SELECT COUNT(*) FROM defectos').fetchone()[0]==0:
+            for codigo,defecto,tipo,clas in SEED_DEFECTS:
+                cur.execute("INSERT OR IGNORE INTO defectos(codigo,defecto,tipo_defecto,clasificacion,activo) VALUES(?,?,?,?,1)",(codigo,defecto,tipo,clas))
+        if cur.execute('SELECT COUNT(*) FROM catalogos').fetchone()[0]==0:
+            for cat,vals in SEED_CATALOGS.items():
+                for val in vals:
+                    cur.execute("INSERT OR IGNORE INTO catalogos(categoria,valor,activo) VALUES(?,?,1)",(cat,val))
+        if cur.execute('SELECT COUNT(*) FROM catalogo_naves_lineas').fetchone()[0]==0:
+            for nv,li,se,ordn in SEED_NAVES_LINEAS:
+                cur.execute('INSERT OR IGNORE INTO catalogo_naves_lineas(nave,linea,sector,linea_norm,sector_norm,orden,activo) VALUES(?,?,?,?,?,?,1)',(nv,li,se,normalizar_catalogo(li),normalizar_catalogo(se),ordn))
+        cur.execute("INSERT OR REPLACE INTO app_config(clave,valor,actualizado_en) VALUES('catalogos_base_inicializados_v3','1',?)",(now_iso(),))
     if not cur.execute("SELECT 1 FROM app_config WHERE clave='formatos_entrega_linea_sector_v2'").fetchone():
         for nv,tipo,linea,sector,analisis,ol,os in SEED_FORMATOS_ENTREGA:
             cur.execute('INSERT OR IGNORE INTO catalogo_formatos_entrega(formato_nave,tipo,linea,sector,tipo_analisis,orden_linea,orden_sector,activo) VALUES(?,?,?,?,?,?,?,1)',(nv,tipo,linea,sector,analisis,ol,os))
