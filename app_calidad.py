@@ -201,9 +201,9 @@ def tabla_diaria_editable(tabla,tipo_entidad,columna_entidad,key):
     editable=vista.copy()
     columnas_valor=[c for c in editable.columns if c!=columna_entidad]
     for c in columnas_valor:
-        editable[c]=editable[c].map(lambda v:'🔴 PENDIENTE' if pd.isna(v) or str(v).strip()=='' else str(float(v)))
+        editable[c]=editable[c].map(lambda v:'🟥' if pd.isna(v) or str(v).strip()=='' else str(float(v)))
 
-    st.caption('Edicion directa habilitada. 🔴 PENDIENTE indica que falta el registro. Sustituye el marcador por 0 para justificar un dia sin carga o por el valor correspondiente.')
+    st.caption('Edicion directa habilitada. La casilla 🟥 indica que falta el registro. Sustituye la casilla por 0 para justificar un dia sin carga o por el valor correspondiente.')
     editado=st.data_editor(
         editable,use_container_width=True,hide_index=True,key=key,
         disabled=[columna_entidad],num_rows='fixed',
@@ -215,7 +215,7 @@ def tabla_diaria_editable(tabla,tipo_entidad,columna_entidad,key):
             entidad=str(r[columna_entidad])
             for fecha_columna in columnas_valor:
                 texto=str(r[fecha_columna] or '').strip()
-                if texto in ('','🔴 PENDIENTE'):
+                if texto in ('','🟥'):
                     valor=None
                 else:
                     try: valor=float(texto.replace(',','.'))
@@ -453,19 +453,6 @@ def matriz_entregas():
     st.markdown('### Indicador SPAC Calidad')
     editor_metas_cumplimiento('CALIDAD_NAVE',['Nave 1','Nave 2','Nave 3'],teoricos_calidad,pt,pc,f'meta_calidad_{pt}_{pc}')
 
-    st.markdown('## Graficas de cumplimiento')
-    st.caption('Las lineas, puntos y valores permanecen visibles. Semana o Mes controla las tres graficas.')
-    grafica_analistas=datos_grafica_cumplimiento('ANALISTA',pt)
-    grafica_calidad=datos_grafica_cumplimiento('CALIDAD_NAVE',pt)
-    grafica_produccion=datos_grafica_cumplimiento('NAVE',pt)
-
-    if not grafica_analistas.empty:
-        disponibles=sorted(grafica_analistas['Entidad'].dropna().astype(str).unique().tolist())
-        seleccion=st.multiselect('Analistas en la grafica',disponibles,default=disponibles[:5],key=f'grafica_analistas_{pt}')
-        grafica_analistas=grafica_analistas[grafica_analistas['Entidad'].isin(seleccion)] if seleccion else grafica_analistas.iloc[0:0]
-    grafica_lineas_con_valores(grafica_analistas,'Cumplimiento SPAC por analista',f'chart_analistas_{pt}')
-    grafica_lineas_con_valores(grafica_calidad,'Indicador SPAC Calidad',f'chart_calidad_{pt}')
-    grafica_lineas_con_valores(grafica_produccion,'Indicador SPAC Produccion',f'chart_produccion_{pt}')
 
 def migrar_matriz_fecha_analista(cur):
     """Cambia la restricción anterior UNIQUE(fecha) por UNIQUE(fecha, analista)."""
@@ -986,6 +973,62 @@ def left_menu():
         st.rerun()
 
 
+def panel_indicadores_spac_inicio():
+    st.markdown('<div class="panel"><div class="panel-header">Indicadores SPAC</div><div class="panel-body">',unsafe_allow_html=True)
+    registros=read_df("SELECT m.fecha,m.analista,m.total_carga_datos,m.horas_nave1,m.horas_nave2,m.horas_nave3,COALESCE(e.nave,'') AS nave FROM matriz_entrega m LEFT JOIN entregas_turno e ON e.id=m.entrega_id")
+    if registros.empty:
+        st.info('Todavia no hay informacion SPAC para mostrar.')
+        st.markdown('</div></div>',unsafe_allow_html=True)
+        return
+    registros['fecha_dt']=pd.to_datetime(registros['fecha'],errors='coerce').dt.date
+    registros=registros.dropna(subset=['fecha_dt'])
+    if registros.empty:
+        st.info('La matriz no contiene fechas validas.')
+        st.markdown('</div></div>',unsafe_allow_html=True)
+        return
+
+    mn,mx=registros['fecha_dt'].min(),registros['fecha_dt'].max()
+    a,b,c=st.columns([1,1,1])
+    tipo=a.radio('Agrupar por',['SEMANA','MES'],horizontal=True,format_func=lambda x:'Semana' if x=='SEMANA' else 'Mes',key='inicio_spac_tipo')
+    desde=b.date_input('Fecha inicial SPAC',mn,min_value=mn,max_value=mx,key='inicio_spac_desde')
+    hasta=c.date_input('Fecha final SPAC',mx,min_value=mn,max_value=mx,key='inicio_spac_hasta')
+    if desde>hasta:
+        st.error('La fecha inicial no puede ser posterior a la fecha final.')
+        st.markdown('</div></div>',unsafe_allow_html=True)
+        return
+
+    periodos_disponibles=[]
+    for fecha in pd.date_range(desde,hasta,freq='D').date:
+        clave=clave_periodo(fecha,tipo)
+        if clave not in periodos_disponibles:
+            periodos_disponibles.append(clave)
+    periodos=st.multiselect('Semanas o meses',periodos_disponibles,default=periodos_disponibles,key='inicio_spac_periodos')
+
+    grafica_analistas=datos_grafica_cumplimiento('ANALISTA',tipo)
+    grafica_calidad=datos_grafica_cumplimiento('CALIDAD_NAVE',tipo)
+    grafica_produccion=datos_grafica_cumplimiento('NAVE',tipo)
+    if periodos:
+        grafica_analistas=grafica_analistas[grafica_analistas['Periodo'].isin(periodos)] if not grafica_analistas.empty else grafica_analistas
+        grafica_calidad=grafica_calidad[grafica_calidad['Periodo'].isin(periodos)] if not grafica_calidad.empty else grafica_calidad
+        grafica_produccion=grafica_produccion[grafica_produccion['Periodo'].isin(periodos)] if not grafica_produccion.empty else grafica_produccion
+
+    if not grafica_analistas.empty:
+        disponibles=sorted(grafica_analistas['Entidad'].dropna().astype(str).unique().tolist())
+        seleccion=st.multiselect('Analistas SPAC',disponibles,default=disponibles[:5],key='inicio_spac_analistas')
+        grafica_analistas=grafica_analistas[grafica_analistas['Entidad'].isin(seleccion)] if seleccion else grafica_analistas.iloc[0:0]
+
+    st.markdown('### Cumplimiento SPAC por analista')
+    grafica_lineas_con_valores(grafica_analistas,'Cumplimiento SPAC por analista','inicio_chart_analistas')
+
+    col1,col2=st.columns(2)
+    with col1:
+        st.markdown('### Indicador SPAC Calidad')
+        grafica_lineas_con_valores(grafica_calidad,'Indicador SPAC Calidad','inicio_chart_calidad')
+    with col2:
+        st.markdown('### Indicador SPAC Produccion')
+        grafica_lineas_con_valores(grafica_produccion,'Indicador SPAC Produccion','inicio_chart_produccion')
+    st.markdown('</div></div>',unsafe_allow_html=True)
+
 def page_inicio():
     df=read_df('SELECT * FROM pnc_registros')
     if df.empty: df=pd.DataFrame(columns=['fecha_apertura','status','linea_sector','clasificacion','material_hallado','cantidad_total_pnc'])
@@ -1018,6 +1061,7 @@ def page_inicio():
         if not data.empty: st.dataframe(data['clasificacion'].fillna('Sin clasificación').value_counts().rename_axis('Clasificación').reset_index(name='Registros'),use_container_width=True,hide_index=True)
         else: st.info('No hay datos.')
         st.markdown('</div></div>',unsafe_allow_html=True)
+    panel_indicadores_spac_inicio()
 
 def page_registro():
     if 'registro_tipo' not in st.session_state:
