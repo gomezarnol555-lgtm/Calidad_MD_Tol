@@ -346,10 +346,11 @@ def init_db():
     cur.execute("CREATE TABLE IF NOT EXISTS app_config(clave TEXT PRIMARY KEY,valor TEXT,actualizado_en TEXT)")
     cur.execute("CREATE TABLE IF NOT EXISTS catalogo_formatos_entrega(id INTEGER PRIMARY KEY AUTOINCREMENT,formato_nave TEXT NOT NULL,tipo TEXT NOT NULL,linea TEXT NOT NULL,sector TEXT NOT NULL,tipo_analisis TEXT DEFAULT '',orden_linea INTEGER DEFAULT 0,orden_sector INTEGER DEFAULT 0,activo INTEGER DEFAULT 1,UNIQUE(formato_nave,tipo,linea,sector,tipo_analisis))")
     migrar_catalogo_formatos_entrega(cur)
-    asegurar_columnas_catalogos(cur)
     cur.execute("CREATE TABLE IF NOT EXISTS catalogos(id INTEGER PRIMARY KEY AUTOINCREMENT, categoria TEXT, valor TEXT, activo INTEGER DEFAULT 1, UNIQUE(categoria,valor))")
     cur.execute("CREATE TABLE IF NOT EXISTS productos(id INTEGER PRIMARY KEY AUTOINCREMENT, item TEXT UNIQUE, descripcion TEXT, cliente TEXT, familia TEXT, activo INTEGER DEFAULT 1)")
     cur.execute("CREATE TABLE IF NOT EXISTS defectos(id INTEGER PRIMARY KEY AUTOINCREMENT, codigo TEXT UNIQUE, defecto TEXT, tipo_defecto TEXT, clasificacion TEXT, activo INTEGER DEFAULT 1)")
+    cur.execute("CREATE TABLE IF NOT EXISTS catalogo_naves_lineas(id INTEGER PRIMARY KEY AUTOINCREMENT,nave TEXT,linea TEXT,sector TEXT,linea_norm TEXT,sector_norm TEXT,orden INTEGER DEFAULT 0,activo INTEGER DEFAULT 1,UNIQUE(nave,linea,sector))")
+    asegurar_columnas_catalogos(cur)
     cur.execute("""CREATE TABLE IF NOT EXISTS pnc_registros(id INTEGER PRIMARY KEY AUTOINCREMENT, folio TEXT UNIQUE, fecha_apertura TEXT, linea_sector TEXT, nave TEXT, item TEXT, descripcion_producto TEXT, cliente TEXT, familia TEXT, lote TEXT, etapa TEXT, codigo_defecto TEXT, defecto TEXT, tipo_defecto TEXT, clasificacion TEXT, turno TEXT, supervisor TEXT, analista TEXT, responsable_detecta TEXT, descripcion_defecto TEXT, acciones_inmediatas TEXT, disposicion TEXT, cantidad_observada REAL DEFAULT 0, cantidad_reproceso REAL DEFAULT 0, cantidad_decomiso REAL DEFAULT 0, cantidad_aprobado_segunda REAL DEFAULT 0, cantidad_total_pnc REAL DEFAULT 0, status TEXT DEFAULT 'ABIERTO', fecha_final_tratamiento TEXT, observaciones TEXT, material_hallado TEXT, creado_por TEXT, creado_en TEXT)""")
     cur.execute("CREATE TABLE IF NOT EXISTS me_registros(id INTEGER PRIMARY KEY AUTOINCREMENT, dia INTEGER, mes INTEGER, anio INTEGER, nave TEXT, linea_sector TEXT, familia TEXT, equipo_hallazgo TEXT, item TEXT, producto TEXT, lote TEXT, descripcion_hallazgo TEXT, tipo TEXT, particulas_halladas INTEGER DEFAULT 0, accion_contingente TEXT, investigacion_origen TEXT, analista_detecta TEXT, supervisor_responsable TEXT, acciones_evitar_incidencia TEXT, creado_por TEXT, creado_en TEXT)")
     cur.execute("CREATE TABLE IF NOT EXISTS ddm_rx_registros(id INTEGER PRIMARY KEY AUTOINCREMENT, dia INTEGER, mes INTEGER, anio INTEGER, nave TEXT, linea_sector TEXT, familia TEXT, equipo_hallazgo TEXT, item TEXT, producto TEXT, lote TEXT, descripcion_hallazgo TEXT, tipo TEXT, particulas_halladas INTEGER DEFAULT 0, accion_contingente TEXT, investigacion_origen TEXT, analista_detecta TEXT, supervisor_responsable TEXT, acciones_evitar_incidencia TEXT, creado_por TEXT, creado_en TEXT)")
@@ -872,8 +873,35 @@ def page_registro():
     elif st.session_state.registro_tipo=='ME': form_hallazgo('me_registros','🧲 Materia Extraña','CREAR_ME')
     elif st.session_state.registro_tipo=='DDM_RX': form_hallazgo('ddm_rx_registros','📦 Producto segregado por detector de metales y RX','CREAR_DDM_RX')
 def page_consulta():
-    st.title('Consulta, seguimiento y descarga')
-    st.caption('Usa el filtro para encontrar registros específicos. La fecha aparece después del número de registro.')
+    if 'consulta_tipo' not in st.session_state:
+        st.session_state.consulta_tipo=None
+
+    if st.session_state.consulta_tipo is None:
+        st.markdown('''<div class="registro-landing-hero"><div class="registro-landing-title">Consulta y descarga</div><div class="registro-landing-subtitle">Selecciona la sección que deseas consultar.</div></div>''',unsafe_allow_html=True)
+        tarjetas=[
+            ('NO_CONFORMIDADES','📋  Consulta y seguimiento de No Conformes\n\nPNC, Materia Extraña y Detector de metales/RX.\n\nAbrir sección'),
+            ('MUESTRAS','🧪  Muestras de retención\n\nConsulta, edición, eliminación y descarga de muestras.\n\nAbrir sección'),
+            ('MATRIZ','📊  Matriz de entrega de turno\n\nRegistros de las tres naves, indicadores, Excel y PDF.\n\nAbrir sección')
+        ]
+        for columna,(valor,texto) in zip(st.columns(3,gap='large'),tarjetas):
+            with columna:
+                st.markdown('<span class="registro-card-slot"></span>',unsafe_allow_html=True)
+                if st.button(texto,key=f'consulta_tarjeta_{valor}'):
+                    st.session_state.consulta_tipo=valor
+                    st.rerun()
+        return
+
+    if st.button('← Volver a Consulta y descarga',key='consulta_volver_tarjetas'):
+        st.session_state.consulta_tipo=None
+        st.rerun()
+
+    tipo_consulta=st.session_state.consulta_tipo
+    titulos={
+        'NO_CONFORMIDADES':'Consulta y seguimiento de No Conformes',
+        'MUESTRAS':'Muestras de retención',
+        'MATRIZ':'Matriz de entrega de turno'
+    }
+    st.markdown(f'''<div class="registro-full-panel"><div class="registro-pill">Consulta y descarga</div><div class="registro-full-title">{titulos.get(tipo_consulta,'Consulta')}</div></div>''',unsafe_allow_html=True)
     if st.session_state.pop('excel_sync_error',None): st.warning('No fue posible actualizar el libro Excel. Verifica que el archivo no esté abierto en otro programa.')
     if EXCEL_PATH.exists(): st.download_button('📗 Descargar libro maestro Excel',EXCEL_PATH.read_bytes(),EXCEL_PATH.name,'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',key='download_excel_maestro')
     def prep(df):
@@ -1007,6 +1035,13 @@ def page_consulta():
                     audit(st.session_state.auth['usuario'],'EDITAR_REGISTRO',f'Tabla {table_name} | ID {selected}')
                     st.success(f'Registro actualizado correctamente: Número {selected}')
                     st.rerun()
+    if tipo_consulta=='MUESTRAS':
+        consulta_muestras_retencion()
+        return
+    if tipo_consulta=='MATRIZ':
+        matriz_entregas()
+        return
+
     t1,t2,t3=st.tabs(['PNC´s','Materia Extraña','Detector de metales y RX'])
     with t1:
         df=read_df('SELECT * FROM pnc_registros ORDER BY id ASC'); selected,shown=table(df,'pnc')
@@ -1029,10 +1064,6 @@ def page_consulta():
             st.markdown(f'### Registro seleccionado: Número {selected}')
             edit_record('ddm_rx_registros','ddm',selected)
             delete_confirm('ddm_rx_registros','ddm','ELIMINAR_DDM_RX',selected)
-    st.divider()
-    consulta_muestras_retencion()
-    st.divider()
-    matriz_entregas()
 
 def page_muestras_retencion():
     periodos=[
@@ -1308,7 +1339,7 @@ def general_catalog_dataframe():
 
 def page_catalogos():
     st.title('Catálogos'); st.caption('Datos precargados desde el Excel adjunto. El administrador puede agregar o eliminar elementos.')
-    tab1,tab2,tab3,tab4=st.tabs(['Productos','Defectos','Datos generales','Formatos entrega de turno'])
+    tab1,tab2,tab3,tab4,tab5=st.tabs(['Productos','Defectos','Datos generales','Naves, líneas y sectores','Formatos entrega de turno'])
     with tab1:
         df=read_df('SELECT id,item,descripcion,cliente,familia FROM productos WHERE activo=1 ORDER BY descripcion'); st.dataframe(df,use_container_width=True,hide_index=True)
         if admin_required():
@@ -1343,6 +1374,87 @@ def page_catalogos():
                 if st.button('Eliminar valor seleccionado'): exec_sql('UPDATE catalogos SET activo=0 WHERE id=?',(int(opt.split('|')[0].strip()),)); st.rerun()
 
     with tab4:
+        st.subheader('Naves, líneas y sectores')
+        st.caption('Este catálogo general determina a qué nave se suman las horas. Es independiente de la estructura visible de cada formato.')
+        f1,f2=st.columns([1,2])
+        filtro_nave=f1.multiselect('Filtrar por nave',['Nave 1','Nave 2','Nave 3'],key='cat_general_naves')
+        buscar=f2.text_input('Buscar línea o sector',key='cat_general_buscar')
+        df_general=read_df('SELECT id,nave,linea,sector,orden FROM catalogo_naves_lineas WHERE activo=1 ORDER BY nave,orden,id')
+        if filtro_nave:
+            df_general=df_general[df_general['nave'].isin(filtro_nave)]
+        if buscar.strip() and not df_general.empty:
+            q=buscar.strip()
+            df_general=df_general[df_general['linea'].fillna('').astype(str).str.contains(q,case=False,na=False)|df_general['sector'].fillna('').astype(str).str.contains(q,case=False,na=False)]
+        vista_general=df_general.rename(columns={'id':'ID','nave':'Nave','linea':'Línea','sector':'Sector','orden':'Orden'})
+        nonce_general=st.session_state.get('cat_general_nonce',0)
+        evento_general=st.dataframe(vista_general,use_container_width=True,hide_index=True,on_select='rerun',selection_mode='single-row',key=f'cat_general_tabla_{nonce_general}') if not vista_general.empty else None
+        filas_general=getattr(evento_general,'selection',{}).get('rows',[]) if evento_general is not None else []
+        posicion_general=bool(filas_general) and isinstance(filas_general[0],int) and 0<=filas_general[0]<len(vista_general)
+        id_general=int(vista_general.iloc[filas_general[0]]['ID']) if posicion_general else None
+        if admin_required():
+            with st.expander('Agregar relación general',expanded=False):
+                with st.form('cat_general_agregar',clear_on_submit=True):
+                    a,bx,c=st.columns(3)
+                    nueva_nave=a.selectbox('Nave *',['Nave 1','Nave 2','Nave 3'])
+                    nueva_linea=bx.text_input('Línea *',placeholder='Ejemplo: BOB, BUTTER, CARAMELO')
+                    nuevo_sector=c.text_input('Sector *',placeholder='Ejemplo: MD - BOB - CENTRO DE MASA')
+                    agregar_general=st.form_submit_button('Agregar relación',type='primary')
+                if agregar_general:
+                    li=nueva_linea.strip();se=nuevo_sector.strip()
+                    if not li or not se:
+                        st.error('Completa Línea y Sector.')
+                    else:
+                        duplicado=read_df('SELECT id FROM catalogo_naves_lineas WHERE nave=? AND linea_norm=? AND sector_norm=? AND activo=1',(nueva_nave,normalizar_catalogo(li),normalizar_catalogo(se)))
+                        if not duplicado.empty:
+                            st.error('La relación ya existe en el catálogo general.')
+                        else:
+                            orden=int(read_df('SELECT COALESCE(MAX(orden),-1)+1 AS n FROM catalogo_naves_lineas WHERE nave=?',(nueva_nave,)).iloc[0]['n'])
+                            exec_sql('INSERT INTO catalogo_naves_lineas(nave,linea,sector,linea_norm,sector_norm,orden,activo) VALUES(?,?,?,?,?,?,1)',(nueva_nave,li,se,normalizar_catalogo(li),normalizar_catalogo(se),orden))
+                            audit(st.session_state.auth['usuario'],'AGREGAR_RELACION_NAVE',f'{nueva_nave} | {li} | {se}')
+                            st.session_state.cat_general_nonce=nonce_general+1
+                            st.rerun()
+            if id_general:
+                actual=read_df('SELECT * FROM catalogo_naves_lineas WHERE id=? AND activo=1',(id_general,))
+                if not actual.empty:
+                    r=actual.iloc[0]
+                    with st.expander('Editar relación general seleccionada',expanded=True):
+                        with st.form(f'cat_general_editar_{id_general}'):
+                            naves=['Nave 1','Nave 2','Nave 3']
+                            a,bx,c,d=st.columns([1,2,2,1])
+                            nave_e=a.selectbox('Nave *',naves,index=idx_or_zero(naves,str(r.nave)))
+                            linea_e=bx.text_input('Línea *',str(r.linea or ''))
+                            sector_e=c.text_input('Sector *',str(r.sector or ''))
+                            orden_e=d.number_input('Orden',0,value=int(r.orden or 0),step=1)
+                            guardar_general=st.form_submit_button('Guardar cambios',type='primary')
+                        if guardar_general:
+                            li=linea_e.strip();se=sector_e.strip()
+                            duplicado=read_df('SELECT id FROM catalogo_naves_lineas WHERE nave=? AND linea_norm=? AND sector_norm=? AND id<>? AND activo=1',(nave_e,normalizar_catalogo(li),normalizar_catalogo(se),id_general))
+                            if not li or not se:
+                                st.error('Completa Línea y Sector.')
+                            elif not duplicado.empty:
+                                st.error('Ya existe otra relación activa con esos datos.')
+                            else:
+                                exec_sql('UPDATE catalogo_naves_lineas SET nave=?,linea=?,sector=?,linea_norm=?,sector_norm=?,orden=? WHERE id=?',(nave_e,li,se,normalizar_catalogo(li),normalizar_catalogo(se),int(orden_e),id_general))
+                                audit(st.session_state.auth['usuario'],'EDITAR_RELACION_NAVE',f'ID {id_general} | {nave_e} | {li} | {se}')
+                                st.session_state.cat_general_nonce=nonce_general+1
+                                st.rerun()
+                    if st.button('Eliminar relación general',key=f'cat_general_eliminar_{id_general}'):
+                        st.session_state.cat_general_confirmar=id_general
+                    if st.session_state.get('cat_general_confirmar')==id_general:
+                        st.warning('Esta relación dejará de utilizarse en las nuevas sumatorias generales por nave.')
+                        x,y=st.columns(2)
+                        if x.button('Sí, eliminar',key=f'cat_general_ok_{id_general}'):
+                            exec_sql('UPDATE catalogo_naves_lineas SET activo=0 WHERE id=?',(id_general,))
+                            audit(st.session_state.auth['usuario'],'ELIMINAR_RELACION_NAVE',f'ID {id_general}')
+                            st.session_state.pop('cat_general_confirmar',None)
+                            st.session_state.cat_general_nonce=nonce_general+1
+                            st.rerun()
+                        if y.button('Cancelar',key=f'cat_general_cancelar_{id_general}'):
+                            st.session_state.pop('cat_general_confirmar',None)
+                            st.session_state.cat_general_nonce=nonce_general+1
+                            st.rerun()
+
+    with tab5:
         st.subheader('Formatos de entrega de turno')
         st.caption('Línea: CV1000, BOB, BUTTER, CARAMELO. Sector: MD - Car. Duros - TROQUEL, MD-CAR.SUAVE-DEPOSITADO, MD - BOB - CENTRO DE MASA.')
         nave_fmt=st.radio('Formato',['Nave 1','Nave 2','Nave 3'],horizontal=True,key='fmt_nave')
