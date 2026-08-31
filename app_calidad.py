@@ -189,15 +189,16 @@ def aplicar_ajustes_diarios(tabla,tipo_entidad,columna_entidad):
     return tabla
 
 def tabla_diaria_editable(tabla,tipo_entidad,columna_entidad,key):
-    """Tabla única: consulta visual y edición directa para desarrolladores."""
+    """Tabla única editable. Vacío=pendiente rojo; 0=justificado."""
     vista=tabla.reset_index().rename(columns={tabla.index.name or 'index':columna_entidad})
+    estilizada=estilo_faltantes_matriz(vista)
     if not is_dev():
-        st.dataframe(estilo_faltantes_matriz(vista),use_container_width=True,hide_index=True)
+        st.dataframe(estilizada,use_container_width=True,hide_index=True)
         return
 
-    st.caption('Edición directa habilitada. Captura 0 para vacaciones, incapacidad o día no laborable. Los espacios vacíos representan registros pendientes.')
+    st.caption('Edición directa habilitada. Captura 0 para justificar un día sin carga. Los espacios vacíos permanecen identificados como pendientes.')
     editado=st.data_editor(
-        vista,
+        estilizada,
         use_container_width=True,
         hide_index=True,
         key=key,
@@ -208,7 +209,6 @@ def tabla_diaria_editable(tabla,tipo_entidad,columna_entidad,key):
             **{c:st.column_config.NumberColumn(c,min_value=0.0,step=1.0,format='%.2f') for c in vista.columns if c!=columna_entidad}
         }
     )
-    justificacion=st.text_input('Justificación del ajuste',placeholder='Ejemplo: Vacaciones, incapacidad, día no laborable',key=key+'_justificacion')
     if st.button('Guardar ajustes diarios',key=key+'_guardar',type='primary'):
         c=conn();cur=c.cursor()
         try:
@@ -222,12 +222,12 @@ def tabla_diaria_editable(tabla,tipo_entidad,columna_entidad,key):
                     if pd.isna(valor) or str(valor).strip()=='':
                         cur.execute('DELETE FROM ajustes_diarios_spac WHERE tipo_entidad=? AND entidad=? AND fecha=?',(tipo_entidad,entidad,fecha_columna))
                     else:
-                        cur.execute('INSERT INTO ajustes_diarios_spac(tipo_entidad,entidad,fecha,valor,justificacion,actualizado_por,actualizado_en) VALUES(?,?,?,?,?,?,?) ON CONFLICT(tipo_entidad,entidad,fecha) DO UPDATE SET valor=excluded.valor,justificacion=excluded.justificacion,actualizado_por=excluded.actualizado_por,actualizado_en=excluded.actualizado_en',(tipo_entidad,entidad,fecha_columna,float(valor),justificacion.strip(),st.session_state.auth['usuario'],now_iso()))
+                        cur.execute('INSERT INTO ajustes_diarios_spac(tipo_entidad,entidad,fecha,valor,justificacion,actualizado_por,actualizado_en) VALUES(?,?,?,?,?,?,?) ON CONFLICT(tipo_entidad,entidad,fecha) DO UPDATE SET valor=excluded.valor,justificacion=excluded.justificacion,actualizado_por=excluded.actualizado_por,actualizado_en=excluded.actualizado_en',(tipo_entidad,entidad,fecha_columna,float(valor),'Ajuste administrativo',st.session_state.auth['usuario'],now_iso()))
             c.commit()
         except Exception:
             c.rollback();raise
         finally:c.close()
-        audit(st.session_state.auth['usuario'],'AJUSTAR_MATRIZ_DIARIA_SPAC',f'{tipo_entidad} | {justificacion.strip()}')
+        audit(st.session_state.auth['usuario'],'AJUSTAR_MATRIZ_DIARIA_SPAC',tipo_entidad)
         st.success('Ajustes diarios guardados correctamente.');st.rerun()
 
 
@@ -256,13 +256,10 @@ def datos_grafica_cumplimiento(tipo_entidad,periodo_tipo):
 
         if tipo_entidad=='ANALISTA':
             serie=registros[(registros['fecha_dt']>=inicio)&(registros['fecha_dt']<=fin)&(registros['analista'].astype(str)==entidad)].groupby('fecha')['total_carga_datos'].sum().reindex(fechas)
-        elif tipo_entidad=='CALIDAD_NAVE':
-            registros_calidad=read_df("SELECT m.fecha,m.total_carga_datos,COALESCE(e.nave,'') AS nave FROM matriz_entrega m LEFT JOIN entregas_turno e ON e.id=m.entrega_id")
-            registros_calidad['fecha_dt']=pd.to_datetime(registros_calidad['fecha'],errors='coerce').dt.date
-            serie=registros_calidad[(registros_calidad['fecha_dt']>=inicio)&(registros_calidad['fecha_dt']<=fin)&(registros_calidad['nave'].astype(str)==entidad)].groupby('fecha')['total_carga_datos'].sum().reindex(fechas)
         else:
             campo={'Nave 1':'horas_nave1','Nave 2':'horas_nave2','Nave 3':'horas_nave3'}.get(entidad)
-            if not campo: continue
+            if not campo:
+                continue
             serie=registros[(registros['fecha_dt']>=inicio)&(registros['fecha_dt']<=fin)].groupby('fecha')[campo].sum(min_count=1).reindex(fechas)
 
         for ajuste in ajustes[ajustes['entidad'].astype(str)==entidad].itertuples():
@@ -370,14 +367,6 @@ def matriz_entregas():
     pa.index.name='Analista'; pa=aplicar_ajustes_diarios(pa,'ANALISTA','Analista')
     st.markdown('### TOTAL DE CARGA DE DATOS diario por analista')
     tabla_diaria_editable(pa,'ANALISTA','Analista','tabla_diaria_analistas')
-
-    calidad_diaria=datos_rango.pivot_table(index='nave',columns='fecha',values='total_carga_datos',aggfunc='sum').reindex(index=['Nave 1','Nave 2','Nave 3'],columns=columnas_fecha)
-    calidad_diaria.index.name='Nave'
-    calidad_diaria=aplicar_ajustes_diarios(calidad_diaria,'CALIDAD_NAVE','Nave')
-    st.markdown('### TOTAL DE CARGA DE DATOS diario por plantilla')
-    st.caption('Suma el TOTAL DE CARGA DE DATOS según la plantilla seleccionada por el analista: Nave 1, Nave 2 o Nave 3.')
-    tabla_diaria_editable(calidad_diaria,'CALIDAD_NAVE','Nave','tabla_diaria_calidad_naves')
-
     filas_nave=[]
     for nv,campo in [('Nave 1','horas_nave1'),('Nave 2','horas_nave2'),('Nave 3','horas_nave3')]:
         serie=datos_rango.groupby('fecha')[campo].sum(min_count=1).reindex(columnas_fecha)
@@ -408,24 +397,16 @@ def matriz_entregas():
         filas_meta.append([float(v) if pd.notna(v) and float(v)>0 else None for v in serie])
     pn_meta=pd.DataFrame(filas_meta,index=['Nave 1','Nave 2','Nave 3'],columns=fechas_meta); pn_meta.index.name='Nave'; pn_meta=aplicar_ajustes_diarios(pn_meta,'NAVE','Nave')
     teoricos_n=pn_meta.fillna(0).sum(axis=1).to_dict()
-
-    calidad_meta=dp.pivot_table(index='nave',columns='fecha',values='total_carga_datos',aggfunc='sum').reindex(index=['Nave 1','Nave 2','Nave 3'],columns=fechas_meta)
-    calidad_meta.index.name='Nave'; calidad_meta=aplicar_ajustes_diarios(calidad_meta,'CALIDAD_NAVE','Nave')
-    teoricos_calidad=calidad_meta.fillna(0).sum(axis=1).to_dict()
-
     ca,cn=st.columns(2)
     with ca:
         st.markdown('### Cumplimiento por analista'); editor_metas_cumplimiento('ANALISTA',analistas_catalogo,teoricos_a,pt,pc,f'meta_a_{pt}_{pc}')
     with cn:
-        st.markdown('### Cumplimiento SPAC Producción'); editor_metas_cumplimiento('NAVE',['Nave 1','Nave 2','Nave 3'],teoricos_n,pt,pc,f'meta_n_{pt}_{pc}')
-    st.markdown('### Cumplimiento SPAC Calidad')
-    editor_metas_cumplimiento('CALIDAD_NAVE',['Nave 1','Nave 2','Nave 3'],teoricos_calidad,pt,pc,f'meta_calidad_{pt}_{pc}')
+        st.markdown('### Cumplimiento por nave'); editor_metas_cumplimiento('NAVE',['Nave 1','Nave 2','Nave 3'],teoricos_n,pt,pc,f'meta_n_{pt}_{pc}')
 
     st.markdown('## Gráficas de cumplimiento')
-    st.caption('Visualización en líneas. La selección Semana o Mes aplicada arriba controla las tres gráficas.')
+    st.caption('Las gráficas cambian automáticamente entre semana y mes según el periodo seleccionado.')
     grafica_analistas=datos_grafica_cumplimiento('ANALISTA',pt)
-    grafica_calidad=datos_grafica_cumplimiento('CALIDAD_NAVE',pt)
-    grafica_produccion=datos_grafica_cumplimiento('NAVE',pt)
+    grafica_naves=datos_grafica_cumplimiento('NAVE',pt)
 
     st.markdown('### Cumplimiento de analistas')
     if grafica_analistas.empty or grafica_analistas['Cumplimiento %'].dropna().empty:
@@ -434,24 +415,19 @@ def matriz_entregas():
         disponibles=sorted(grafica_analistas['Entidad'].dropna().astype(str).unique().tolist())
         seleccion=st.multiselect('Analistas en la gráfica',disponibles,default=disponibles[:5],key=f'grafica_analistas_{pt}')
         vista_ga=grafica_analistas[grafica_analistas['Entidad'].isin(seleccion)] if seleccion else grafica_analistas.iloc[0:0]
-        if vista_ga.empty: st.info('Selecciona al menos un analista.')
+        if vista_ga.empty:
+            st.info('Selecciona al menos un analista.')
         else:
             st.line_chart(vista_ga.pivot_table(index='Periodo',columns='Entidad',values='Cumplimiento %',aggfunc='first'),use_container_width=True)
             st.dataframe(vista_ga.sort_values(['Periodo','Entidad']),use_container_width=True,hide_index=True,column_config={'Cumplimiento %':st.column_config.NumberColumn(format='%.1f%%')})
 
-    st.markdown('### Cumplimiento SPAC Calidad')
-    if grafica_calidad.empty or grafica_calidad['Cumplimiento %'].dropna().empty:
-        st.info('Ingresa y guarda Datos cargados de Calidad para visualizar la gráfica.')
+    st.markdown('### Cumplimiento de naves')
+    if grafica_naves.empty or grafica_naves['Cumplimiento %'].dropna().empty:
+        st.info('Ingresa y guarda Datos cargados para visualizar la gráfica de naves.')
     else:
-        st.line_chart(grafica_calidad.pivot_table(index='Periodo',columns='Entidad',values='Cumplimiento %',aggfunc='first'),use_container_width=True)
-        st.dataframe(grafica_calidad.sort_values(['Periodo','Entidad']),use_container_width=True,hide_index=True,column_config={'Cumplimiento %':st.column_config.NumberColumn(format='%.1f%%')})
+        st.bar_chart(grafica_naves.pivot_table(index='Periodo',columns='Entidad',values='Cumplimiento %',aggfunc='first'),use_container_width=True)
+        st.dataframe(grafica_naves.sort_values(['Periodo','Entidad']),use_container_width=True,hide_index=True,column_config={'Cumplimiento %':st.column_config.NumberColumn(format='%.1f%%')})
 
-    st.markdown('### Cumplimiento SPAC Producción')
-    if grafica_produccion.empty or grafica_produccion['Cumplimiento %'].dropna().empty:
-        st.info('Ingresa y guarda Datos cargados de Producción para visualizar la gráfica.')
-    else:
-        st.line_chart(grafica_produccion.pivot_table(index='Periodo',columns='Entidad',values='Cumplimiento %',aggfunc='first'),use_container_width=True)
-        st.dataframe(grafica_produccion.sort_values(['Periodo','Entidad']),use_container_width=True,hide_index=True,column_config={'Cumplimiento %':st.column_config.NumberColumn(format='%.1f%%')})
 
 def migrar_matriz_fecha_analista(cur):
     """Cambia la restricción anterior UNIQUE(fecha) por UNIQUE(fecha, analista)."""
@@ -972,6 +948,69 @@ def left_menu():
         st.rerun()
 
 
+def panel_spac_inicio():
+    st.markdown('<div class="panel"><div class="panel-header">Indicadores SPAC</div><div class="panel-body">',unsafe_allow_html=True)
+    matriz=read_df("SELECT m.fecha,m.analista,m.total_carga_datos,m.horas_nave1,m.horas_nave2,m.horas_nave3,COALESCE(e.nave,'') AS nave FROM matriz_entrega m LEFT JOIN entregas_turno e ON e.id=m.entrega_id")
+    if matriz.empty:
+        st.info('Todavía no hay información SPAC para mostrar.')
+        st.markdown('</div></div>',unsafe_allow_html=True)
+        return
+    matriz['fecha_dt']=pd.to_datetime(matriz['fecha'],errors='coerce').dt.date
+    matriz=matriz.dropna(subset=['fecha_dt'])
+    if matriz.empty:
+        st.info('La matriz no contiene fechas válidas.')
+        st.markdown('</div></div>',unsafe_allow_html=True)
+        return
+
+    mn,mx=matriz['fecha_dt'].min(),matriz['fecha_dt'].max()
+    f1,f2,f3=st.columns([1,1,1.2])
+    tipo=f1.radio('Visualización',['SEMANA','MES'],horizontal=True,format_func=lambda x:'Semana' if x=='SEMANA' else 'Mes',key='inicio_spac_tipo')
+    desde=f2.date_input('Desde',mn,min_value=mn,max_value=mx,key='inicio_spac_desde')
+    hasta=f3.date_input('Hasta',mx,min_value=mn,max_value=mx,key='inicio_spac_hasta')
+    if desde>hasta:
+        st.error('La fecha inicial no puede ser posterior a la fecha final.')
+        st.markdown('</div></div>',unsafe_allow_html=True)
+        return
+
+    opciones=[]
+    for fecha in pd.date_range(desde,hasta,freq='D').date:
+        periodo=clave_periodo(fecha,tipo)
+        if periodo not in opciones: opciones.append(periodo)
+    periodos=st.multiselect('Periodos a visualizar',opciones,default=opciones,key='inicio_spac_periodos')
+
+    ga=datos_grafica_cumplimiento('ANALISTA',tipo)
+    gc=datos_grafica_cumplimiento('CALIDAD_NAVE',tipo)
+    gn=datos_grafica_cumplimiento('NAVE',tipo)
+    if periodos:
+        ga=ga[ga['Periodo'].isin(periodos)] if not ga.empty else ga
+        gc=gc[gc['Periodo'].isin(periodos)] if not gc.empty else gc
+        gn=gn[gn['Periodo'].isin(periodos)] if not gn.empty else gn
+
+    if not ga.empty:
+        disponibles=sorted(ga['Entidad'].dropna().astype(str).unique().tolist())
+        seleccion=st.multiselect('Analistas',disponibles,default=disponibles[:5],key='inicio_spac_analistas')
+        ga=ga[ga['Entidad'].isin(seleccion)] if seleccion else ga.iloc[0:0]
+
+    c1,c2=st.columns(2)
+    with c1:
+        st.markdown('#### Cumplimiento SPAC por analista')
+        if ga.empty or ga['Cumplimiento %'].dropna().empty:
+            st.info('No hay porcentajes de analistas para los filtros seleccionados.')
+        else:
+            st.line_chart(ga.pivot_table(index='Periodo',columns='Entidad',values='Cumplimiento %',aggfunc='first'),use_container_width=True)
+    with c2:
+        st.markdown('#### Cumplimiento SPAC Calidad')
+        if gc.empty or gc['Cumplimiento %'].dropna().empty:
+            st.info('No hay porcentajes de Calidad para los filtros seleccionados.')
+        else:
+            st.line_chart(gc.pivot_table(index='Periodo',columns='Entidad',values='Cumplimiento %',aggfunc='first'),use_container_width=True)
+    st.markdown('#### Cumplimiento SPAC Producción')
+    if gn.empty or gn['Cumplimiento %'].dropna().empty:
+        st.info('No hay porcentajes de Producción para los filtros seleccionados.')
+    else:
+        st.line_chart(gn.pivot_table(index='Periodo',columns='Entidad',values='Cumplimiento %',aggfunc='first'),use_container_width=True)
+    st.markdown('</div></div>',unsafe_allow_html=True)
+
 def page_inicio():
     df=read_df('SELECT * FROM pnc_registros')
     if df.empty: df=pd.DataFrame(columns=['fecha_apertura','status','linea_sector','clasificacion','material_hallado','cantidad_total_pnc'])
@@ -1004,6 +1043,7 @@ def page_inicio():
         if not data.empty: st.dataframe(data['clasificacion'].fillna('Sin clasificación').value_counts().rename_axis('Clasificación').reset_index(name='Registros'),use_container_width=True,hide_index=True)
         else: st.info('No hay datos.')
         st.markdown('</div></div>',unsafe_allow_html=True)
+    panel_spac_inicio()
 
 def page_registro():
     if 'registro_tipo' not in st.session_state:
