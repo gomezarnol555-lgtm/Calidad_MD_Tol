@@ -5,7 +5,7 @@ from io import BytesIO
 from openpyxl import Workbook, load_workbook
 from openpyxl.styles import Font, PatternFill, Alignment
 from openpyxl.utils import get_column_letter
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 from pathlib import Path
 from uuid import uuid4
 
@@ -143,6 +143,57 @@ def pdf_entrega(eid):
     for q in d.itertuples():data.append([str(getattr(q,'nave_catalogo','') or ''),q.grupo or '',q.linea or '',q.producto_descripcion or '',f'{float(q.horas_trabajadas or 0):.2f}',f'{float(q.carga_spac or 0):.2f}',q.observaciones or ''])
     dt=Table(data,colWidths=[55,85,145,145,45,45,190],repeatRows=1);dt.setStyle(TableStyle([('BACKGROUND',(0,0),(-1,0),colors.HexColor('#0A4652')),('TEXTCOLOR',(0,0),(-1,0),colors.white),('FONTSIZE',(0,0),(-1,-1),7),('GRID',(0,0),(-1,-1),.3,colors.grey),('VALIGN',(0,0),(-1,-1),'MIDDLE')]));story.append(dt);doc.build(story);return b.getvalue()
 
+def estilo_faltantes_matriz(df,primeras_columnas=1):
+    """Marca en rojo las celdas vacías que representan una carga pendiente."""
+    def pintar(valor):
+        if pd.isna(valor) or str(valor).strip()=='':
+            return 'background-color:#FECACA;color:#991B1B;font-weight:800;border:1px solid #EF4444'
+        return ''
+    columnas=list(df.columns[primeras_columnas:])
+    return df.style.map(pintar,subset=columnas).format(na_rep='')
+
+def clave_periodo(fecha,tipo):
+    if tipo=='SEMANA':
+        iso=fecha.isocalendar()
+        return f'{iso.year}-S{iso.week:02d}'
+    return fecha.strftime('%Y-%m')
+
+def editor_metas_cumplimiento(tipo_entidad,entidades,actuales,periodo_tipo,periodo_clave,key):
+    metas=read_df('SELECT entidad,meta FROM metas_carga_spac WHERE tipo_entidad=? AND periodo_tipo=? AND periodo_clave=?',
+        (tipo_entidad,periodo_tipo,periodo_clave))
+    mapa_metas={str(r.entidad):float(r.meta or 0) for r in metas.itertuples()}
+    filas=[]
+    for entidad in entidades:
+        actual=float(actuales.get(entidad,0) or 0)
+        meta=float(mapa_metas.get(entidad,0) or 0)
+        cumplimiento=(actual/meta*100) if meta>0 else None
+        filas.append({'Entidad':entidad,'Carga real':actual,'Meta SPAC':meta,'Cumplimiento %':cumplimiento})
+    base=pd.DataFrame(filas)
+    if is_dev():
+        editado=st.data_editor(base,use_container_width=True,hide_index=True,key=key,
+            disabled=['Entidad','Carga real','Cumplimiento %'],
+            column_config={
+                'Carga real':st.column_config.NumberColumn(format='%.2f'),
+                'Meta SPAC':st.column_config.NumberColumn(min_value=0.0,step=1.0,format='%.2f'),
+                'Cumplimiento %':st.column_config.ProgressColumn(min_value=0,max_value=100,format='%.1f%%')})
+        if st.button('Guardar metas SPAC',key=f'{key}_guardar',type='primary'):
+            c=conn();cur=c.cursor()
+            try:
+                for _,row in editado.iterrows():
+                    cur.execute('INSERT INTO metas_carga_spac(tipo_entidad,entidad,periodo_tipo,periodo_clave,meta,actualizado_por,actualizado_en) VALUES(?,?,?,?,?,?,?) ON CONFLICT(tipo_entidad,entidad,periodo_tipo,periodo_clave) DO UPDATE SET meta=excluded.meta,actualizado_por=excluded.actualizado_por,actualizado_en=excluded.actualizado_en',
+                        (tipo_entidad,str(row['Entidad']),periodo_tipo,periodo_clave,float(row['Meta SPAC'] or 0),st.session_state.auth['usuario'],now_iso()))
+                c.commit()
+            except Exception:
+                c.rollback();raise
+            finally:c.close()
+            audit(st.session_state.auth['usuario'],'ACTUALIZAR_METAS_SPAC',f'{tipo_entidad} | {periodo_tipo} | {periodo_clave}')
+            st.success('Metas SPAC actualizadas correctamente.')
+            st.rerun()
+    else:
+        vista=base.copy()
+        vista['Cumplimiento %']=vista['Cumplimiento %'].map(lambda x:'' if pd.isna(x) else f'{x:.1f}%')
+        st.dataframe(vista,use_container_width=True,hide_index=True)
+
 def matriz_entregas():
     st.markdown('## Entregas de turno y matriz histórica')
     st.caption('Consulta los registros de las tres naves, descarga cualquier PDF y exporta la matriz del rango seleccionado.')
@@ -228,6 +279,53 @@ def matriz_entregas():
     for campo,titulo in [('total_carga_datos','Total de carga de datos'),('horas_nave1','Horas trabajadas Nave 1'),('horas_nave2','Horas trabajadas Nave 2'),('horas_nave3','Horas trabajadas Nave 3')]:
         st.markdown(f'**{titulo}**')
         st.dataframe(f.pivot_table(index='analista',columns='fecha',values=campo,aggfunc='sum',fill_value=0),use_container_width=True)
+
+    st.markdown('## Control diario de carga de datos SPAC')
+    st.caption('Las celdas rojas y vacías indican que no existe una entrega registrada para ese analista o nave en la fecha correspondiente.')
+    rango_fechas=pd.date_range(desde,hasta,freq='D').date
+    columnas_fecha=[x.isoformat() for x in rango_fechas]
+
+    analistas_catalogo=catalog('analista')
+    diario_analista=df[(df['fecha_dt']>=desde)&(df['fecha_dt']<=hasta)].pivot_table(
+        index='analista',columns='fecha',values='total_carga_datos',aggfunc='sum')
+    diario_analista=diario_analista.reindex(index=analistas_catalogo,columns=columnas_fecha)
+    tabla_analista=diario_analista.reset_index().rename(columns={'analista':'Analista'})
+    st.markdown('### Carga SPAC diaria por analista')
+    st.dataframe(estilo_faltantes_matriz(tabla_analista,1),use_container_width=True,hide_index=True)
+
+    diario_nave=df[(df['fecha_dt']>=desde)&(df['fecha_dt']<=hasta)].pivot_table(
+        index='nave',columns='fecha',values='total_carga_datos',aggfunc='sum')
+    diario_nave=diario_nave.reindex(index=['Nave 1','Nave 2','Nave 3'],columns=columnas_fecha)
+    tabla_nave=diario_nave.reset_index().rename(columns={'nave':'Nave'})
+    st.markdown('### Carga SPAC diaria consolidada por nave')
+    st.dataframe(estilo_faltantes_matriz(tabla_nave,1),use_container_width=True,hide_index=True)
+
+    st.markdown('## Metas y porcentaje de cumplimiento SPAC')
+    periodo_tipo=st.radio('Periodo de evaluación',['SEMANA','MES'],horizontal=True,
+        format_func=lambda x:'Semana' if x=='SEMANA' else 'Mes',key='meta_periodo_tipo')
+    fechas_periodo=pd.date_range(desde,hasta,freq='D').date
+    opciones_periodo=[]
+    for fecha_periodo in fechas_periodo:
+        valor=clave_periodo(fecha_periodo,periodo_tipo)
+        if valor not in opciones_periodo: opciones_periodo.append(valor)
+    periodo_clave=st.selectbox('Semana o mes',opciones_periodo,key='meta_periodo_clave')
+    if periodo_tipo=='SEMANA':
+        anio=int(periodo_clave.split('-S')[0]);semana=int(periodo_clave.split('-S')[1])
+        inicio_periodo=date.fromisocalendar(anio,semana,1);fin_periodo=date.fromisocalendar(anio,semana,7)
+    else:
+        inicio_periodo=datetime.strptime(periodo_clave+'-01','%Y-%m-%d').date()
+        siguiente=(pd.Timestamp(inicio_periodo)+pd.offsets.MonthBegin(1)).date()
+        fin_periodo=siguiente-timedelta(days=1)
+    datos_periodo=df[(df['fecha_dt']>=inicio_periodo)&(df['fecha_dt']<=fin_periodo)].copy()
+    actuales_analista=datos_periodo.groupby('analista')['total_carga_datos'].sum().to_dict()
+    actuales_nave=datos_periodo.groupby('nave')['total_carga_datos'].sum().to_dict()
+    c1,c2=st.columns(2)
+    with c1:
+        st.markdown('### Cumplimiento por analista')
+        editor_metas_cumplimiento('ANALISTA',analistas_catalogo,actuales_analista,periodo_tipo,periodo_clave,f'metas_analista_{periodo_tipo}_{periodo_clave}')
+    with c2:
+        st.markdown('### Cumplimiento por nave')
+        editor_metas_cumplimiento('NAVE',['Nave 1','Nave 2','Nave 3'],actuales_nave,periodo_tipo,periodo_clave,f'metas_nave_{periodo_tipo}_{periodo_clave}')
 
 
 def migrar_matriz_fecha_analista(cur):
@@ -398,47 +496,11 @@ def normalizar_estructura_formatos_entrega(cur):
                     VALUES(?,?,?,?,?,?,?,1)""",(nave,'PROCESO','ENVASADO',sector,'',8,pos))
     cur.execute("INSERT OR REPLACE INTO app_config(clave,valor,actualizado_en) VALUES('estructura_formatos_entrega_v3','1',?)",(now_iso(),))
 
-def catalogo_seguimientos_entrega():
-    df=read_df("""SELECT id,bloque,tipo_captura,numero_filas,orden
-        FROM catalogo_seguimientos_entrega
-        WHERE activo=1 ORDER BY orden,id""")
-    return [dict(r._asdict()) for r in df.itertuples(index=False)]
-
-def editor_seguimientos_entrega(nave,nonce,prefijo):
-    """Construye los seguimientos compartidos por las tres naves desde el catálogo."""
-    seguimientos=[]
-    bloques=catalogo_seguimientos_entrega()
-    st.markdown('### Seguimientos')
-    if not bloques:
-        st.info('No hay bloques activos en el catálogo de seguimientos.')
-        return seguimientos
-    for bi,cfg in enumerate(bloques):
-        bloque=str(cfg['bloque'])
-        tipo=str(cfg['tipo_captura'] or 'TABLA').upper()
-        filas=max(1,int(cfg['numero_filas'] or 1))
-        with st.expander(bloque,expanded=bi<2):
-            if tipo=='TABLA':
-                base=pd.DataFrame([{'Registro #':'','Hoja física':'','Carga electrónica':'','Correo':'','Descripción del seguimiento':''} for _ in range(filas)])
-                ed=st.data_editor(base,num_rows='dynamic',use_container_width=True,hide_index=True,key=f'{prefijo}_seg_{nave}_{cfg["id"]}_{nonce}',column_config={'Hoja física':st.column_config.SelectboxColumn(options=['','Sí','No','N/A']),'Carga electrónica':st.column_config.SelectboxColumn(options=['','Sí','No','N/A']),'Correo':st.column_config.SelectboxColumn(options=['','Sí','No','N/A'])})
-            else:
-                base=pd.DataFrame([{'Descripción del seguimiento':''} for _ in range(filas)])
-                ed=st.data_editor(base,num_rows='dynamic',use_container_width=True,hide_index=True,key=f'{prefijo}_seg_{nave}_{cfg["id"]}_{nonce}',column_config={'Descripción del seguimiento':st.column_config.TextColumn('Descripción del seguimiento',width='large')})
-            seguimientos.append((bloque,ed))
-    return seguimientos
-
 def init_db():
     UPLOAD_DIR.mkdir(exist_ok=True)
     c=conn(); cur=c.cursor()
     cur.execute("CREATE TABLE IF NOT EXISTS usuarios(id INTEGER PRIMARY KEY AUTOINCREMENT, usuario TEXT UNIQUE, nombre TEXT, password_hash TEXT, rol TEXT, activo INTEGER DEFAULT 1, creado_en TEXT)")
     cur.execute("CREATE TABLE IF NOT EXISTS app_config(clave TEXT PRIMARY KEY,valor TEXT,actualizado_en TEXT)")
-    cur.execute("""CREATE TABLE IF NOT EXISTS catalogo_seguimientos_entrega(
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        bloque TEXT NOT NULL UNIQUE,
-        tipo_captura TEXT NOT NULL DEFAULT 'TABLA',
-        numero_filas INTEGER NOT NULL DEFAULT 3,
-        orden INTEGER NOT NULL DEFAULT 0,
-        activo INTEGER NOT NULL DEFAULT 1
-    )""")
     cur.execute("CREATE TABLE IF NOT EXISTS catalogo_formatos_entrega(id INTEGER PRIMARY KEY AUTOINCREMENT,formato_nave TEXT NOT NULL,tipo TEXT NOT NULL,linea TEXT NOT NULL,sector TEXT NOT NULL,tipo_analisis TEXT DEFAULT '',orden_linea INTEGER DEFAULT 0,orden_sector INTEGER DEFAULT 0,activo INTEGER DEFAULT 1,UNIQUE(formato_nave,tipo,linea,sector,tipo_analisis))")
     migrar_catalogo_formatos_entrega(cur)
     cur.execute("CREATE TABLE IF NOT EXISTS catalogos(id INTEGER PRIMARY KEY AUTOINCREMENT, categoria TEXT, valor TEXT, activo INTEGER DEFAULT 1, UNIQUE(categoria,valor))")
@@ -492,6 +554,17 @@ def init_db():
     cur.execute("CREATE TABLE IF NOT EXISTS muestras_24_meses(id INTEGER PRIMARY KEY AUTOINCREMENT, item TEXT NOT NULL, descripcion TEXT NOT NULL, lote TEXT NOT NULL, destino TEXT NOT NULL, numero_muestras REAL NOT NULL DEFAULT 0, numero_corrugado REAL NOT NULL DEFAULT 0, responsable TEXT NOT NULL, observaciones TEXT, creado_por TEXT, creado_en TEXT, actualizado_por TEXT, actualizado_en TEXT)")
     cur.execute("CREATE TABLE IF NOT EXISTS catalogo_naves_lineas(id INTEGER PRIMARY KEY AUTOINCREMENT,nave TEXT,linea TEXT,sector TEXT,linea_norm TEXT,sector_norm TEXT,orden INTEGER DEFAULT 0,activo INTEGER DEFAULT 1,UNIQUE(nave,linea,sector))")
     cur.execute("CREATE TABLE IF NOT EXISTS matriz_entrega(id INTEGER PRIMARY KEY AUTOINCREMENT,fecha TEXT NOT NULL,analista TEXT NOT NULL,entrega_id INTEGER,total_carga_datos REAL DEFAULT 0,horas_nave1 REAL DEFAULT 0,horas_nave2 REAL DEFAULT 0,horas_nave3 REAL DEFAULT 0,actualizado_en TEXT,UNIQUE(fecha,analista))")
+    cur.execute("""CREATE TABLE IF NOT EXISTS metas_carga_spac(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        tipo_entidad TEXT NOT NULL,
+        entidad TEXT NOT NULL,
+        periodo_tipo TEXT NOT NULL,
+        periodo_clave TEXT NOT NULL,
+        meta REAL NOT NULL DEFAULT 0,
+        actualizado_por TEXT,
+        actualizado_en TEXT,
+        UNIQUE(tipo_entidad,entidad,periodo_tipo,periodo_clave)
+    )""")
     migrar_matriz_fecha_analista(cur)
     cur.execute("CREATE TABLE IF NOT EXISTS entregas_turno(id INTEGER PRIMARY KEY AUTOINCREMENT, nave TEXT, fecha TEXT, analista TEXT, turno TEXT, referencia TEXT, total_carga_datos REAL DEFAULT 0, total_horas_trabajadas REAL DEFAULT 0, creado_por TEXT, creado_en TEXT)")
     cur.execute("CREATE TABLE IF NOT EXISTS entregas_turno_lineas(id INTEGER PRIMARY KEY AUTOINCREMENT, entrega_id INTEGER, grupo TEXT, linea TEXT, producto_descripcion TEXT, horas_trabajadas REAL DEFAULT 0, carga_spac REAL DEFAULT 0, observaciones TEXT, orden_fila INTEGER DEFAULT 0)")
@@ -527,19 +600,6 @@ def init_db():
             cur.execute('INSERT OR IGNORE INTO catalogo_formatos_entrega(formato_nave,tipo,linea,sector,tipo_analisis,orden_linea,orden_sector,activo) VALUES(?,?,?,?,?,?,?,1)',(nv,tipo,linea,sector,analisis,ol,os))
         cur.execute("INSERT OR REPLACE INTO app_config(clave,valor,actualizado_en) VALUES('formatos_entrega_linea_sector_v2','1',?)",(now_iso(),))
     normalizar_estructura_formatos_entrega(cur)
-    if not cur.execute("SELECT 1 FROM app_config WHERE clave='catalogo_seguimientos_entrega_v1'").fetchone():
-        semillas_seguimiento=[
-            ('Seguimiento a Contaminaciones','TABLA',3,0),
-            ('Seguimiento a PNC´S','TABLA',3,1),
-            ('Limpiezas','LISTA',4,2),
-            ('Seguimiento a ORDENES DE FALLO','TEXTO',3,3),
-            ('GIRO / JUNTA DE EQUIPO','TEXTO',3,4)
-        ]
-        for bloque,tipo_captura,numero_filas,orden in semillas_seguimiento:
-            cur.execute("""INSERT OR IGNORE INTO catalogo_seguimientos_entrega
-                (bloque,tipo_captura,numero_filas,orden,activo)
-                VALUES(?,?,?,?,1)""",(bloque,tipo_captura,numero_filas,orden))
-        cur.execute("INSERT OR REPLACE INTO app_config(clave,valor,actualizado_en) VALUES('catalogo_seguimientos_entrega_v1','1',?)",(now_iso(),))
     c.commit(); c.close()
 
 def reset_admin():
@@ -1365,7 +1425,11 @@ def page_entrega_turno():
         resultados=[]
         for ai,(grupo,linea,tipo_analisis) in enumerate(analisis):
             cc=st.columns([1.2,2,1.5,1,2]);cc[0].text_input('Grupo',grupo,disabled=True,key=f'et23_ag_{nave}_{ai}_{n}',label_visibility='collapsed');cc[1].text_input('Línea',linea,disabled=True,key=f'et23_al_{nave}_{ai}_{n}',label_visibility='collapsed');cc[2].text_input('Análisis',tipo_analisis,disabled=True,key=f'et23_at_{nave}_{ai}_{n}',label_visibility='collapsed');resultado=cc[3].text_input('Resultado',key=f'et23_ar_{nave}_{ai}_{n}',label_visibility='collapsed');obs=cc[4].text_input('Observaciones',key=f'et23_ao_{nave}_{ai}_{n}',label_visibility='collapsed');contador=st.number_input(f'Cantidad de análisis - {linea} - {tipo_analisis}',min_value=0.0,step=1.0,format='%.2f',key=f'et23_cnt_{nave}_{ai}_{n}');resultados.append((grupo,linea,tipo_analisis,resultado,obs,float(contador)))
-        seguimientos=editor_seguimientos_entrega(nave,n,'et23')
+        seguimientos=[];st.markdown('### Seguimientos')
+        for bi,bloque in enumerate(['Seguimiento a Contaminaciones','Seguimiento a PNC´S','Limpiezas','Seguimiento a ORDENES DE FALLO','GIRO / JUNTA DE EQUIPO']):
+            with st.expander(bloque,expanded=bi<2):
+                base=pd.DataFrame([{'Registro #':'','Hoja física':'','Carga electrónica':'','Correo':'','Descripción del seguimiento':''} for _ in range(3)])
+                ed=st.data_editor(base,num_rows='dynamic',use_container_width=True,hide_index=True,key=f'et23_s_{nave}_{bi}_{n}',column_config={'Hoja física':st.column_config.SelectboxColumn(options=['','Sí','No','N/A']),'Carga electrónica':st.column_config.SelectboxColumn(options=['','Sí','No','N/A']),'Correo':st.column_config.SelectboxColumn(options=['','Sí','No','N/A'])});seguimientos.append((bloque,ed))
         totales_nave,filas_clasificadas=clasificar_filas(filas);total_h=sum(totales_nave.values());total_c=sum(x[4] for x in filas)+sum(x[5] for x in resultados)
         m1,m2=st.columns(2);m1.metric('TOTAL DE CARGA DE DATOS',f'{total_c:.2f}');m2.metric('TOTAL GENERAL DE HORAS',f'{total_h:.2f}');q1,q2,q3=st.columns(3);q1.metric('HORAS NAVE 1',f"{totales_nave['Nave 1']:.2f}");q2.metric('HORAS NAVE 2',f"{totales_nave['Nave 2']:.2f}");q3.metric('HORAS NAVE 3',f"{totales_nave['Nave 3']:.2f}")
         if st.button('Guardar entrega de turno',type='primary',key=f'et23_g_{nave}_{n}'):
@@ -1407,7 +1471,11 @@ def page_entrega_turno():
             obs=cols[3].text_input('Observaciones',key=f'et_o_{gi}_{li}_{n}',label_visibility='collapsed')
             filas.append((grupo,linea,producto,float(horas),float(carga),obs,len(filas)))
         st.markdown('<div style="height:.7rem"></div>',unsafe_allow_html=True)
-    seguimientos=editor_seguimientos_entrega('Nave 1',n,'et1')
+    seguimientos=[]; st.markdown('### Seguimientos')
+    for bi,bloque in enumerate(['Seguimiento a Contaminaciones','Seguimiento a PNC´S','Limpiezas','Seguimiento a ORDENES DE FALLO','GIRO / JUNTA DE EQUIPO']):
+        with st.expander(bloque,expanded=bi<2):
+            base=pd.DataFrame([{'Registro #':'','Hoja física':'','Carga electrónica':'','Correo':'','Descripción del seguimiento':''} for _ in range(3)])
+            ed=st.data_editor(base,num_rows='dynamic',use_container_width=True,hide_index=True,key=f'et_s_{bi}_{n}',column_config={'Hoja física':st.column_config.SelectboxColumn(options=['','Sí','No','N/A']),'Carga electrónica':st.column_config.SelectboxColumn(options=['','Sí','No','N/A']),'Correo':st.column_config.SelectboxColumn(options=['','Sí','No','N/A'])}); seguimientos.append((bloque,ed))
     totales_nave,filas_clasificadas=clasificar_filas(filas);total_h=sum(totales_nave.values());total_c=sum(x[4] for x in filas)
     m1,m2=st.columns(2);m1.metric('TOTAL DE CARGA DE DATOS',f'{total_c:.2f}');m2.metric('TOTAL GENERAL DE HORAS',f'{total_h:.2f}');q1,q2,q3=st.columns(3);q1.metric('HORAS NAVE 1',f"{totales_nave['Nave 1']:.2f}");q2.metric('HORAS NAVE 2',f"{totales_nave['Nave 2']:.2f}");q3.metric('HORAS NAVE 3',f"{totales_nave['Nave 3']:.2f}")
     if st.button('Guardar entrega de turno',type='primary',key=f'et_g_{n}'):
@@ -1440,7 +1508,7 @@ def general_catalog_dataframe():
 
 def page_catalogos():
     st.title('Catálogos'); st.caption('Datos precargados desde el Excel adjunto. El administrador puede agregar o eliminar elementos.')
-    tab1,tab2,tab3,tab4,tab5,tab6=st.tabs(['Productos','Defectos','Datos generales','Naves, líneas y sectores','Formatos entrega de turno','Seguimientos entrega de turno'])
+    tab1,tab2,tab3,tab4,tab5=st.tabs(['Productos','Defectos','Datos generales','Naves, líneas y sectores','Formatos entrega de turno'])
     with tab1:
         df=read_df('SELECT id,item,descripcion,cliente,familia FROM productos WHERE activo=1 ORDER BY descripcion'); st.dataframe(df,use_container_width=True,hide_index=True)
         if admin_required():
@@ -1619,75 +1687,6 @@ def page_catalogos():
                         x,y=st.columns(2)
                         if x.button('Sí, eliminar',key=f'fmt_ok_{rid}'):exec_sql('UPDATE catalogo_formatos_entrega SET activo=0 WHERE id=?',(rid,));audit(st.session_state.auth['usuario'],'ELIMINAR_FORMATO_ENTREGA',f'ID {rid}');st.session_state.pop('fmt_confirm',None);st.session_state.fmt_nonce=nonce+1;st.rerun()
                         if y.button('Cancelar',key=f'fmt_cancel_{rid}'):st.session_state.pop('fmt_confirm',None);st.session_state.fmt_nonce=nonce+1;st.rerun()
-
-    with tab6:
-        st.subheader('Seguimientos de entrega de turno')
-        st.caption('Este catálogo es compartido por Nave 1, Nave 2 y Nave 3. Los cambios se reflejan automáticamente en los tres formatos.')
-        df_seg=read_df("SELECT id,bloque,tipo_captura,numero_filas,orden FROM catalogo_seguimientos_entrega WHERE activo=1 ORDER BY orden,id")
-        vista_seg=df_seg.rename(columns={'id':'ID','bloque':'Bloque','tipo_captura':'Tipo de captura','numero_filas':'Filas iniciales','orden':'Orden'})
-        nonce_seg=st.session_state.get('seg_cat_nonce',0)
-        evento_seg=st.dataframe(vista_seg,use_container_width=True,hide_index=True,on_select='rerun',selection_mode='single-row',key=f'seg_cat_tabla_{nonce_seg}') if not vista_seg.empty else None
-        filas_seg=getattr(evento_seg,'selection',{}).get('rows',[]) if evento_seg is not None else []
-        valido_seg=bool(filas_seg) and isinstance(filas_seg[0],int) and 0<=filas_seg[0]<len(vista_seg)
-        rid_seg=int(vista_seg.iloc[filas_seg[0]]['ID']) if valido_seg else None
-        if admin_required():
-            with st.expander('Agregar bloque de seguimiento',expanded=False):
-                with st.form('seg_cat_agregar',clear_on_submit=True):
-                    a,b,c,d=st.columns([3,1.5,1,1])
-                    bloque_nuevo=a.text_input('Nombre del bloque *',placeholder='Ejemplo: Seguimiento a Contaminaciones')
-                    tipo_nuevo=b.selectbox('Tipo de captura *',['TABLA','LISTA','TEXTO'],format_func=lambda x:{'TABLA':'Tabla completa','LISTA':'Lista de descripciones','TEXTO':'Descripción amplia'}[x])
-                    filas_nuevas=c.number_input('Filas iniciales',min_value=1,max_value=20,value=3,step=1)
-                    orden_nuevo=d.number_input('Orden',min_value=0,value=int(df_seg.orden.max()+1) if not df_seg.empty else 0,step=1)
-                    agregar_seg=st.form_submit_button('Agregar bloque',type='primary')
-                if agregar_seg:
-                    nombre=bloque_nuevo.strip()
-                    if not nombre: st.error('Ingresa el nombre del bloque.')
-                    else:
-                        existente=read_df('SELECT id FROM catalogo_seguimientos_entrega WHERE UPPER(TRIM(bloque))=UPPER(TRIM(?))',(nombre,))
-                        if existente.empty:
-                            exec_sql('INSERT INTO catalogo_seguimientos_entrega(bloque,tipo_captura,numero_filas,orden,activo) VALUES(?,?,?,?,1)',(nombre,tipo_nuevo,int(filas_nuevas),int(orden_nuevo)))
-                        else:
-                            exec_sql('UPDATE catalogo_seguimientos_entrega SET tipo_captura=?,numero_filas=?,orden=?,activo=1 WHERE id=?',(tipo_nuevo,int(filas_nuevas),int(orden_nuevo),int(existente.iloc[0].id)))
-                        audit(st.session_state.auth['usuario'],'AGREGAR_SEGUIMIENTO_ENTREGA',nombre)
-                        st.session_state.seg_cat_nonce=nonce_seg+1
-                        st.rerun()
-            if rid_seg:
-                actual_seg=read_df('SELECT * FROM catalogo_seguimientos_entrega WHERE id=? AND activo=1',(rid_seg,))
-                if not actual_seg.empty:
-                    r=actual_seg.iloc[0]
-                    with st.expander('Editar bloque seleccionado',expanded=True):
-                        with st.form(f'seg_cat_editar_{rid_seg}'):
-                            a,b,c,d=st.columns([3,1.5,1,1])
-                            nombre_e=a.text_input('Nombre del bloque *',str(r.bloque))
-                            tipos=['TABLA','LISTA','TEXTO']
-                            tipo_e=b.selectbox('Tipo de captura *',tipos,index=idx_or_zero(tipos,str(r.tipo_captura)),format_func=lambda x:{'TABLA':'Tabla completa','LISTA':'Lista de descripciones','TEXTO':'Descripción amplia'}[x])
-                            filas_e=c.number_input('Filas iniciales',min_value=1,max_value=20,value=int(r.numero_filas),step=1)
-                            orden_e=d.number_input('Orden',min_value=0,value=int(r.orden),step=1)
-                            guardar_seg=st.form_submit_button('Guardar cambios',type='primary')
-                        if guardar_seg:
-                            nombre=nombre_e.strip()
-                            duplicado=read_df('SELECT id FROM catalogo_seguimientos_entrega WHERE UPPER(TRIM(bloque))=UPPER(TRIM(?)) AND id<>? AND activo=1',(nombre,rid_seg))
-                            if not nombre: st.error('Ingresa el nombre del bloque.')
-                            elif not duplicado.empty: st.error('Ya existe otro bloque activo con ese nombre.')
-                            else:
-                                exec_sql('UPDATE catalogo_seguimientos_entrega SET bloque=?,tipo_captura=?,numero_filas=?,orden=? WHERE id=?',(nombre,tipo_e,int(filas_e),int(orden_e),rid_seg))
-                                audit(st.session_state.auth['usuario'],'EDITAR_SEGUIMIENTO_ENTREGA',f'ID {rid_seg} | {nombre}')
-                                st.session_state.seg_cat_nonce=nonce_seg+1
-                                st.rerun()
-                    if st.button('Eliminar bloque de seguimiento',key=f'seg_cat_eliminar_{rid_seg}'):
-                        st.session_state.seg_cat_confirmar=rid_seg
-                    if st.session_state.get('seg_cat_confirmar')==rid_seg:
-                        st.warning('El bloque dejará de aparecer en las nuevas entregas de las tres naves. Los registros históricos se conservan.')
-                        x,y=st.columns(2)
-                        if x.button('Sí, eliminar',key=f'seg_cat_ok_{rid_seg}'):
-                            exec_sql('UPDATE catalogo_seguimientos_entrega SET activo=0 WHERE id=?',(rid_seg,))
-                            audit(st.session_state.auth['usuario'],'ELIMINAR_SEGUIMIENTO_ENTREGA',f'ID {rid_seg}')
-                            st.session_state.pop('seg_cat_confirmar',None)
-                            st.session_state.seg_cat_nonce=nonce_seg+1
-                            st.rerun()
-                        if y.button('Cancelar',key=f'seg_cat_cancelar_{rid_seg}'):
-                            st.session_state.pop('seg_cat_confirmar',None)
-                            st.rerun()
 
 def page_usuarios():
     if not is_dev():
