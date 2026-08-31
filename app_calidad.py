@@ -259,6 +259,7 @@ def init_db():
     UPLOAD_DIR.mkdir(exist_ok=True)
     c=conn(); cur=c.cursor()
     cur.execute("CREATE TABLE IF NOT EXISTS usuarios(id INTEGER PRIMARY KEY AUTOINCREMENT, usuario TEXT UNIQUE, nombre TEXT, password_hash TEXT, rol TEXT, activo INTEGER DEFAULT 1, creado_en TEXT)")
+    cur.execute("CREATE TABLE IF NOT EXISTS app_config(clave TEXT PRIMARY KEY, valor TEXT, actualizado_en TEXT)")
     cur.execute("CREATE TABLE IF NOT EXISTS catalogos(id INTEGER PRIMARY KEY AUTOINCREMENT, categoria TEXT, valor TEXT, activo INTEGER DEFAULT 1, UNIQUE(categoria,valor))")
     cur.execute("CREATE TABLE IF NOT EXISTS productos(id INTEGER PRIMARY KEY AUTOINCREMENT, item TEXT UNIQUE, descripcion TEXT, cliente TEXT, familia TEXT, activo INTEGER DEFAULT 1)")
     cur.execute("CREATE TABLE IF NOT EXISTS defectos(id INTEGER PRIMARY KEY AUTOINCREMENT, codigo TEXT UNIQUE, defecto TEXT, tipo_defecto TEXT, clasificacion TEXT, activo INTEGER DEFAULT 1)")
@@ -322,11 +323,23 @@ def init_db():
             if columna not in existentes: cur.execute(f'ALTER TABLE {tabla} ADD COLUMN {columna} {tipo_sql}')
     cur.execute("CREATE TABLE IF NOT EXISTS adjuntos(id INTEGER PRIMARY KEY AUTOINCREMENT, registro_id INTEGER, folio TEXT, nombre_original TEXT, ruta_archivo TEXT, tipo_archivo TEXT, subido_por TEXT, subido_en TEXT)")
     cur.execute("CREATE TABLE IF NOT EXISTS auditoria(id INTEGER PRIMARY KEY AUTOINCREMENT, usuario TEXT, accion TEXT, detalle TEXT, fecha_hora TEXT)")
-    for item,desc,cliente,familia in SEED_PRODUCTS: cur.execute("INSERT OR IGNORE INTO productos(item,descripcion,cliente,familia,activo) VALUES(?,?,?,?,1)",(item,desc,cliente,familia))
-    for codigo,defecto,tipo,clas in SEED_DEFECTS: cur.execute("INSERT OR IGNORE INTO defectos(codigo,defecto,tipo_defecto,clasificacion,activo) VALUES(?,?,?,?,1)",(codigo,defecto,tipo,clas))
-    for cat, vals in SEED_CATALOGS.items():
-        for val in vals: cur.execute("INSERT OR IGNORE INTO catalogos(categoria,valor,activo) VALUES(?,?,1)",(cat,val))
-    for nv,li,se,ordn in SEED_NAVES_LINEAS: cur.execute('INSERT OR IGNORE INTO catalogo_naves_lineas(nave,linea,sector,linea_norm,sector_norm,orden,activo) VALUES(?,?,?,?,?,?,1)',(nv,li,se,normalizar_catalogo(li),normalizar_catalogo(se),ordn))
+    # Los valores base se cargan una sola vez. Después, los cambios del administrador son permanentes.
+    semillas_aplicadas=cur.execute("SELECT valor FROM app_config WHERE clave='semillas_catalogos_aplicadas'").fetchone()
+    if not semillas_aplicadas:
+        if cur.execute('SELECT COUNT(*) FROM productos').fetchone()[0]==0:
+            for item,desc,cliente,familia in SEED_PRODUCTS:
+                cur.execute("INSERT OR IGNORE INTO productos(item,descripcion,cliente,familia,activo) VALUES(?,?,?,?,1)",(item,desc,cliente,familia))
+        if cur.execute('SELECT COUNT(*) FROM defectos').fetchone()[0]==0:
+            for codigo,defecto,tipo,clas in SEED_DEFECTS:
+                cur.execute("INSERT OR IGNORE INTO defectos(codigo,defecto,tipo_defecto,clasificacion,activo) VALUES(?,?,?,?,1)",(codigo,defecto,tipo,clas))
+        if cur.execute('SELECT COUNT(*) FROM catalogos').fetchone()[0]==0:
+            for cat, vals in SEED_CATALOGS.items():
+                for val in vals:
+                    cur.execute("INSERT OR IGNORE INTO catalogos(categoria,valor,activo) VALUES(?,?,1)",(cat,val))
+        if cur.execute('SELECT COUNT(*) FROM catalogo_naves_lineas').fetchone()[0]==0:
+            for nv,li,se,ordn in SEED_NAVES_LINEAS:
+                cur.execute('INSERT OR IGNORE INTO catalogo_naves_lineas(nave,linea,sector,linea_norm,sector_norm,orden,activo) VALUES(?,?,?,?,?,?,1)',(nv,li,se,normalizar_catalogo(li),normalizar_catalogo(se),ordn))
+        cur.execute("INSERT OR REPLACE INTO app_config(clave,valor,actualizado_en) VALUES('semillas_catalogos_aplicadas','1',?)",(now_iso(),))
     c.commit(); c.close()
 
 def reset_admin():
@@ -769,8 +782,36 @@ def page_registro():
     elif st.session_state.registro_tipo=='ME': form_hallazgo('me_registros','🧲 Materia Extraña','CREAR_ME')
     elif st.session_state.registro_tipo=='DDM_RX': form_hallazgo('ddm_rx_registros','📦 Producto segregado por detector de metales y RX','CREAR_DDM_RX')
 def page_consulta():
-    st.title('Consulta, seguimiento y descarga')
-    st.caption('Usa el filtro para encontrar registros específicos. La fecha aparece después del número de registro.')
+    if 'consulta_tipo' not in st.session_state:
+        st.session_state.consulta_tipo=None
+
+    if st.session_state.consulta_tipo is None:
+        st.markdown('''<div class="registro-landing-hero"><div class="registro-landing-title">Consulta y descarga</div><div class="registro-landing-subtitle">Selecciona la sección que deseas consultar.</div></div>''',unsafe_allow_html=True)
+        c1,c2,c3=st.columns(3,gap='large')
+        opciones=[
+            (c1,'NO_CONFORMIDADES','📋  Consulta y seguimiento de No Conformidades\n\nPNC, Materia Extraña y Detector de metales/RX.\n\nAbrir sección','consulta_card_nc'),
+            (c2,'MUESTRAS','🧪  Muestras de retención\n\nConsulta, edición, eliminación y descarga de muestras.\n\nAbrir sección','consulta_card_muestras'),
+            (c3,'MATRIZ','📊  Matriz entrega de turno\n\nRegistros de las tres naves, PDF y matriz histórica.\n\nAbrir sección','consulta_card_matriz')
+        ]
+        for columna,valor,texto,llave in opciones:
+            with columna:
+                st.markdown('<span class="registro-card-slot"></span>',unsafe_allow_html=True)
+                if st.button(texto,key=llave):
+                    st.session_state.consulta_tipo=valor
+                    st.rerun()
+        return
+
+    if st.button('← Volver a Consulta y descarga',key='consulta_volver_selector'):
+        st.session_state.consulta_tipo=None
+        st.rerun()
+
+    tipo_consulta=st.session_state.consulta_tipo
+    titulos={
+        'NO_CONFORMIDADES':'Consulta y seguimiento de No Conformidades',
+        'MUESTRAS':'Muestras de retención',
+        'MATRIZ':'Matriz entrega de turno'
+    }
+    st.markdown(f'''<div class="registro-full-panel"><div class="registro-pill">Consulta y descarga</div><div class="registro-full-title">{titulos.get(tipo_consulta,'Consulta')}</div></div>''',unsafe_allow_html=True)
     if st.session_state.pop('excel_sync_error',None): st.warning('No fue posible actualizar el libro Excel. Verifica que el archivo no esté abierto en otro programa.')
     if EXCEL_PATH.exists(): st.download_button('📗 Descargar libro maestro Excel',EXCEL_PATH.read_bytes(),EXCEL_PATH.name,'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',key='download_excel_maestro')
     def prep(df):
@@ -904,6 +945,13 @@ def page_consulta():
                     audit(st.session_state.auth['usuario'],'EDITAR_REGISTRO',f'Tabla {table_name} | ID {selected}')
                     st.success(f'Registro actualizado correctamente: Número {selected}')
                     st.rerun()
+    if tipo_consulta=='MUESTRAS':
+        consulta_muestras_retencion()
+        return
+    if tipo_consulta=='MATRIZ':
+        matriz_entregas()
+        return
+
     t1,t2,t3=st.tabs(['PNC´s','Materia Extraña','Detector de metales y RX'])
     with t1:
         df=read_df('SELECT * FROM pnc_registros ORDER BY id ASC'); selected,shown=table(df,'pnc')
@@ -926,10 +974,6 @@ def page_consulta():
             st.markdown(f'### Registro seleccionado: Número {selected}')
             edit_record('ddm_rx_registros','ddm',selected)
             delete_confirm('ddm_rx_registros','ddm','ELIMINAR_DDM_RX',selected)
-    st.divider()
-    consulta_muestras_retencion()
-    st.divider()
-    matriz_entregas()
 
 def page_muestras_retencion():
     periodos=[
@@ -1262,186 +1306,38 @@ def page_catalogos():
 
     with tab4:
         st.subheader('Naves, líneas y sectores')
-        st.caption('Este catálogo controla la clasificación de las horas trabajadas por Nave 1, Nave 2 y Nave 3.')
-
-        filtro_nave=st.multiselect(
-            'Filtrar por nave',
-            ['Nave 1','Nave 2','Nave 3'],
-            key='cat_naves_filtro'
-        )
-        buscar=st.text_input(
-            'Buscar línea o sector',
-            placeholder='Escribe parte del nombre de la línea o sector...',
-            key='cat_naves_buscar'
-        )
-
-        df_naves=read_df('''SELECT id,nave,linea,sector,orden
-                            FROM catalogo_naves_lineas
-                            WHERE activo=1
-                            ORDER BY nave,orden,id''')
-        if filtro_nave:
-            df_naves=df_naves[df_naves['nave'].isin(filtro_nave)]
-        if buscar.strip() and not df_naves.empty:
-            texto=buscar.strip()
-            mascara=(
-                df_naves['linea'].fillna('').astype(str).str.contains(texto,case=False,na=False)
-                | df_naves['sector'].fillna('').astype(str).str.contains(texto,case=False,na=False)
-            )
-            df_naves=df_naves[mascara]
-
-        if df_naves.empty:
-            st.info('No hay relaciones activas para mostrar con los filtros seleccionados.')
-            seleccionado=None
-        else:
-            vista_naves=df_naves.rename(columns={
-                'id':'ID','nave':'Nave','linea':'Línea',
-                'sector':'Sector','orden':'Orden'
-            })
-            nonce_naves=st.session_state.get('cat_naves_nonce',0)
-            evento_naves=st.dataframe(
-                vista_naves,
-                use_container_width=True,
-                hide_index=True,
-                on_select='rerun',
-                selection_mode='single-row',
-                key=f'cat_naves_tabla_{nonce_naves}'
-            )
-            filas_naves=getattr(evento_naves,'selection',{}).get('rows',[]) if evento_naves is not None else []
-            posicion_valida=(
-                bool(filas_naves)
-                and isinstance(filas_naves[0],int)
-                and 0 <= filas_naves[0] < len(vista_naves)
-            )
-            if posicion_valida:
-                seleccionado=int(vista_naves.iloc[filas_naves[0]]['ID'])
-            else:
-                seleccionado=None
-                if filas_naves:
-                    st.session_state.cat_naves_nonce=nonce_naves+1
-                    st.rerun()
-
+        st.caption('Estas relaciones controlan la clasificación automática de horas por nave.')
+        df=read_df('SELECT id,nave,linea,sector,orden FROM catalogo_naves_lineas WHERE activo=1 ORDER BY nave,orden,id')
+        filtro=st.multiselect('Filtrar por nave',['Nave 1','Nave 2','Nave 3'],key='cn_filtro')
+        if filtro: df=df[df['nave'].isin(filtro)]
+        nonce=st.session_state.get('cn_nonce',0)
+        vista=df.rename(columns={'id':'ID','nave':'Nave','linea':'Línea','sector':'Sector','orden':'Orden'})
+        ev=st.dataframe(vista,use_container_width=True,hide_index=True,on_select='rerun',selection_mode='single-row',key=f'cn_tabla_{nonce}') if not vista.empty else None
+        rows=getattr(ev,'selection',{}).get('rows',[]) if ev is not None else []
+        valido=bool(rows) and isinstance(rows[0],int) and 0<=rows[0]<len(vista)
+        rid=int(vista.iloc[rows[0]]['ID']) if valido else None
         if admin_required():
-            with st.expander('Agregar nueva relación',expanded=False):
-                with st.form('cat_naves_agregar',clear_on_submit=True):
-                    c1,c2,c3=st.columns(3)
-                    nueva_nave=c1.selectbox('Nave *',['Nave 1','Nave 2','Nave 3'])
-                    nueva_linea=c2.text_input('Línea *')
-                    nuevo_sector=c3.text_input('Sector *')
-                    agregar_nave=st.form_submit_button('Agregar relación',type='primary')
-                if agregar_nave:
-                    linea_limpia=nueva_linea.strip()
-                    sector_limpio=nuevo_sector.strip()
-                    if not linea_limpia or not sector_limpio:
-                        st.error('Completa los campos Nave, Línea y Sector.')
+            with st.expander('Agregar relación'):
+                with st.form('cn_agregar',clear_on_submit=True):
+                    a,c,d=st.columns(3);nv=a.selectbox('Nave *',['Nave 1','Nave 2','Nave 3']);li=c.text_input('Línea *');se=d.text_input('Sector *');ok=st.form_submit_button('Agregar',type='primary')
+                if ok:
+                    if not li.strip() or not se.strip():st.error('Completa Línea y Sector.')
+                    elif not read_df('SELECT id FROM catalogo_naves_lineas WHERE nave=? AND linea_norm=? AND sector_norm=? AND activo=1',(nv,normalizar_catalogo(li),normalizar_catalogo(se))).empty:st.error('La relación ya existe.')
                     else:
-                        duplicado=read_df(
-                            '''SELECT id FROM catalogo_naves_lineas
-                               WHERE nave=? AND linea_norm=? AND sector_norm=? AND activo=1''',
-                            (nueva_nave,normalizar_catalogo(linea_limpia),normalizar_catalogo(sector_limpio))
-                        )
-                        if not duplicado.empty:
-                            st.error('La relación de nave, línea y sector ya existe.')
-                        else:
-                            anterior=read_df(
-                                '''SELECT id FROM catalogo_naves_lineas
-                                   WHERE nave=? AND linea_norm=? AND sector_norm=? LIMIT 1''',
-                                (nueva_nave,normalizar_catalogo(linea_limpia),normalizar_catalogo(sector_limpio))
-                            )
-                            orden_df=read_df(
-                                'SELECT COALESCE(MAX(orden),-1)+1 AS siguiente FROM catalogo_naves_lineas WHERE nave=?',
-                                (nueva_nave,)
-                            )
-                            orden_nuevo=int(orden_df.iloc[0]['siguiente'])
-                            if anterior.empty:
-                                rid=exec_sql(
-                                    '''INSERT INTO catalogo_naves_lineas
-                                       (nave,linea,sector,linea_norm,sector_norm,orden,activo)
-                                       VALUES(?,?,?,?,?,?,1)''',
-                                    (nueva_nave,linea_limpia,sector_limpio,
-                                     normalizar_catalogo(linea_limpia),normalizar_catalogo(sector_limpio),orden_nuevo)
-                                )
-                            else:
-                                rid=int(anterior.iloc[0]['id'])
-                                exec_sql(
-                                    '''UPDATE catalogo_naves_lineas
-                                       SET linea=?,sector=?,orden=?,activo=1
-                                       WHERE id=?''',
-                                    (linea_limpia,sector_limpio,orden_nuevo,rid)
-                                )
-                            audit(st.session_state.auth['usuario'],'AGREGAR_RELACION_NAVE',f'ID {rid} | {nueva_nave} | {linea_limpia} | {sector_limpio}')
-                            st.success('Relación agregada correctamente.')
-                            st.session_state.cat_naves_nonce=st.session_state.get('cat_naves_nonce',0)+1
-                            st.rerun()
-
-            if seleccionado is not None:
-                registro_df=read_df(
-                    '''SELECT id,nave,linea,sector,orden
-                       FROM catalogo_naves_lineas WHERE id=? AND activo=1''',
-                    (seleccionado,)
-                )
-                if registro_df.empty:
-                    st.session_state.cat_naves_nonce=st.session_state.get('cat_naves_nonce',0)+1
-                    st.rerun()
-                registro=registro_df.iloc[0]
-                st.markdown(f"### Relación seleccionada: {registro['nave']} | {registro['linea']} | {registro['sector']}")
-
-                with st.expander('Editar relación seleccionada',expanded=True):
-                    with st.form(f'cat_naves_editar_{seleccionado}'):
-                        opciones_nave=['Nave 1','Nave 2','Nave 3']
-                        c1,c2,c3,c4=st.columns([1,2,2,1])
-                        nave_editada=c1.selectbox(
-                            'Nave *',opciones_nave,
-                            index=idx_or_zero(opciones_nave,str(registro['nave']))
-                        )
-                        linea_editada=c2.text_input('Línea *',value=str(registro['linea'] or ''))
-                        sector_editado=c3.text_input('Sector *',value=str(registro['sector'] or ''))
-                        orden_editado=c4.number_input('Orden',min_value=0,step=1,value=int(registro['orden'] or 0))
-                        guardar_edicion=st.form_submit_button('Guardar cambios',type='primary')
-                    if guardar_edicion:
-                        linea_limpia=linea_editada.strip()
-                        sector_limpio=sector_editado.strip()
-                        if not linea_limpia or not sector_limpio:
-                            st.error('Completa Línea y Sector.')
-                        else:
-                            duplicado=read_df(
-                                '''SELECT id FROM catalogo_naves_lineas
-                                   WHERE nave=? AND linea_norm=? AND sector_norm=?
-                                   AND id<>? AND activo=1''',
-                                (nave_editada,normalizar_catalogo(linea_limpia),
-                                 normalizar_catalogo(sector_limpio),seleccionado)
-                            )
-                            if not duplicado.empty:
-                                st.error('Ya existe otra relación activa con esos datos.')
-                            else:
-                                exec_sql(
-                                    '''UPDATE catalogo_naves_lineas
-                                       SET nave=?,linea=?,sector=?,linea_norm=?,sector_norm=?,orden=?
-                                       WHERE id=?''',
-                                    (nave_editada,linea_limpia,sector_limpio,
-                                     normalizar_catalogo(linea_limpia),normalizar_catalogo(sector_limpio),
-                                     int(orden_editado),seleccionado)
-                                )
-                                audit(st.session_state.auth['usuario'],'EDITAR_RELACION_NAVE',f'ID {seleccionado} | {nave_editada} | {linea_limpia} | {sector_limpio}')
-                                st.success('Relación actualizada correctamente. La clasificación de horas usará el nuevo valor.')
-                                st.session_state.cat_naves_nonce=st.session_state.get('cat_naves_nonce',0)+1
-                                st.rerun()
-
-                if st.button('Eliminar relación seleccionada',key=f'cat_naves_eliminar_{seleccionado}'):
-                    st.session_state.cat_naves_confirmar=seleccionado
-                if st.session_state.get('cat_naves_confirmar')==seleccionado:
-                    st.warning('Confirma la eliminación. La relación dejará de utilizarse para clasificar nuevas sumatorias.')
-                    b1,b2=st.columns(2)
-                    if b1.button('Sí, eliminar definitivamente',key=f'cat_naves_eliminar_ok_{seleccionado}'):
-                        exec_sql('UPDATE catalogo_naves_lineas SET activo=0 WHERE id=?',(seleccionado,))
-                        audit(st.session_state.auth['usuario'],'ELIMINAR_RELACION_NAVE',f'ID {seleccionado}')
-                        st.session_state.pop('cat_naves_confirmar',None)
-                        st.session_state.cat_naves_nonce=st.session_state.get('cat_naves_nonce',0)+1
-                        st.success('Relación eliminada correctamente.')
-                        st.rerun()
-                    if b2.button('Cancelar',key=f'cat_naves_eliminar_cancelar_{seleccionado}'):
-                        st.session_state.pop('cat_naves_confirmar',None)
-                        st.session_state.cat_naves_nonce=st.session_state.get('cat_naves_nonce',0)+1
-                        st.rerun()
+                        orden=int(read_df('SELECT COALESCE(MAX(orden),-1)+1 n FROM catalogo_naves_lineas WHERE nave=?',(nv,)).iloc[0]['n']);exec_sql('INSERT INTO catalogo_naves_lineas(nave,linea,sector,linea_norm,sector_norm,orden,activo) VALUES(?,?,?,?,?,?,1)',(nv,li.strip(),se.strip(),normalizar_catalogo(li),normalizar_catalogo(se),orden));st.session_state.cn_nonce=nonce+1;st.rerun()
+            if rid:
+                r=read_df('SELECT * FROM catalogo_naves_lineas WHERE id=? AND activo=1',(rid,))
+                if not r.empty:
+                    r=r.iloc[0]
+                    with st.form(f'cn_editar_{rid}'):
+                        a,c,d,o=st.columns([1,2,2,1]);nv=a.selectbox('Nave',['Nave 1','Nave 2','Nave 3'],index=['Nave 1','Nave 2','Nave 3'].index(r.nave));li=c.text_input('Línea',r.linea);se=d.text_input('Sector',r.sector);orden=o.number_input('Orden',0,value=int(r.orden));guardar=st.form_submit_button('Guardar cambios')
+                    if guardar:exec_sql('UPDATE catalogo_naves_lineas SET nave=?,linea=?,sector=?,linea_norm=?,sector_norm=?,orden=? WHERE id=?',(nv,li.strip(),se.strip(),normalizar_catalogo(li),normalizar_catalogo(se),int(orden),rid));st.session_state.cn_nonce=nonce+1;st.rerun()
+                    if st.button('Eliminar relación',key=f'cn_del_{rid}'):st.session_state.cn_confirm=rid
+                    if st.session_state.get('cn_confirm')==rid:
+                        st.warning('Confirma la eliminación de la relación seleccionada.')
+                        x,y=st.columns(2)
+                        if x.button('Sí, eliminar',key=f'cn_ok_{rid}'):exec_sql('UPDATE catalogo_naves_lineas SET activo=0 WHERE id=?',(rid,));st.session_state.pop('cn_confirm',None);st.session_state.cn_nonce=nonce+1;st.rerun()
+                        if y.button('Cancelar',key=f'cn_cancel_{rid}'):st.session_state.pop('cn_confirm',None);st.session_state.cn_nonce=nonce+1;st.rerun()
 
 def page_usuarios():
     if not is_dev():
