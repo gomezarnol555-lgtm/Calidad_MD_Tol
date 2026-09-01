@@ -1103,6 +1103,50 @@ def styles(compact=False):
         font-weight:950 !important;
         line-height:1.75 !important;
     }
+
+    /* Niveles visuales reales dentro de todas las tarjetas */
+    div[class*="st-key-card_pnc"] button p,
+    div[class*="st-key-card_me"] button p,
+    div[class*="st-key-card_ddm"] button p,
+    div[class*="st-key-consulta_tarjeta_"] button p,
+    div[class*="st-key-card_muestras_"] button p,
+    div[class*="st-key-entrega_Nave"] button p {
+        width:100% !important;
+        margin:0 !important;
+        color:#667085 !important;
+        font-size:.88rem !important;
+        font-weight:600 !important;
+        line-height:1.5 !important;
+        text-align:justify !important;
+        text-justify:inter-word !important;
+        white-space:normal !important;
+        overflow:visible !important;
+        text-overflow:clip !important;
+    }
+    div[class*="st-key-card_pnc"] button strong,
+    div[class*="st-key-card_me"] button strong,
+    div[class*="st-key-card_ddm"] button strong,
+    div[class*="st-key-consulta_tarjeta_"] button strong,
+    div[class*="st-key-card_muestras_"] button strong,
+    div[class*="st-key-entrega_Nave"] button strong {
+        color:#102A43 !important;
+        font-size:1.12rem !important;
+        font-weight:950 !important;
+        letter-spacing:-.01em !important;
+    }
+    div[class*="st-key-card_pnc"] button em,
+    div[class*="st-key-card_me"] button em,
+    div[class*="st-key-card_ddm"] button em,
+    div[class*="st-key-consulta_tarjeta_"] button em,
+    div[class*="st-key-card_muestras_"] button em,
+    div[class*="st-key-entrega_Nave"] button em {
+        display:inline-block !important;
+        color:#008C73 !important;
+        font-size:.82rem !important;
+        font-style:normal !important;
+        font-weight:900 !important;
+        text-align:left !important;
+    }
     </style>
     """, unsafe_allow_html=True)
 
@@ -1265,15 +1309,15 @@ def page_registro():
         a,b,c=st.columns(3,gap='large')
         with a:
             st.markdown('<span class="registro-card-slot"></span>',unsafe_allow_html=True)
-            if st.button("📝  PNC´s\n\nCaptura y seguimiento de producto no conforme.\n\nAbrir registro",key='card_pnc'):
+            if st.button("📝  **PNC´s**\n\nCaptura y seguimiento de producto no conforme.\n\n*Abrir registro*",key='card_pnc'):
                 st.session_state.registro_tipo='PNC'; st.rerun()
         with b:
             st.markdown('<span class="registro-card-slot"></span>',unsafe_allow_html=True)
-            if st.button("🧲  Materia Extraña\n\nRegistro de hallazgos y acciones de contención.\n\nAbrir registro",key='card_me'):
+            if st.button("🧲  **Materia Extraña**\n\nRegistro de hallazgos y acciones de contención.\n\n*Abrir registro*",key='card_me'):
                 st.session_state.registro_tipo='ME'; st.rerun()
         with c:
             st.markdown('<span class="registro-card-slot"></span>',unsafe_allow_html=True)
-            if st.button("📦  Detector de metales y RX\n\nControl de producto segregado por detección.\n\nAbrir registro",key='card_ddm'):
+            if st.button("📦  **Detector de metales y RX**\n\nControl de producto segregado por detección.\n\n*Abrir registro*",key='card_ddm'):
                 st.session_state.registro_tipo='DDM_RX'; st.rerun()
     def form_hallazgo(tabla,titulo,audit_action):
         nonce=st.session_state.form_nonce
@@ -1406,9 +1450,9 @@ def page_consulta():
     if st.session_state.consulta_tipo is None:
         st.markdown('''<div class="registro-landing-hero"><div class="registro-landing-title">Consulta y descarga</div><div class="registro-landing-subtitle">Selecciona la sección que deseas consultar para acceder a su información.</div></div>''',unsafe_allow_html=True)
         tarjetas=[
-            ('NO_CONFORMIDADES','📋  Consulta y seguimiento de No Conformes\nPNC, Materia Extraña y Detector de metales/RX.\nAbrir sección'),
-            ('MUESTRAS','🧪  Muestras de retención\nConsulta, edición, eliminación y descarga de muestras.\nAbrir sección'),
-            ('MATRIZ','📊  Matriz de entrega de turno\nRegistros de las tres naves, indicadores y reportes por registro.\nAbrir sección')
+            ('NO_CONFORMIDADES','📋  **Consulta y seguimiento de No Conformes**\n\nPNC, Materia Extraña y Detector de metales/RX.\n\n*Abrir sección*'),
+            ('MUESTRAS','🧪  **Muestras de retención**\n\nConsulta, edición, eliminación y descarga de muestras.\n\n*Abrir sección*'),
+            ('MATRIZ','📊  **Matriz de entrega de turno**\n\nRegistros de las tres naves, indicadores y reportes por registro.\n\n*Abrir sección*')
         ]
         for columna,(valor,texto) in zip(st.columns(3,gap='large'),tarjetas):
             with columna:
@@ -1575,21 +1619,21 @@ def page_consulta():
         if selected:
             st.markdown(f'### Registro seleccionado: Número {selected}')
             edit_record('pnc_registros','pnc',selected)
-            delete_confirm('pnc_registros','pnc','ELIMINAR_PNC',selected)
+            if is_dev(): delete_confirm('pnc_registros','pnc','ELIMINAR_PNC',selected)
     with t2:
         df=read_df('SELECT * FROM me_registros ORDER BY id ASC'); selected,shown=table(df,'me')
         if not shown.empty: st.download_button('Descargar Materia Extraña CSV',prep(shown).to_csv(index=False).encode('utf-8-sig'),f"materia_extrana_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",'text/csv')
         if selected:
             st.markdown(f'### Registro seleccionado: Número {selected}')
             edit_record('me_registros','me',selected)
-            delete_confirm('me_registros','me','ELIMINAR_ME',selected)
+            if is_dev(): delete_confirm('me_registros','me','ELIMINAR_ME',selected)
     with t3:
         df=read_df('SELECT * FROM ddm_rx_registros ORDER BY id ASC'); selected,shown=table(df,'ddm')
         if not shown.empty: st.download_button('Descargar Detector de metales y RX CSV',prep(shown).to_csv(index=False).encode('utf-8-sig'),f"ddm_rx_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",'text/csv')
         if selected:
             st.markdown(f'### Registro seleccionado: Número {selected}')
             edit_record('ddm_rx_registros','ddm',selected)
-            delete_confirm('ddm_rx_registros','ddm','ELIMINAR_DDM_RX',selected)
+            if is_dev(): delete_confirm('ddm_rx_registros','ddm','ELIMINAR_DDM_RX',selected)
 
 def page_muestras_retencion():
     periodos=[
@@ -1611,7 +1655,7 @@ def page_muestras_retencion():
             for col,(tabla,nombre,icono) in zip(columnas,periodos[inicio:inicio+3]):
                 with col:
                     st.markdown('<span class="registro-card-slot"></span>',unsafe_allow_html=True)
-                    if st.button(f'{icono}  {nombre}\nCaptura y seguimiento de muestras de retención.\nAbrir registro',key=f'card_{tabla}'):
+                    if st.button(f'{icono}  **{nombre}**\n\nCaptura y seguimiento de muestras de retención.\n\n*Abrir registro*',key=f'card_{tabla}'):
                         st.session_state.muestra_tipo=tabla; st.rerun()
         return
     info=next((x for x in periodos if x[0]==seleccionado),None)
@@ -1722,17 +1766,18 @@ def consulta_muestras_retencion():
                         exec_sql(f'UPDATE {tabla} SET item=?,descripcion=?,lote=?,destino=?,numero_muestras=?,numero_corrugado=?,responsable=?,observaciones=?,actualizado_por=?,actualizado_en=? WHERE id=?',(item,descripcion,lote.strip(),destino,float(muestras),float(corrugado),responsable,observaciones.strip(),st.session_state.auth['usuario'],now_iso(),rid))
                         audit(st.session_state.auth['usuario'],'EDITAR_MUESTRA_RETENCION',f'{nombre} | ID {rid}')
                         st.success(f'Registro actualizado correctamente. Número {rid}'); st.rerun()
-            if st.button('Eliminar registro',key=f'del_{tabla}_{rid}'):
-                st.session_state[f'confirm_{tabla}']=rid
-            if st.session_state.get(f'confirm_{tabla}')==rid:
-                st.warning(f'Confirma la eliminación del registro N° {rid}.')
-                d1,d2=st.columns(2)
-                if d1.button('Confirmar eliminación',key=f'ok_{tabla}_{rid}'):
-                    exec_sql(f'DELETE FROM {tabla} WHERE id=?',(rid,)); reset_autoincrement(tabla)
-                    audit(st.session_state.auth['usuario'],'ELIMINAR_MUESTRA_RETENCION',f'{nombre} | ID {rid}')
-                    st.session_state.pop(f'confirm_{tabla}',None); st.session_state[nonce_key]=st.session_state.get(nonce_key,0)+1; st.rerun()
-                if d2.button('Cancelar',key=f'cancel_{tabla}_{rid}'):
-                    st.session_state.pop(f'confirm_{tabla}',None); st.session_state[nonce_key]=st.session_state.get(nonce_key,0)+1; st.rerun()
+            if is_dev():
+                if st.button('Eliminar registro',key=f'del_{tabla}_{rid}'):
+                    st.session_state[f'confirm_{tabla}']=rid
+                if st.session_state.get(f'confirm_{tabla}')==rid:
+                    st.warning(f'El registro número {rid} se eliminará de forma permanente. Esta acción no se puede deshacer.')
+                    d1,d2=st.columns(2)
+                    if d1.button('Confirmar eliminación',key=f'ok_{tabla}_{rid}'):
+                        exec_sql(f'DELETE FROM {tabla} WHERE id=?',(rid,)); reset_autoincrement(tabla)
+                        audit(st.session_state.auth['usuario'],'ELIMINAR_MUESTRA_RETENCION',f'{nombre} | ID {rid}')
+                        st.session_state.pop(f'confirm_{tabla}',None); st.session_state[nonce_key]=st.session_state.get(nonce_key,0)+1; st.rerun()
+                    if d2.button('Cancelar',key=f'cancel_{tabla}_{rid}'):
+                        st.session_state.pop(f'confirm_{tabla}',None); st.session_state[nonce_key]=st.session_state.get(nonce_key,0)+1; st.rerun()
 
 def page_entrega_turno():
     referencia='RE-CAL01-2301-00002-2013 Rev. 1'
@@ -1745,7 +1790,7 @@ def page_entrega_turno():
         for col,nave in zip(cols,['Nave 1','Nave 2','Nave 3']):
             with col:
                 st.markdown('<span class="registro-card-slot"></span>',unsafe_allow_html=True)
-                if st.button(f'🏭  {nave}\nEntrega y continuidad de actividades.\nAbrir registro',key=f'entrega_{nave}'):
+                if st.button(f'🏭  **{nave}**\n\nEntrega y continuidad de actividades.\n\n*Abrir registro*',key=f'entrega_{nave}'):
                     st.session_state.entrega_nave=nave; st.rerun()
         return
     nave=st.session_state.entrega_nave
