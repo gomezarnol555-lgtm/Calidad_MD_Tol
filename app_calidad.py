@@ -127,6 +127,96 @@ def excel_matriz(df):
             for cell in ws[1]:cell.font=Font(bold=True,color='FFFFFF');cell.fill=PatternFill('solid',fgColor='062C36')
     return b.getvalue()
 
+def pdf_pnc(rid):
+    """Genera el formato corporativo de Producto No Conforme del registro seleccionado."""
+    try:
+        from reportlab.lib.pagesizes import A4
+        from reportlab.pdfgen import canvas
+        from reportlab.pdfbase.pdfmetrics import stringWidth
+    except ModuleNotFoundError:
+        return None
+    df=read_df('SELECT * FROM pnc_registros WHERE id=?',(rid,))
+    if df.empty: return None
+    r=df.iloc[0].to_dict()
+    def valor(campo):
+        v=r.get(campo,'')
+        return '' if v is None or pd.isna(v) else str(v)
+    def texto(c,contenido,x,y,tam=8,negrita=False):
+        c.setFont('Helvetica-Bold' if negrita else 'Helvetica',tam)
+        c.drawString(x,y,str(contenido or ''))
+    def ajustar(c,contenido,x,y,ancho,tam=8,negrita=False):
+        contenido=str(contenido or '').replace('\n',' / ')
+        fuente='Helvetica-Bold' if negrita else 'Helvetica'; actual=tam
+        while actual>5.5 and stringWidth(contenido,fuente,actual)>ancho: actual-=.25
+        if stringWidth(contenido,fuente,actual)>ancho:
+            while contenido and stringWidth(contenido+'...',fuente,actual)>ancho: contenido=contenido[:-1]
+            contenido+='...'
+        c.setFont(fuente,actual); c.drawString(x,y,contenido)
+    def parrafo(c,contenido,x,y,ancho,tam=8.5,interlineado=11,max_lineas=7):
+        lineas=[]
+        for bloque in str(contenido or '').splitlines() or ['']:
+            actual=''
+            for palabra in bloque.split():
+                prueba=(actual+' '+palabra).strip()
+                if stringWidth(prueba,'Helvetica',tam)<=ancho: actual=prueba
+                else:
+                    if actual: lineas.append(actual)
+                    actual=palabra
+            if actual: lineas.append(actual)
+        c.setFont('Helvetica',tam)
+        for i,linea in enumerate(lineas[:max_lineas]): c.drawString(x,y-i*interlineado,linea)
+        if len(lineas)>max_lineas: c.drawRightString(x+ancho,y-(max_lineas-1)*interlineado,'...')
+    b=BytesIO(); c=canvas.Canvas(b,pagesize=A4); W,H=A4
+    c.setTitle('Informe de Producto No Conforme')
+    c.setLineWidth(1.1); c.rect(10,10,W-20,H-20)
+    izq=58; der=W-58; ancho=der-izq
+    # Encabezado
+    sup=742; alto=52; logo=132; revision=58
+    c.setLineWidth(.7); c.rect(izq,sup-alto,ancho,alto)
+    c.line(izq+logo,sup-alto,izq+logo,sup); c.line(der-revision,sup-alto,der-revision,sup)
+    # Marca vectorial, no requiere archivo externo
+    c.setFillColorRGB(.95,.18,.08); c.circle(izq+38,sup-25,11,fill=1,stroke=0)
+    c.setFillColorRGB(1,.75,.05)
+    for desplazamiento in (-7,-3,1,5): c.setLineWidth(1); c.line(izq+30,sup-19+desplazamiento,izq+46,sup-31+desplazamiento)
+    c.setFillColorRGB(.12,.32,.68); texto(c,'Mundo Dulce',izq+55,sup-31,10,True); c.setFillColorRGB(0,0,0)
+    centro_izq=izq+logo; centro_der=der-revision
+    c.setFont('Helvetica',8.3); c.drawCentredString((centro_izq+centro_der)/2,sup-19,'Anexo 5. Informe de Producto No Conforme')
+    c.drawCentredString((centro_izq+centro_der)/2,sup-39,'PG-CAL01-2301-01760-2007')
+    c.drawCentredString(der-revision/2,sup-31,'Rev. 0')
+    # Folio
+    y=665; texto(c,'PNC No.',der-100,y+5,8.5); c.rect(der-58,y,58,18)
+    ajustar(c,valor('folio') or f'ID/{rid}',der-55,y+5,52,8,True)
+    # Datos registrados
+    producto=' - '.join(x for x in [valor('item'),valor('descripcion_producto')] if x)
+    cantidad=valor('cantidad_observada')
+    try: cantidad=f"{float(cantidad):.2f} kg"
+    except Exception: pass
+    responsables=' / '.join(x for x in [valor('supervisor'),valor('analista')] if x)
+    filas=[('Fecha:',valor('fecha_apertura')),('Sector:',valor('linea_sector')),('Código de la No Conformidad:',valor('codigo_defecto')),('Item y Producto o SE:',producto),('Lote:',valor('lote')),('Cantidad observada:',cantidad),('Responsables:',responsables)]
+    arriba=646; fila_alto=19; etiqueta=150
+    c.rect(izq,arriba-fila_alto*len(filas),ancho,fila_alto*len(filas)); c.line(izq+etiqueta,arriba-fila_alto*len(filas),izq+etiqueta,arriba)
+    for i,(nombre,dato) in enumerate(filas):
+        limite=arriba-i*fila_alto
+        if i: c.line(izq,limite,der,limite)
+        texto(c,nombre,izq+2,limite-fila_alto+6,7.8); ajustar(c,dato,izq+etiqueta+3,limite-fila_alto+6,ancho-etiqueta-6,7.8)
+    # Acciones inmediatas
+    acciones_sup=495; acciones_alto=112
+    c.rect(izq,acciones_sup-acciones_alto,ancho,acciones_alto); c.line(izq,acciones_sup-18,der,acciones_sup-18)
+    c.setFont('Helvetica',8.5); c.drawCentredString(izq+ancho/2,acciones_sup-13,'Acciones inmediatas')
+    parrafo(c,valor('acciones_inmediatas'),izq+6,acciones_sup-32,ancho-12)
+    # Responsable
+    responsable_y=348; c.rect(izq,responsable_y,ancho,18)
+    ajustar(c,'Responsable: '+(valor('analista') or valor('supervisor')),izq+3,responsable_y+5,ancho-6,8)
+    # Observaciones
+    obs_sup=331; obs_alto=115
+    c.rect(izq,obs_sup-obs_alto,ancho,obs_alto); c.line(izq,obs_sup-18,der,obs_sup-18)
+    c.setFont('Helvetica',8.5); c.drawCentredString(izq+ancho/2,obs_sup-13,'Observaciones')
+    observaciones=valor('observaciones')
+    if valor('descripcion_defecto'):
+        observaciones=('Descripción de la no conformidad: '+valor('descripcion_defecto')+'\n'+observaciones).strip()
+    parrafo(c,observaciones,izq+6,obs_sup-32,ancho-12)
+    c.showPage(); c.save(); return b.getvalue()
+
 def pdf_entrega(eid):
     try:
         from reportlab.lib import colors
@@ -1618,6 +1708,11 @@ def page_consulta():
         if not shown.empty: st.download_button('Descargar PNC CSV',prep(shown).to_csv(index=False).encode('utf-8-sig'),f"pnc_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",'text/csv')
         if selected:
             st.markdown(f'### Registro seleccionado: Número {selected}')
+            contenido_pdf=pdf_pnc(selected)
+            if contenido_pdf:
+                st.download_button('Descargar informe PNC en PDF',contenido_pdf,f'informe_pnc_{selected}.pdf','application/pdf',key=f'pnc_pdf_{selected}')
+            else:
+                st.warning('No fue posible generar el informe PDF. Verifica que reportlab esté incluido en requirements.txt.')
             edit_record('pnc_registros','pnc',selected)
             if is_dev(): delete_confirm('pnc_registros','pnc','ELIMINAR_PNC',selected)
     with t2:
