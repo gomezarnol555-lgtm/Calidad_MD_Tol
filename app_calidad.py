@@ -1075,6 +1075,34 @@ def styles(compact=False):
             padding-left:.35rem !important;
         }
     }
+
+    /* Jerarquia tipografica de las tarjetas: icono y titulo primero, descripcion justificada */
+    div[class*="st-key-card_pnc"] button p,
+    div[class*="st-key-card_me"] button p,
+    div[class*="st-key-card_ddm"] button p,
+    div[class*="st-key-consulta_tarjeta_"] button p,
+    div[class*="st-key-card_muestras_"] button p,
+    div[class*="st-key-entrega_Nave"] button p {
+        width:100% !important;
+        text-align:justify !important;
+        text-justify:inter-word !important;
+        white-space:pre-line !important;
+        color:#5F6B7C !important;
+        font-size:.88rem !important;
+        font-weight:600 !important;
+        line-height:1.42 !important;
+    }
+    div[class*="st-key-card_pnc"] button p::first-line,
+    div[class*="st-key-card_me"] button p::first-line,
+    div[class*="st-key-card_ddm"] button p::first-line,
+    div[class*="st-key-consulta_tarjeta_"] button p::first-line,
+    div[class*="st-key-card_muestras_"] button p::first-line,
+    div[class*="st-key-entrega_Nave"] button p::first-line {
+        color:#102A43 !important;
+        font-size:1.08rem !important;
+        font-weight:950 !important;
+        line-height:1.75 !important;
+    }
     </style>
     """, unsafe_allow_html=True)
 
@@ -1378,9 +1406,9 @@ def page_consulta():
     if st.session_state.consulta_tipo is None:
         st.markdown('''<div class="registro-landing-hero"><div class="registro-landing-title">Consulta y descarga</div><div class="registro-landing-subtitle">Selecciona la sección que deseas consultar para acceder a su información.</div></div>''',unsafe_allow_html=True)
         tarjetas=[
-            ('NO_CONFORMIDADES','📋  Consulta y seguimiento de No Conformes\n\nPNC, Materia Extraña y Detector de metales/RX.\n\nAbrir sección'),
-            ('MUESTRAS','🧪  Muestras de retención\n\nConsulta, edición, eliminación y descarga de muestras.\n\nAbrir sección'),
-            ('MATRIZ','📊  Matriz de entrega de turno\n\nRegistros de las tres naves, indicadores y reportes por registro.\n\nAbrir sección')
+            ('NO_CONFORMIDADES','📋  Consulta y seguimiento de No Conformes\nPNC, Materia Extraña y Detector de metales/RX.\nAbrir sección'),
+            ('MUESTRAS','🧪  Muestras de retención\nConsulta, edición, eliminación y descarga de muestras.\nAbrir sección'),
+            ('MATRIZ','📊  Matriz de entrega de turno\nRegistros de las tres naves, indicadores y reportes por registro.\nAbrir sección')
         ]
         for columna,(valor,texto) in zip(st.columns(3,gap='large'),tarjetas):
             with columna:
@@ -1583,7 +1611,7 @@ def page_muestras_retencion():
             for col,(tabla,nombre,icono) in zip(columnas,periodos[inicio:inicio+3]):
                 with col:
                     st.markdown('<span class="registro-card-slot"></span>',unsafe_allow_html=True)
-                    if st.button(f'{icono}  {nombre}\n\nCaptura y seguimiento de muestras de retención.\n\nAbrir registro',key=f'card_{tabla}'):
+                    if st.button(f'{icono}  {nombre}\nCaptura y seguimiento de muestras de retención.\nAbrir registro',key=f'card_{tabla}'):
                         st.session_state.muestra_tipo=tabla; st.rerun()
         return
     info=next((x for x in periodos if x[0]==seleccionado),None)
@@ -1717,7 +1745,7 @@ def page_entrega_turno():
         for col,nave in zip(cols,['Nave 1','Nave 2','Nave 3']):
             with col:
                 st.markdown('<span class="registro-card-slot"></span>',unsafe_allow_html=True)
-                if st.button(f'🏭  {nave}\n\nEntrega y continuidad de actividades.\n\nAbrir registro',key=f'entrega_{nave}'):
+                if st.button(f'🏭  {nave}\nEntrega y continuidad de actividades.\nAbrir registro',key=f'entrega_{nave}'):
                     st.session_state.entrega_nave=nave; st.rerun()
         return
     nave=st.session_state.entrega_nave
@@ -2089,140 +2117,102 @@ def page_catalogos():
 
 def page_usuarios():
     if not is_dev():
-        st.warning('Solo el administrador puede gestionar usuarios.')
+        st.warning('Esta sección está disponible únicamente para administradores.')
         return
-
     st.title('Administración de usuarios')
-    st.caption('Desde esta sección el administrador puede crear usuarios, asignar rol y activar o desactivar accesos.')
-
-    st.subheader('Crear nuevo usuario')
-
-    with st.form('crear_usuario_form', clear_on_submit=False):
-        col1, col2 = st.columns(2)
-
-        with col1:
-            nuevo_usuario = st.text_input('Usuario', placeholder='Ejemplo: jperez')
-            nuevo_nombre = st.text_input('Nombre completo', placeholder='Ejemplo: Juan Pérez')
-
-        with col2:
-            nueva_password = st.text_input('Contraseña inicial', type='password', placeholder='Contraseña temporal')
-            nuevo_rol = st.selectbox('Rol', ['usuario', 'desarrollador'])
-
-        crear = st.form_submit_button('➕ Crear usuario')
-
-    if crear:
-        nuevo_usuario = nuevo_usuario.strip()
-        nuevo_nombre = nuevo_nombre.strip()
-        nueva_password = nueva_password.strip()
-
-        if not nuevo_usuario:
-            st.error('Ingresa el usuario.')
-        elif not nuevo_nombre:
-            st.error('Ingresa el nombre completo.')
-        elif not nueva_password:
-            st.error('Ingresa una contraseña inicial.')
-        else:
-            existe = read_df('SELECT id FROM usuarios WHERE usuario=?', (nuevo_usuario,))
-
-            if not existe.empty:
-                st.error('No se pudo crear. Ese usuario ya existe.')
+    st.caption('Selecciona directamente un registro de la tabla para editar, habilitar, inhabilitar o eliminar la cuenta.')
+    if 'usuarios_nonce' not in st.session_state: st.session_state.usuarios_nonce=0
+    st.subheader('Crear usuario')
+    with st.expander('Agregar nuevo usuario',expanded=False):
+        with st.form('crear_usuario_form',clear_on_submit=True):
+            c1,c2=st.columns(2)
+            nuevo_usuario=c1.text_input('Usuario *',placeholder='Ejemplo: jperez')
+            nuevo_nombre=c2.text_input('Nombre completo *',placeholder='Ejemplo: Juan Pérez')
+            c3,c4=st.columns(2)
+            nueva_password=c3.text_input('Contraseña inicial *',type='password')
+            nuevo_rol=c4.selectbox('Rol *',['usuario','desarrollador'],format_func=lambda x:'Usuario' if x=='usuario' else 'Administrador / desarrollador')
+            crear=st.form_submit_button('Crear usuario',type='primary')
+        if crear:
+            usuario=nuevo_usuario.strip(); nombre=nuevo_nombre.strip(); password=nueva_password.strip()
+            faltan=[]
+            if not usuario:faltan.append('Usuario')
+            if not nombre:faltan.append('Nombre completo')
+            if not password:faltan.append('Contraseña inicial')
+            if faltan: st.error('Completa los campos obligatorios: '+', '.join(faltan)+'.')
+            elif not read_df('SELECT id FROM usuarios WHERE usuario=?',(usuario,)).empty: st.error('No fue posible crear la cuenta porque el nombre de usuario ya está registrado.')
             else:
-                exec_sql(
-                    """
-                    INSERT INTO usuarios
-                    (usuario, nombre, password_hash, rol, activo, creado_en)
-                    VALUES (?, ?, ?, ?, 1, ?)
-                    """,
-                    (
-                        nuevo_usuario,
-                        nuevo_nombre,
-                        hash_password(nueva_password),
-                        nuevo_rol,
-                        now_iso()
-                    )
-                )
-
-                audit(
-                    st.session_state.auth['usuario'],
-                    'CREAR_USUARIO',
-                    f'Usuario creado: {nuevo_usuario} | Rol: {nuevo_rol}'
-                )
-
-                st.success(f'Usuario creado correctamente: {nuevo_usuario}')
-                st.rerun()
-
-    st.divider()
-
+                exec_sql('INSERT INTO usuarios(usuario,nombre,password_hash,rol,activo,creado_en) VALUES(?,?,?,?,1,?)',(usuario,nombre,hash_password(password),nuevo_rol,now_iso()))
+                audit(st.session_state.auth['usuario'],'CREAR_USUARIO',f'Usuario {usuario} | Rol {nuevo_rol}')
+                st.session_state.usuarios_nonce+=1; st.success('Usuario creado correctamente.'); st.rerun()
     st.subheader('Usuarios registrados')
-
-    usuarios = read_df(
-        """
-        SELECT
-            id,
-            usuario,
-            nombre,
-            rol,
-            CASE WHEN activo=1 THEN 'Activo' ELSE 'Inactivo' END AS estado,
-            creado_en
-        FROM usuarios
-        ORDER BY id
-        """
-    )
-
-    st.dataframe(
-        usuarios,
-        use_container_width=True,
-        hide_index=True
-    )
-
+    usuarios=read_df("""SELECT id,usuario,nombre,rol,CASE WHEN activo=1 THEN 'Habilitado' ELSE 'Inhabilitado' END AS estado,creado_en FROM usuarios ORDER BY id""")
     if usuarios.empty:
-        st.info('No hay usuarios registrados.')
+        st.info('No se encontraron usuarios registrados.'); return
+    vista=usuarios.rename(columns={'id':'ID','usuario':'Usuario','nombre':'Nombre completo','rol':'Rol','estado':'Estado','creado_en':'Fecha de creación'})
+    evento=st.dataframe(vista,use_container_width=True,hide_index=True,on_select='rerun',selection_mode='single-row',key=f'usuarios_tabla_{st.session_state.usuarios_nonce}')
+    filas=getattr(evento,'selection',{}).get('rows',[]) if evento is not None else []
+    valido=bool(filas) and isinstance(filas[0],int) and 0<=filas[0]<len(vista)
+    if not valido:
+        st.info('Selecciona un usuario en la tabla para administrar la cuenta.')
         return
-
-    st.subheader('Activar o desactivar usuario')
-
-    opciones = [
-        f"{r.id} | {r.usuario} | {r.nombre} | {r.rol} | {r.estado}"
-        for r in usuarios.itertuples()
-    ]
-
-    usuario_sel = st.selectbox('Selecciona un usuario', opciones)
-    id_usuario = int(usuario_sel.split('|')[0].strip())
-    usuario_objetivo = usuario_sel.split('|')[1].strip()
-    estado_objetivo = usuario_sel.split('|')[-1].strip()
-
-    col_a, col_b = st.columns(2)
-
-    with col_a:
-        desactivar = st.button('🔒 Desactivar usuario', disabled=(estado_objetivo == 'Inactivo'))
-
-    with col_b:
-        activar = st.button('✅ Activar usuario', disabled=(estado_objetivo == 'Activo'))
-
-    if desactivar:
-        if usuario_objetivo == st.session_state.auth['usuario']:
-            st.error('No puedes desactivar el usuario con el que estás trabajando actualmente.')
-        elif usuario_objetivo == ADMIN_USER:
-            st.error('Por seguridad, no se puede desactivar el usuario administrador principal.')
+    rid=int(vista.iloc[filas[0]]['ID'])
+    actual_df=read_df('SELECT * FROM usuarios WHERE id=?',(rid,))
+    if actual_df.empty:
+        st.session_state.usuarios_nonce+=1; st.rerun()
+    r=actual_df.iloc[0]
+    st.markdown(f"### Usuario seleccionado: {r['usuario']}")
+    with st.expander('Editar información y rol',expanded=True):
+        with st.form(f'editar_usuario_{rid}'):
+            a,b=st.columns(2)
+            usuario_editado=a.text_input('Usuario *',value=str(r['usuario'] or ''))
+            nombre_editado=b.text_input('Nombre completo *',value=str(r['nombre'] or ''))
+            c,d=st.columns(2)
+            roles=['usuario','desarrollador']
+            rol_editado=c.selectbox('Rol *',roles,index=idx_or_zero(roles,str(r['rol'] or 'usuario')),format_func=lambda x:'Usuario' if x=='usuario' else 'Administrador / desarrollador')
+            password_nueva=d.text_input('Nueva contraseña',type='password',help='Déjala vacía para conservar la contraseña actual.')
+            guardar=st.form_submit_button('Guardar cambios',type='primary')
+        if guardar:
+            usuario=usuario_editado.strip(); nombre=nombre_editado.strip(); nueva=password_nueva.strip()
+            if not usuario or not nombre: st.error('Completa el usuario y el nombre completo.')
+            elif not read_df('SELECT id FROM usuarios WHERE usuario=? AND id<>?',(usuario,rid)).empty: st.error('No fue posible guardar porque el nombre de usuario ya está asignado a otra cuenta.')
+            elif str(r['usuario'])==ADMIN_USER and rol_editado!='desarrollador': st.error('La cuenta administradora principal debe conservar el rol de administrador/desarrollador.')
+            else:
+                if nueva:
+                    exec_sql('UPDATE usuarios SET usuario=?,nombre=?,rol=?,password_hash=? WHERE id=?',(usuario,nombre,rol_editado,hash_password(nueva),rid))
+                else:
+                    exec_sql('UPDATE usuarios SET usuario=?,nombre=?,rol=? WHERE id=?',(usuario,nombre,rol_editado,rid))
+                audit(st.session_state.auth['usuario'],'EDITAR_USUARIO',f'ID {rid} | Usuario {usuario} | Rol {rol_editado}')
+                if rid==int(read_df('SELECT id FROM usuarios WHERE usuario=?',(st.session_state.auth['usuario'],)).iloc[0].id):
+                    st.session_state.auth.update({'usuario':usuario,'nombre':nombre,'rol':rol_editado})
+                st.session_state.usuarios_nonce+=1; st.success('La información del usuario se actualizó correctamente.'); st.rerun()
+    activo=int(r['activo'] or 0)==1
+    c1,c2=st.columns(2)
+    if activo:
+        inhabilitar=c1.button('Inhabilitar usuario',key=f'inhabilitar_usuario_{rid}',use_container_width=True)
+        habilitar=False
+    else:
+        habilitar=c1.button('Habilitar usuario',key=f'habilitar_usuario_{rid}',use_container_width=True)
+        inhabilitar=False
+    eliminar=c2.button('Eliminar usuario',key=f'eliminar_usuario_{rid}',use_container_width=True)
+    if inhabilitar:
+        if str(r['usuario'])==st.session_state.auth['usuario']: st.error('No puedes inhabilitar la cuenta utilizada en la sesión actual.')
+        elif str(r['usuario'])==ADMIN_USER: st.error('La cuenta administradora principal no puede inhabilitarse.')
         else:
-            exec_sql('UPDATE usuarios SET activo=0 WHERE id=?', (id_usuario,))
-            audit(
-                st.session_state.auth['usuario'],
-                'DESACTIVAR_USUARIO',
-                f'Usuario desactivado: {usuario_objetivo}'
-            )
-            st.success(f'Usuario desactivado correctamente: {usuario_objetivo}')
-            st.rerun()
-
-    if activar:
-        exec_sql('UPDATE usuarios SET activo=1 WHERE id=?', (id_usuario,))
-        audit(
-            st.session_state.auth['usuario'],
-            'ACTIVAR_USUARIO',
-            f'Usuario activado: {usuario_objetivo}'
-        )
-        st.success(f'Usuario activado correctamente: {usuario_objetivo}')
-        st.rerun()
+            exec_sql('UPDATE usuarios SET activo=0 WHERE id=?',(rid,)); audit(st.session_state.auth['usuario'],'INHABILITAR_USUARIO',f'ID {rid} | {r["usuario"]}'); st.session_state.usuarios_nonce+=1; st.success('Usuario inhabilitado correctamente.'); st.rerun()
+    if habilitar:
+        exec_sql('UPDATE usuarios SET activo=1 WHERE id=?',(rid,)); audit(st.session_state.auth['usuario'],'HABILITAR_USUARIO',f'ID {rid} | {r["usuario"]}'); st.session_state.usuarios_nonce+=1; st.success('Usuario habilitado correctamente.'); st.rerun()
+    if eliminar: st.session_state.usuario_confirmar_eliminacion=rid
+    if st.session_state.get('usuario_confirmar_eliminacion')==rid:
+        st.warning('La cuenta se eliminará de forma permanente. Los registros históricos y de auditoría asociados conservarán el nombre de usuario.')
+        x,y=st.columns(2)
+        if x.button('Confirmar eliminación',key=f'confirmar_usuario_{rid}',use_container_width=True):
+            if str(r['usuario'])==st.session_state.auth['usuario']: st.error('No puedes eliminar la cuenta utilizada en la sesión actual.')
+            elif str(r['usuario'])==ADMIN_USER: st.error('La cuenta administradora principal no puede eliminarse.')
+            else:
+                audit(st.session_state.auth['usuario'],'ELIMINAR_USUARIO',f'ID {rid} | {r["usuario"]}')
+                exec_sql('DELETE FROM usuarios WHERE id=?',(rid,)); reset_autoincrement('usuarios'); st.session_state.pop('usuario_confirmar_eliminacion',None); st.session_state.usuarios_nonce+=1; st.success('Usuario eliminado correctamente.'); st.rerun()
+        if y.button('Cancelar',key=f'cancelar_usuario_{rid}',use_container_width=True):
+            st.session_state.pop('usuario_confirmar_eliminacion',None); st.session_state.usuarios_nonce+=1; st.rerun()
 def page_auditoria(): st.title('Auditoría'); st.dataframe(read_df('SELECT * FROM auditoria ORDER BY id DESC LIMIT 1000'),use_container_width=True,hide_index=True)
 
 def main():
