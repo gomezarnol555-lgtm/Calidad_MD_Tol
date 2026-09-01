@@ -920,20 +920,108 @@ def styles(compact=False):
     div[data-testid="column"]:has(.registro-card-slot) .stButton button:hover{transform:translateY(-4px)!important;border-color:#00A884!important;background:linear-gradient(180deg,#fff 0%,#ECFDF8 100%)!important;box-shadow:0 24px 54px rgba(15,23,42,.14),0 0 0 4px rgba(0,168,132,.13)!important;color:#062C36!important}
     .registro-full-panel{width:100%;background:radial-gradient(circle at 8% 10%,rgba(0,168,132,.12),transparent 32%),linear-gradient(135deg,#fff 0%,#F8FAFC 58%,#ECFDF8 100%);border:1px solid #DDE7F0;border-radius:30px;padding:1.7rem 1.85rem 1.9rem 1.85rem;box-shadow:0 22px 56px rgba(15,23,42,.11);box-sizing:border-box;overflow:hidden;margin-bottom:1.1rem}.registro-full-title{color:#062C36;font-size:2.05rem;font-weight:950;letter-spacing:-.035em;margin:0 0 .35rem 0}.registro-full-subtitle{color:#667085;font-size:1rem;font-weight:850;margin:0 0 1.2rem 0}.registro-pill{display:inline-flex;align-items:center;border-radius:999px;padding:.38rem .85rem;background:#DCFCE7;color:#027A48;font-size:.8rem;font-weight:950;margin-bottom:1rem}.registro-form-shell{background:#fff;border:1px solid #DDE7F0;border-radius:26px;padding:1.1rem 1.2rem;box-shadow:0 18px 44px rgba(15,23,42,.08);margin-top:.95rem}
 
-    /* Amplitud y legibilidad de ventanas flotantes */
-    .registro-landing-hero, .registro-full-panel, .panel, div[data-testid="stForm"] {
-        width:100% !important; max-width:none !important;
+
+    /* Tarjetas grandes de selección en las cuatro secciones principales */
+    div[class*="st-key-card_pnc"] button,
+    div[class*="st-key-card_me"] button,
+    div[class*="st-key-card_ddm"] button,
+    div[class*="st-key-consulta_tarjeta_"] button,
+    div[class*="st-key-card_muestras_"] button,
+    div[class*="st-key-card_muestras"] button,
+    div[class*="st-key-entrega_Nave"] button {
+        width:100% !important;
+        min-height:250px !important;
+        height:auto !important;
+        padding:1.7rem 1.65rem !important;
+        display:flex !important;
+        align-items:flex-start !important;
+        justify-content:flex-start !important;
+        text-align:left !important;
+        white-space:pre-line !important;
+        overflow:visible !important;
+        text-overflow:clip !important;
+        line-height:1.55 !important;
+        font-size:1rem !important;
+        font-weight:850 !important;
+        color:#203047 !important;
+        background:linear-gradient(180deg,#FFFFFF 0%,#F7FAFC 100%) !important;
+        border:1px solid #D7E1EC !important;
+        border-radius:26px !important;
+        box-shadow:0 18px 42px rgba(15,23,42,.10) !important;
+        box-sizing:border-box !important;
     }
-    .registro-full-panel { padding:2rem 2.25rem 2.25rem 2.25rem !important; overflow:visible !important; }
-    .registro-form-shell { padding:1.5rem 1.65rem !important; overflow:visible !important; }
-    div[data-testid="stExpander"] { background:#FFFFFF !important; border:1px solid #DDE7F0 !important; box-shadow:0 12px 30px rgba(15,23,42,.07) !important; margin:.7rem 0 !important; }
-    div[data-testid="stExpander"] details > div { padding:1rem 1.25rem 1.35rem 1.25rem !important; }
-    div[data-testid="stDataFrame"] { min-height:260px; width:100% !important; }
-    div[data-testid="stDataFrame"] iframe { min-height:250px !important; }
-    div[data-testid="column"]:has(.registro-card-slot) .stButton button { min-height:245px !important; padding:1.65rem !important; }
-    @media (max-width:1100px) {
-        .registro-full-panel { padding:1.35rem !important; }
-        .main .block-container { padding:.75rem !important; }
+    div[class*="st-key-card_pnc"] button p,
+    div[class*="st-key-card_me"] button p,
+    div[class*="st-key-card_ddm"] button p,
+    div[class*="st-key-consulta_tarjeta_"] button p,
+    div[class*="st-key-card_muestras_"] button p,
+    div[class*="st-key-card_muestras"] button p,
+    div[class*="st-key-entrega_Nave"] button p {
+        white-space:pre-line !important;
+        overflow:visible !important;
+        text-overflow:clip !important;
+        word-break:normal !important;
+        overflow-wrap:anywhere !important;
+        line-height:1.55 !important;
+        margin:0 !important;
+    }
+    div[class*="st-key-card_pnc"] button:hover,
+    div[class*="st-key-card_me"] button:hover,
+    div[class*="st-key-card_ddm"] button:hover,
+    div[class*="st-key-consulta_tarjeta_"] button:hover,
+    div[class*="st-key-card_muestras_"] button:hover,
+    div[class*="st-key-card_muestras"] button:hover,
+    div[class*="st-key-entrega_Nave"] button:hover {
+        transform:translateY(-4px) !important;
+        border-color:#00A884 !important;
+        background:linear-gradient(180deg,#FFFFFF 0%,#ECFDF8 100%) !important;
+        color:#062C36 !important;
+        box-shadow:0 24px 54px rgba(15,23,42,.14),0 0 0 4px rgba(0,168,132,.12) !important;
+    }
+    /* El resto del contenido se mantiene dentro del ancho disponible */
+    .registro-landing-hero, .registro-full-panel, .registro-form-shell,
+    .topbar, .home-hero, .panel, div[data-testid="stForm"],
+    div[data-testid="stDataFrame"], div[data-testid="stExpander"] {
+        width:100% !important;
+        max-width:100% !important;
+        min-width:0 !important;
+        box-sizing:border-box !important;
+    }
+    div[data-testid="stHorizontalBlock"], div[data-testid="column"] {
+        min-width:0 !important;
+    }
+    div[data-testid="stDataFrame"] { overflow-x:auto !important; }
+    .registro-full-panel, .registro-form-shell, .panel-body { overflow-x:auto !important; }
+    input, textarea, div[data-baseweb="select"] { max-width:100% !important; box-sizing:border-box !important; }
+    @media (max-width:1200px) {
+        div[class*="st-key-card_pnc"] button,
+        div[class*="st-key-card_me"] button,
+        div[class*="st-key-card_ddm"] button,
+        div[class*="st-key-consulta_tarjeta_"] button,
+        div[class*="st-key-card_muestras_"] button,
+        div[class*="st-key-card_muestras"] button,
+        div[class*="st-key-entrega_Nave"] button {
+            min-height:225px !important;
+            padding:1.4rem !important;
+            font-size:.95rem !important;
+        }
+        .registro-landing-title { font-size:1.85rem !important; }
+        .registro-full-title { font-size:1.75rem !important; }
+    }
+    @media (max-width:850px) {
+        .main .block-container { padding:.65rem !important; }
+        .registro-landing-hero, .registro-full-panel { padding:1.25rem !important; }
+        .topbar { padding:0 1rem !important; }
+        .topbar-user { gap:.45rem !important; font-size:.78rem !important; }
+        div[class*="st-key-card_pnc"] button,
+        div[class*="st-key-card_me"] button,
+        div[class*="st-key-card_ddm"] button,
+        div[class*="st-key-consulta_tarjeta_"] button,
+        div[class*="st-key-card_muestras_"] button,
+        div[class*="st-key-card_muestras"] button,
+        div[class*="st-key-entrega_Nave"] button {
+            min-height:190px !important;
+        }
     }
     </style>
     """, unsafe_allow_html=True)
@@ -2092,7 +2180,7 @@ def main():
     if FORCE_RESET_ADMIN: reset_admin()
     user=login()
     styles(False)
-    left_col, right_col = st.columns([0.15, 0.85], gap='medium')
+    left_col, right_col = st.columns([0.17, 0.83], gap='medium')
     with left_col:
         left_menu()
     with right_col:
