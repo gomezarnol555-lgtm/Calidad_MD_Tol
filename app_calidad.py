@@ -312,7 +312,7 @@ def datos_grafica_cumplimiento(tipo_entidad,periodo_tipo):
 
 def matriz_entregas():
     st.markdown('## Entregas de turno y matriz histórica')
-    st.caption('Consulta los registros de las tres naves, descarga cualquier PDF y exporta la matriz del rango seleccionado.')
+    st.caption('Consulta los registros de las tres naves. Selecciona un registro para descargar su reporte en PDF.')
     df=read_df("SELECT m.id,m.fecha,m.analista,m.entrega_id,m.total_carga_datos,m.horas_nave1,m.horas_nave2,m.horas_nave3,COALESCE(e.nave,'') AS nave,COALESCE(e.turno,'') AS turno FROM matriz_entrega m LEFT JOIN entregas_turno e ON e.id=m.entrega_id ORDER BY m.fecha DESC,m.analista")
     if df.empty:
         st.info('Todavía no hay entregas de turno registradas.')
@@ -363,12 +363,12 @@ def matriz_entregas():
                     st.warning('No fue posible generar el PDF. Verifica que reportlab esté incluido en requirements.txt.')
             else:
                 st.warning('Este indicador no tiene una entrega de turno relacionada.')
-            if st.button('Eliminar día seleccionado',key=f'mx_del_{rid}'):
+            if is_dev() and st.button('Eliminar registro seleccionado',key=f'mx_del_{rid}'):
                 st.session_state.mx_confirm=rid
-            if st.session_state.get('mx_confirm')==rid:
-                st.warning('Se eliminará la matriz y toda la entrega de turno relacionada. Después podrás registrar nuevamente esa fecha.')
+            if is_dev() and st.session_state.get('mx_confirm')==rid:
+                st.warning('Se eliminarán de forma permanente la matriz y la entrega de turno relacionadas. Esta acción no se puede deshacer.')
                 x,y=st.columns(2)
-                if x.button('Sí, eliminar definitivamente',key=f'mx_ok_{rid}'):
+                if x.button('Confirmar eliminación',key=f'mx_ok_{rid}'):
                     cdb=conn();cur=cdb.cursor()
                     try:
                         if eid:
@@ -919,6 +919,22 @@ def styles(compact=False):
     .registro-card-slot{display:none}div[data-testid="column"]:has(.registro-card-slot) .stButton button{width:100%!important;min-height:205px!important;background:linear-gradient(180deg,#fff 0%,#F8FAFC 100%)!important;border:1px solid #DDE6F0!important;border-radius:26px!important;color:#102A43!important;font-weight:900!important;text-align:left!important;justify-content:flex-start!important;align-items:flex-start!important;padding:1.35rem 1.45rem!important;white-space:pre-line!important;line-height:1.45!important;box-shadow:0 18px 42px rgba(15,23,42,.10)!important;overflow:hidden!important}
     div[data-testid="column"]:has(.registro-card-slot) .stButton button:hover{transform:translateY(-4px)!important;border-color:#00A884!important;background:linear-gradient(180deg,#fff 0%,#ECFDF8 100%)!important;box-shadow:0 24px 54px rgba(15,23,42,.14),0 0 0 4px rgba(0,168,132,.13)!important;color:#062C36!important}
     .registro-full-panel{width:100%;background:radial-gradient(circle at 8% 10%,rgba(0,168,132,.12),transparent 32%),linear-gradient(135deg,#fff 0%,#F8FAFC 58%,#ECFDF8 100%);border:1px solid #DDE7F0;border-radius:30px;padding:1.7rem 1.85rem 1.9rem 1.85rem;box-shadow:0 22px 56px rgba(15,23,42,.11);box-sizing:border-box;overflow:hidden;margin-bottom:1.1rem}.registro-full-title{color:#062C36;font-size:2.05rem;font-weight:950;letter-spacing:-.035em;margin:0 0 .35rem 0}.registro-full-subtitle{color:#667085;font-size:1rem;font-weight:850;margin:0 0 1.2rem 0}.registro-pill{display:inline-flex;align-items:center;border-radius:999px;padding:.38rem .85rem;background:#DCFCE7;color:#027A48;font-size:.8rem;font-weight:950;margin-bottom:1rem}.registro-form-shell{background:#fff;border:1px solid #DDE7F0;border-radius:26px;padding:1.1rem 1.2rem;box-shadow:0 18px 44px rgba(15,23,42,.08);margin-top:.95rem}
+
+    /* Amplitud y legibilidad de ventanas flotantes */
+    .registro-landing-hero, .registro-full-panel, .panel, div[data-testid="stForm"] {
+        width:100% !important; max-width:none !important;
+    }
+    .registro-full-panel { padding:2rem 2.25rem 2.25rem 2.25rem !important; overflow:visible !important; }
+    .registro-form-shell { padding:1.5rem 1.65rem !important; overflow:visible !important; }
+    div[data-testid="stExpander"] { background:#FFFFFF !important; border:1px solid #DDE7F0 !important; box-shadow:0 12px 30px rgba(15,23,42,.07) !important; margin:.7rem 0 !important; }
+    div[data-testid="stExpander"] details > div { padding:1rem 1.25rem 1.35rem 1.25rem !important; }
+    div[data-testid="stDataFrame"] { min-height:260px; width:100% !important; }
+    div[data-testid="stDataFrame"] iframe { min-height:250px !important; }
+    div[data-testid="column"]:has(.registro-card-slot) .stButton button { min-height:245px !important; padding:1.65rem !important; }
+    @media (max-width:1100px) {
+        .registro-full-panel { padding:1.35rem !important; }
+        .main .block-container { padding:.75rem !important; }
+    }
     </style>
     """, unsafe_allow_html=True)
 
@@ -977,13 +993,13 @@ def panel_indicadores_spac_inicio():
     st.markdown('<div class="panel"><div class="panel-header">Indicadores SPAC</div><div class="panel-body">',unsafe_allow_html=True)
     registros=read_df("SELECT m.fecha,m.analista,m.total_carga_datos,m.horas_nave1,m.horas_nave2,m.horas_nave3,COALESCE(e.nave,'') AS nave FROM matriz_entrega m LEFT JOIN entregas_turno e ON e.id=m.entrega_id")
     if registros.empty:
-        st.info('Todavia no hay informacion SPAC para mostrar.')
+        st.info('Aún no hay información SPAC disponible.')
         st.markdown('</div></div>',unsafe_allow_html=True)
         return
     registros['fecha_dt']=pd.to_datetime(registros['fecha'],errors='coerce').dt.date
     registros=registros.dropna(subset=['fecha_dt'])
     if registros.empty:
-        st.info('La matriz no contiene fechas validas.')
+        st.info('La matriz no contiene fechas válidas para su consulta.')
         st.markdown('</div></div>',unsafe_allow_html=True)
         return
 
@@ -1054,12 +1070,12 @@ def page_inicio():
         st.markdown('<div class="panel"><div class="panel-header">Tendencia mensual dinámica</div><div class="panel-body">',unsafe_allow_html=True)
         if not data.empty:
             t=data.dropna(subset=['fecha_apertura']).copy(); t['Mes']=t['fecha_apertura'].dt.strftime('%Y-%m'); st.bar_chart(t.groupby(['Mes','status']).size().unstack(fill_value=0),use_container_width=True)
-        else: st.info('No hay registros para graficar.')
+        else: st.info('No hay información disponible para generar la gráfica.')
         st.markdown('</div></div>',unsafe_allow_html=True)
     with r:
         st.markdown('<div class="panel"><div class="panel-header">Distribución por clasificación</div><div class="panel-body">',unsafe_allow_html=True)
         if not data.empty: st.dataframe(data['clasificacion'].fillna('Sin clasificación').value_counts().rename_axis('Clasificación').reset_index(name='Registros'),use_container_width=True,hide_index=True)
-        else: st.info('No hay datos.')
+        else: st.info('No hay información disponible.')
         st.markdown('</div></div>',unsafe_allow_html=True)
     panel_indicadores_spac_inicio()
 
@@ -1077,7 +1093,7 @@ def page_registro():
         st.session_state.registro_tipo=None
         st.rerun()
     def selector():
-        st.markdown("""<div class="registro-landing-hero"><div class="registro-landing-title">Nuevo registro</div><div class="registro-landing-subtitle">Selecciona el tipo de captura.</div></div>""",unsafe_allow_html=True)
+        st.markdown("""<div class="registro-landing-hero"><div class="registro-landing-title">Nuevo registro</div><div class="registro-landing-subtitle">Selecciona el tipo de registro que deseas capturar.</div></div>""",unsafe_allow_html=True)
         a,b,c=st.columns(3,gap='large')
         with a:
             st.markdown('<span class="registro-card-slot"></span>',unsafe_allow_html=True)
@@ -1220,11 +1236,11 @@ def page_consulta():
         st.session_state.consulta_tipo=None
 
     if st.session_state.consulta_tipo is None:
-        st.markdown('''<div class="registro-landing-hero"><div class="registro-landing-title">Consulta y descarga</div><div class="registro-landing-subtitle">Selecciona la sección que deseas consultar.</div></div>''',unsafe_allow_html=True)
+        st.markdown('''<div class="registro-landing-hero"><div class="registro-landing-title">Consulta y descarga</div><div class="registro-landing-subtitle">Selecciona la sección que deseas consultar para acceder a su información.</div></div>''',unsafe_allow_html=True)
         tarjetas=[
             ('NO_CONFORMIDADES','📋  Consulta y seguimiento de No Conformes\n\nPNC, Materia Extraña y Detector de metales/RX.\n\nAbrir sección'),
             ('MUESTRAS','🧪  Muestras de retención\n\nConsulta, edición, eliminación y descarga de muestras.\n\nAbrir sección'),
-            ('MATRIZ','📊  Matriz de entrega de turno\n\nRegistros de las tres naves, indicadores, Excel y PDF.\n\nAbrir sección')
+            ('MATRIZ','📊  Matriz de entrega de turno\n\nRegistros de las tres naves, indicadores y reportes por registro.\n\nAbrir sección')
         ]
         for columna,(valor,texto) in zip(st.columns(3,gap='large'),tarjetas):
             with columna:
@@ -1246,7 +1262,6 @@ def page_consulta():
     }
     st.markdown(f'''<div class="registro-full-panel"><div class="registro-pill">Consulta y descarga</div><div class="registro-full-title">{titulos.get(tipo_consulta,'Consulta')}</div></div>''',unsafe_allow_html=True)
     if st.session_state.pop('excel_sync_error',None): st.warning('No fue posible actualizar el libro Excel. Verifica que el archivo no esté abierto en otro programa.')
-    if EXCEL_PATH.exists(): st.download_button('📗 Descargar libro maestro Excel',EXCEL_PATH.read_bytes(),EXCEL_PATH.name,'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',key='download_excel_maestro')
     def prep(df):
         v=df.copy()
         if all(c in v.columns for c in ['dia','mes','anio']):
@@ -1267,7 +1282,7 @@ def page_consulta():
     def table(df,key):
         df=filtered(df,key)
         if df.empty:
-            st.info('No hay registros para mostrar.'); return None,df
+            st.info('No se encontraron registros para mostrar.'); return None,df
         v=prep(df)
         try:
             nonce_key=f'table_nonce_{key}'
@@ -1291,10 +1306,10 @@ def page_consulta():
             st.warning(f'Confirma la eliminación del registro Número {selected}. Esta acción no se puede deshacer.')
             c1,c2=st.columns(2)
             with c1:
-                if st.button('Sí, eliminar definitivamente',key=f'ok_del_{key}_{selected}'):
+                if st.button('Confirmar eliminación',key=f'ok_del_{key}_{selected}'):
                     exec_sql(f'DELETE FROM {table_name} WHERE id=?',(selected,)); reset_autoincrement(table_name); audit(st.session_state.auth['usuario'],audit_name,f'ID {selected}'); st.session_state.pop(f'confirm_del_{key}',None); st.session_state[f'table_nonce_{key}']=st.session_state.get(f'table_nonce_{key}',0)+1; st.success(f'Registro eliminado correctamente: Número {selected}'); st.rerun()
             with c2:
-                if st.button('Cancelar eliminación',key=f'cancel_del_{key}_{selected}'):
+                if st.button('Cancelar',key=f'cancel_del_{key}_{selected}'):
                     st.session_state.pop(f'confirm_del_{key}',None); st.rerun()
     def edit_record(table_name,key,selected):
         row_df=read_df(f'SELECT * FROM {table_name} WHERE id=?',(selected,))
@@ -1422,7 +1437,7 @@ def page_muestras_retencion():
     if 'muestra_nonce' not in st.session_state: st.session_state.muestra_nonce=0
     seleccionado=st.session_state.muestra_tipo
     if seleccionado is None:
-        st.markdown('<div class="registro-landing-hero"><div class="registro-landing-title">Muestras de retención</div><div class="registro-landing-subtitle">Selecciona el periodo que deseas registrar.</div></div>',unsafe_allow_html=True)
+        st.markdown('<div class="registro-landing-hero"><div class="registro-landing-title">Muestras de retención</div><div class="registro-landing-subtitle">Selecciona el periodo de retención que deseas registrar.</div></div>',unsafe_allow_html=True)
         for inicio in range(0,len(periodos),3):
             columnas=st.columns(3,gap='large')
             for col,(tabla,nombre,icono) in zip(columnas,periodos[inicio:inicio+3]):
@@ -1464,7 +1479,7 @@ def page_muestras_retencion():
             rid=exec_sql(f'INSERT INTO {tabla}(item,descripcion,lote,destino,numero_muestras,numero_corrugado,responsable,observaciones,creado_por,creado_en) VALUES(?,?,?,?,?,?,?,?,?,?)',(item,descripcion,lote.strip(),destino,float(muestras),float(corrugado),responsable,observaciones.strip(),st.session_state.auth['usuario'],now_iso()))
             audit(st.session_state.auth['usuario'],'CREAR_MUESTRA_RETENCION',f'{nombre} | ID {rid}')
             st.session_state.muestra_nonce+=1
-            st.success(f'Registro guardado correctamente: N° {rid}')
+            st.success(f'Registro guardado correctamente. Número {rid}')
             st.rerun()
     st.markdown('</div>',unsafe_allow_html=True)
 
@@ -1486,7 +1501,7 @@ def consulta_muestras_retencion():
                 mask=mostrado.astype(str).apply(lambda col: col.str.contains(buscar,case=False,na=False)).any(axis=1)
                 mostrado=mostrado[mask]
             if mostrado.empty:
-                st.info('No hay registros para mostrar.')
+                st.info('No se encontraron registros para mostrar.')
                 continue
             vista=mostrado[['id','item','descripcion','lote','destino','numero_muestras','numero_corrugado','responsable','observaciones']].rename(columns={'id':'N°','item':'ITEM','descripcion':'Descripción','lote':'Lote','destino':'Destino','numero_muestras':'# De muestras','numero_corrugado':'# Corrugado','responsable':'Responsable','observaciones':'Observaciones'})
             nonce_key=f'table_nonce_{tabla}'
@@ -1538,13 +1553,13 @@ def consulta_muestras_retencion():
                     else:
                         exec_sql(f'UPDATE {tabla} SET item=?,descripcion=?,lote=?,destino=?,numero_muestras=?,numero_corrugado=?,responsable=?,observaciones=?,actualizado_por=?,actualizado_en=? WHERE id=?',(item,descripcion,lote.strip(),destino,float(muestras),float(corrugado),responsable,observaciones.strip(),st.session_state.auth['usuario'],now_iso(),rid))
                         audit(st.session_state.auth['usuario'],'EDITAR_MUESTRA_RETENCION',f'{nombre} | ID {rid}')
-                        st.success(f'Registro actualizado correctamente: N° {rid}'); st.rerun()
+                        st.success(f'Registro actualizado correctamente. Número {rid}'); st.rerun()
             if st.button('Eliminar registro',key=f'del_{tabla}_{rid}'):
                 st.session_state[f'confirm_{tabla}']=rid
             if st.session_state.get(f'confirm_{tabla}')==rid:
                 st.warning(f'Confirma la eliminación del registro N° {rid}.')
                 d1,d2=st.columns(2)
-                if d1.button('Sí, eliminar definitivamente',key=f'ok_{tabla}_{rid}'):
+                if d1.button('Confirmar eliminación',key=f'ok_{tabla}_{rid}'):
                     exec_sql(f'DELETE FROM {tabla} WHERE id=?',(rid,)); reset_autoincrement(tabla)
                     audit(st.session_state.auth['usuario'],'ELIMINAR_MUESTRA_RETENCION',f'{nombre} | ID {rid}')
                     st.session_state.pop(f'confirm_{tabla}',None); st.session_state[nonce_key]=st.session_state.get(nonce_key,0)+1; st.rerun()
@@ -1557,7 +1572,7 @@ def page_entrega_turno():
     if 'entrega_nave' not in st.session_state: st.session_state.entrega_nave=None
     if 'entrega_nonce' not in st.session_state: st.session_state.entrega_nonce=0
     if st.session_state.entrega_nave is None:
-        st.markdown('<div class="registro-landing-hero"><div class="registro-landing-title">Entrega de turno</div><div class="registro-landing-subtitle">Selecciona la nave para iniciar el registro.</div></div>',unsafe_allow_html=True)
+        st.markdown('<div class="registro-landing-hero"><div class="registro-landing-title">Entrega de turno</div><div class="registro-landing-subtitle">Selecciona la nave correspondiente para iniciar el registro.</div></div>',unsafe_allow_html=True)
         cols=st.columns(3,gap='large')
         for col,nave in zip(cols,['Nave 1','Nave 2','Nave 3']):
             with col:
@@ -1612,7 +1627,7 @@ def page_entrega_turno():
             if not analista:faltan.append('Analista')
             if not turno:faltan.append('Turno')
             if repetida:st.error('Registro repetido. Ya existe una entrega de turno para el mismo analista y la misma fecha. Corrige la fecha, selecciona otro analista o elimina previamente ese registro desde la matriz.')
-            elif faltan:st.error('Completa: '+', '.join(faltan)+'.')
+            elif faltan:st.error('Completa los campos obligatorios: '+', '.join(faltan)+'.')
             else:
                 eid=exec_sql('INSERT INTO entregas_turno(nave,fecha,analista,turno,referencia,total_carga_datos,total_horas_trabajadas,creado_por,creado_en) VALUES(?,?,?,?,?,?,?,?,?)',(nave,fecha.isoformat(),analista,turno,referencia,total_c,total_h,st.session_state.auth['usuario'],now_iso()))
                 for grupo,linea,producto,horas,carga,obs,orden,nvcat in filas_clasificadas:
@@ -1624,7 +1639,7 @@ def page_entrega_turno():
                     for orden,row in df.iterrows():
                         vals=[str(row.get(c,'') or '') for c in ['Registro #','Hoja física','Carga electrónica','Correo','Descripción del seguimiento']]
                         if any(v.strip() for v in vals):exec_sql('INSERT INTO entregas_turno_seguimientos(entrega_id,bloque,registro_numero,hoja_fisica,carga_electronica,correo,descripcion_seguimiento,orden_fila) VALUES(?,?,?,?,?,?,?,?)',(eid,bloque,*vals,int(orden)))
-                guardar_matriz(eid,fecha.isoformat(),analista,total_c,totales_nave);audit(st.session_state.auth['usuario'],'CREAR_ENTREGA_TURNO',f'{nave} | ID {eid}');st.session_state.entrega_nonce+=1;st.success(f'Entrega guardada: Número {eid}');st.rerun()
+                guardar_matriz(eid,fecha.isoformat(),analista,total_c,totales_nave);audit(st.session_state.auth['usuario'],'CREAR_ENTREGA_TURNO',f'{nave} | ID {eid}');st.session_state.entrega_nonce+=1;st.success(f'Entrega de turno guardada correctamente. Número {eid}');st.rerun()
         st.markdown('</div>',unsafe_allow_html=True)
         return
     n=st.session_state.entrega_nonce
@@ -1658,7 +1673,7 @@ def page_entrega_turno():
         if not analista: faltan.append('Analista')
         if not turno: faltan.append('Turno')
         if repetida:st.error('Registro repetido. Ya existe una entrega de turno para el mismo analista y la misma fecha. Corrige la fecha, selecciona otro analista o elimina previamente ese registro desde la matriz.')
-        elif faltan: st.error('Completa: '+', '.join(faltan)+'.')
+        elif faltan: st.error('Completa los campos obligatorios: '+', '.join(faltan)+'.')
         else:
             eid=exec_sql('INSERT INTO entregas_turno(nave,fecha,analista,turno,referencia,total_carga_datos,total_horas_trabajadas,creado_por,creado_en) VALUES(?,?,?,?,?,?,?,?,?)',(nave,fecha.isoformat(),analista,turno,referencia,total_c,total_h,st.session_state.auth['usuario'],now_iso()))
             for grupo,linea,producto,horas,carga,obs,orden,nvcat in filas_clasificadas:
@@ -1667,7 +1682,7 @@ def page_entrega_turno():
                 for orden,row in df.iterrows():
                     vals=[str(row.get(c,'') or '') for c in ['Registro #','Hoja física','Carga electrónica','Correo','Descripción del seguimiento']]
                     if any(v.strip() for v in vals): exec_sql('INSERT INTO entregas_turno_seguimientos(entrega_id,bloque,registro_numero,hoja_fisica,carga_electronica,correo,descripcion_seguimiento,orden_fila) VALUES(?,?,?,?,?,?,?,?)',(eid,bloque,*vals,int(orden)))
-            guardar_matriz(eid,fecha.isoformat(),analista,total_c,totales_nave);audit(st.session_state.auth['usuario'],'CREAR_ENTREGA_TURNO',f'Nave 1 | ID {eid}');st.session_state.entrega_nonce+=1;st.success(f'Entrega guardada: Número {eid}');st.rerun()
+            guardar_matriz(eid,fecha.isoformat(),analista,total_c,totales_nave);audit(st.session_state.auth['usuario'],'CREAR_ENTREGA_TURNO',f'Nave 1 | ID {eid}');st.session_state.entrega_nonce+=1;st.success(f'Entrega de turno guardada correctamente. Número {eid}');st.rerun()
     st.markdown('</div>',unsafe_allow_html=True)
 
 def admin_required():
@@ -1683,39 +1698,107 @@ def general_catalog_dataframe():
 def page_catalogos():
     st.title('Catálogos'); st.caption('Datos precargados desde el Excel adjunto. El administrador puede agregar o eliminar elementos.')
     tab1,tab2,tab3,tab4,tab5=st.tabs(['Productos','Defectos','Datos generales','Naves, líneas y sectores','Formatos entrega de turno'])
-    with tab1:
-        df=read_df('SELECT id,item,descripcion,cliente,familia FROM productos WHERE activo=1 ORDER BY descripcion'); st.dataframe(df,use_container_width=True,hide_index=True)
-        if admin_required():
-            with st.expander('Agregar producto'):
-                with st.form('add_prod'):
-                    item=st.text_input('Item'); desc=st.text_input('Descripción'); cliente=st.text_input('Cliente'); familia=st.text_input('Familia')
-                    if st.form_submit_button('Agregar producto') and item and desc: exec_sql('INSERT OR REPLACE INTO productos(item,descripcion,cliente,familia,activo) VALUES(?,?,?,?,1)',(item.strip(),desc.strip(),cliente.strip(),familia.strip())); st.rerun()
-            if not df.empty:
-                opt=st.selectbox('Producto a eliminar',[f'{r.id} | {r.item} | {r.descripcion}' for r in df.itertuples()],key='del_prod')
-                if st.button('Eliminar producto seleccionado'): exec_sql('UPDATE productos SET activo=0 WHERE id=?',(int(opt.split('|')[0].strip()),)); st.rerun()
-    with tab2:
-        df=read_df('SELECT id,codigo,defecto,tipo_defecto,clasificacion FROM defectos WHERE activo=1 ORDER BY CAST(codigo AS INTEGER)'); st.dataframe(df,use_container_width=True,hide_index=True)
-        if admin_required():
-            with st.expander('Agregar defecto'):
-                with st.form('add_def'):
-                    codigo=st.text_input('Código'); defecto=st.text_input('Defecto'); tipo=st.selectbox('Tipo',catalog('tipo_defecto') or ['Funcional','Contaminación']); clas=st.selectbox('Clasificación',['Inocuidad','Calidad','Salubridad','Legalidad'])
-                    if st.form_submit_button('Agregar defecto') and codigo and defecto: exec_sql('INSERT OR REPLACE INTO defectos(codigo,defecto,tipo_defecto,clasificacion,activo) VALUES(?,?,?,?,1)',(codigo.strip(),defecto.strip(),tipo,clas)); st.rerun()
-            if not df.empty:
-                opt=st.selectbox('Defecto a eliminar',[f'{r.id} | {r.codigo} | {r.defecto}' for r in df.itertuples()],key='del_def')
-                if st.button('Eliminar defecto seleccionado'): exec_sql('UPDATE defectos SET activo=0 WHERE id=?',(int(opt.split('|')[0].strip()),)); st.rerun()
-    with tab3:
-        st.subheader('Datos generales'); st.dataframe(general_catalog_dataframe(),use_container_width=True,hide_index=True)
-        if admin_required():
-            labels={'Supervisores':'supervisor','Analistas':'analista','Nave':'nave','Status':'status','Responsable de detectar PNC':'responsable_detecta','Etapa':'etapa','Línea':'linea_sector','Turno':'turno','Defecto':'tipo_defecto','Disposición':'disposicion'}
-            with st.expander('Agregar valor a datos generales'):
-                with st.form('add_general'):
-                    lab=st.selectbox('Lista',list(labels.keys())); val=st.text_input('Nuevo valor')
-                    if st.form_submit_button('Agregar valor') and val.strip(): exec_sql('INSERT OR IGNORE INTO catalogos(categoria,valor,activo) VALUES(?,?,1)',(labels[lab],val.strip())); st.rerun()
-            raw=read_df('SELECT id,categoria,valor FROM catalogos WHERE activo=1 ORDER BY categoria,valor'); raw['lista']=raw['categoria'].map({v:k for k,v in labels.items()}); raw=raw.dropna(subset=['lista'])
-            if not raw.empty:
-                opt=st.selectbox('Valor a eliminar',[f'{r.id} | {r.lista} | {r.valor}' for r in raw.itertuples()],key='del_general')
-                if st.button('Eliminar valor seleccionado'): exec_sql('UPDATE catalogos SET activo=0 WHERE id=?',(int(opt.split('|')[0].strip()),)); st.rerun()
+    def catalogo_seleccionable(tabla, consulta, columnas_vista, clave, titulo_singular, campos, insertar_sql, actualizar_sql, duplicado_sql, valores_opciones=None):
+        df=read_df(consulta)
+        vista=df.rename(columns=columnas_vista)
+        nonce_key=f'cat_{clave}_nonce'
+        nonce=st.session_state.get(nonce_key,0)
+        evento=st.dataframe(vista,use_container_width=True,hide_index=True,on_select='rerun',selection_mode='single-row',key=f'cat_{clave}_tabla_{nonce}') if not vista.empty else None
+        st.download_button(f'Descargar tabla de {titulo_singular.lower()}s',vista.to_csv(index=False).encode('utf-8-sig'),f'catalogo_{clave}_{datetime.now().strftime("%Y%m%d_%H%M%S")}.csv','text/csv',key=f'cat_{clave}_csv')
+        filas=getattr(evento,'selection',{}).get('rows',[]) if evento is not None else []
+        valido=bool(filas) and isinstance(filas[0],int) and 0<=filas[0]<len(vista)
+        rid=int(vista.iloc[filas[0]]['ID']) if valido else None
+        with st.expander(f'Agregar {titulo_singular.lower()}',expanded=False):
+            with st.form(f'cat_{clave}_agregar',clear_on_submit=True):
+                valores={}
+                cols=st.columns(min(4,len(campos)))
+                for i,(campo,etiqueta) in enumerate(campos):
+                    opciones=(valores_opciones or {}).get(campo)
+                    valores[campo]=cols[i%len(cols)].selectbox(etiqueta,opciones) if opciones else cols[i%len(cols)].text_input(etiqueta)
+                agregar=st.form_submit_button(f'Agregar {titulo_singular.lower()}',type='primary')
+            if agregar:
+                limpios={k:(v.strip() if isinstance(v,str) else v) for k,v in valores.items()}
+                obligatorios=[etiqueta.replace(' *','') for campo,etiqueta in campos if etiqueta.endswith('*') and not str(limpios.get(campo,'')).strip()]
+                if obligatorios: st.error('Completa los campos obligatorios: '+', '.join(obligatorios)+'.')
+                elif not read_df(duplicado_sql,tuple(limpios[k] for k,_ in campos)).empty: st.error(f'No fue posible agregar el {titulo_singular.lower()} porque ya existe un registro con los mismos datos.')
+                else:
+                    exec_sql(insertar_sql,tuple(limpios[k] for k,_ in campos)); audit(st.session_state.auth['usuario'],f'AGREGAR_{clave.upper()}',str(limpios)); st.session_state[nonce_key]=nonce+1; st.success(f'{titulo_singular} agregado correctamente.'); st.rerun()
+        if rid:
+            actual=read_df(f'SELECT * FROM {tabla} WHERE id=? AND activo=1',(rid,))
+            if not actual.empty:
+                r=actual.iloc[0]
+                with st.expander(f'Editar {titulo_singular.lower()} seleccionado',expanded=True):
+                    with st.form(f'cat_{clave}_editar_{rid}'):
+                        editados={}; cols=st.columns(min(4,len(campos)))
+                        for i,(campo,etiqueta) in enumerate(campos):
+                            valor=str(r[campo] or '')
+                            opciones=(valores_opciones or {}).get(campo)
+                            if opciones:
+                                opciones=list(opciones)
+                                if valor not in opciones: opciones.append(valor)
+                                editados[campo]=cols[i%len(cols)].selectbox(etiqueta,opciones,index=idx_or_zero(opciones,valor))
+                            else: editados[campo]=cols[i%len(cols)].text_input(etiqueta,valor)
+                        guardar=st.form_submit_button('Guardar cambios',type='primary')
+                    if guardar:
+                        limpios={k:(v.strip() if isinstance(v,str) else v) for k,v in editados.items()}
+                        obligatorios=[etiqueta.replace(' *','') for campo,etiqueta in campos if etiqueta.endswith('*') and not str(limpios.get(campo,'')).strip()]
+                        params=tuple(limpios[k] for k,_ in campos)
+                        if obligatorios: st.error('Completa los campos obligatorios: '+', '.join(obligatorios)+'.')
+                        elif not read_df(duplicado_sql+' AND id<>?',params+(rid,)).empty: st.error(f'Ya existe otro {titulo_singular.lower()} activo con los mismos datos.')
+                        else:
+                            exec_sql(actualizar_sql,params+(rid,)); audit(st.session_state.auth['usuario'],f'EDITAR_{clave.upper()}',f'ID {rid}'); st.session_state[nonce_key]=nonce+1; st.success(f'{titulo_singular} actualizado correctamente.'); st.rerun()
+                if st.button(f'Eliminar {titulo_singular.lower()}',key=f'cat_{clave}_eliminar_{rid}'): st.session_state[f'cat_{clave}_confirmar']=rid
+                if st.session_state.get(f'cat_{clave}_confirmar')==rid:
+                    st.warning(f'El {titulo_singular.lower()} dejará de estar disponible para nuevos registros. Los datos históricos se conservarán.')
+                    x,y=st.columns(2)
+                    if x.button('Confirmar eliminación',key=f'cat_{clave}_ok_{rid}'):
+                        exec_sql(f'UPDATE {tabla} SET activo=0 WHERE id=?',(rid,)); audit(st.session_state.auth['usuario'],f'ELIMINAR_{clave.upper()}',f'ID {rid}'); st.session_state.pop(f'cat_{clave}_confirmar',None); st.session_state[nonce_key]=nonce+1; st.rerun()
+                    if y.button('Cancelar',key=f'cat_{clave}_cancelar_{rid}'): st.session_state.pop(f'cat_{clave}_confirmar',None); st.session_state[nonce_key]=nonce+1; st.rerun()
 
+    with tab1:
+        st.subheader('Productos')
+        st.caption('Selecciona una fila para editarla o eliminarla. Los cambios se aplican automáticamente en los formularios relacionados.')
+        catalogo_seleccionable('productos','SELECT id,item,descripcion,cliente,familia FROM productos WHERE activo=1 ORDER BY descripcion',{'id':'ID','item':'ITEM','descripcion':'Descripción','cliente':'Cliente','familia':'Familia'},'productos','Producto',[('item','ITEM *'),('descripcion','Descripción *'),('cliente','Cliente *'),('familia','Familia *')],'INSERT OR REPLACE INTO productos(item,descripcion,cliente,familia,activo) VALUES(?,?,?,?,1)','UPDATE productos SET item=?,descripcion=?,cliente=?,familia=? WHERE id=?','SELECT id FROM productos WHERE item=? AND descripcion=? AND cliente=? AND familia=? AND activo=1')
+    with tab2:
+        st.subheader('Defectos')
+        st.caption('Selecciona una fila para editarla o eliminarla. Los cambios se aplican automáticamente en los formularios relacionados.')
+        catalogo_seleccionable('defectos','SELECT id,codigo,defecto,tipo_defecto,clasificacion FROM defectos WHERE activo=1 ORDER BY CAST(codigo AS INTEGER)',{'id':'ID','codigo':'Código','defecto':'Defecto','tipo_defecto':'Tipo de defecto','clasificacion':'Clasificación'},'defectos','Defecto',[('codigo','Código *'),('defecto','Defecto *'),('tipo_defecto','Tipo de defecto *'),('clasificacion','Clasificación *')],'INSERT OR REPLACE INTO defectos(codigo,defecto,tipo_defecto,clasificacion,activo) VALUES(?,?,?,?,1)','UPDATE defectos SET codigo=?,defecto=?,tipo_defecto=?,clasificacion=? WHERE id=?','SELECT id FROM defectos WHERE codigo=? AND defecto=? AND tipo_defecto=? AND clasificacion=? AND activo=1',{'tipo_defecto':catalog('tipo_defecto') or ['Funcional','Contaminación'],'clasificacion':['Inocuidad','Calidad','Salubridad','Legalidad']})
+    with tab3:
+        st.subheader('Datos generales')
+        st.caption('Selecciona una fila para editarla o eliminarla. Los cambios se aplican automáticamente en los formularios relacionados.')
+        etiquetas={'Supervisores':'supervisor','Analistas':'analista','Nave':'nave','Status':'status','Responsable de detectar PNC':'responsable_detecta','Etapa':'etapa','Línea':'linea_sector','Turno':'turno','Defecto':'tipo_defecto','Disposición':'disposicion'}
+        inv={v:k for k,v in etiquetas.items()}
+        raw=read_df('SELECT id,categoria,valor FROM catalogos WHERE activo=1 ORDER BY categoria,valor')
+        raw['lista']=raw['categoria'].map(inv); raw=raw.dropna(subset=['lista'])
+        vista=raw[['id','lista','valor']].rename(columns={'id':'ID','lista':'Lista','valor':'Valor'})
+        nonce=st.session_state.get('cat_datos_nonce',0)
+        evento=st.dataframe(vista,use_container_width=True,hide_index=True,on_select='rerun',selection_mode='single-row',key=f'cat_datos_tabla_{nonce}') if not vista.empty else None
+        st.download_button('Descargar tabla de datos generales',vista.to_csv(index=False).encode('utf-8-sig'),f'datos_generales_{datetime.now().strftime("%Y%m%d_%H%M%S")}.csv','text/csv',key='cat_datos_csv')
+        filas=getattr(evento,'selection',{}).get('rows',[]) if evento is not None else []
+        rid=int(vista.iloc[filas[0]]['ID']) if filas and isinstance(filas[0],int) and 0<=filas[0]<len(vista) else None
+        with st.expander('Agregar valor',expanded=False):
+            with st.form('cat_datos_agregar',clear_on_submit=True):
+                a,b=st.columns(2); lista=a.selectbox('Lista *',list(etiquetas)); valor=b.text_input('Valor *'); agregar=st.form_submit_button('Agregar valor',type='primary')
+            if agregar:
+                if not valor.strip(): st.error('Ingresa el valor que deseas agregar.')
+                elif not read_df('SELECT id FROM catalogos WHERE categoria=? AND valor=? AND activo=1',(etiquetas[lista],valor.strip())).empty: st.error('El valor ya existe en la lista seleccionada.')
+                else: exec_sql('INSERT INTO catalogos(categoria,valor,activo) VALUES(?,?,1) ON CONFLICT(categoria,valor) DO UPDATE SET activo=1',(etiquetas[lista],valor.strip())); audit(st.session_state.auth['usuario'],'AGREGAR_DATO_GENERAL',f'{lista} | {valor.strip()}'); st.session_state.cat_datos_nonce=nonce+1; st.rerun()
+        if rid:
+            r=raw[raw['id']==rid].iloc[0]
+            with st.expander('Editar valor seleccionado',expanded=True):
+                with st.form(f'cat_datos_editar_{rid}'):
+                    a,b=st.columns(2); lista=a.selectbox('Lista *',list(etiquetas),index=idx_or_zero(list(etiquetas),str(r.lista))); valor=b.text_input('Valor *',str(r.valor)); guardar=st.form_submit_button('Guardar cambios',type='primary')
+                if guardar:
+                    cat=etiquetas[lista]; val=valor.strip(); dup=read_df('SELECT id FROM catalogos WHERE categoria=? AND valor=? AND id<>? AND activo=1',(cat,val,rid))
+                    if not val: st.error('Ingresa un valor válido.')
+                    elif not dup.empty: st.error('Ya existe otro valor igual en la lista seleccionada.')
+                    else: exec_sql('UPDATE catalogos SET categoria=?,valor=? WHERE id=?',(cat,val,rid)); audit(st.session_state.auth['usuario'],'EDITAR_DATO_GENERAL',f'ID {rid}'); st.session_state.cat_datos_nonce=nonce+1; st.rerun()
+            if st.button('Eliminar valor',key=f'cat_datos_eliminar_{rid}'): st.session_state.cat_datos_confirmar=rid
+            if st.session_state.get('cat_datos_confirmar')==rid:
+                st.warning('El valor dejará de estar disponible para nuevos registros. Los datos históricos se conservarán.')
+                x,y=st.columns(2)
+                if x.button('Confirmar eliminación',key=f'cat_datos_ok_{rid}'): exec_sql('UPDATE catalogos SET activo=0 WHERE id=?',(rid,)); audit(st.session_state.auth['usuario'],'ELIMINAR_DATO_GENERAL',f'ID {rid}'); st.session_state.pop('cat_datos_confirmar',None); st.session_state.cat_datos_nonce=nonce+1; st.rerun()
+                if y.button('Cancelar',key=f'cat_datos_cancelar_{rid}'): st.session_state.pop('cat_datos_confirmar',None); st.session_state.cat_datos_nonce=nonce+1; st.rerun()
     with tab4:
         st.subheader('Naves, líneas y sectores')
         st.caption('Este catálogo clasifica cada Línea y Sector para calcular por separado las horas generales de Nave 1, Nave 2 y Nave 3. No modifica la estructura visible del formato.')
@@ -1729,6 +1812,7 @@ def page_catalogos():
             q=buscar.strip()
             df_general=df_general[df_general['linea'].fillna('').astype(str).str.contains(q,case=False,na=False)|df_general['sector'].fillna('').astype(str).str.contains(q,case=False,na=False)]
         vista_general=df_general.rename(columns={'id':'ID','nave':'Nave','linea':'Línea','sector':'Sector','orden':'Orden'})
+        st.download_button('Descargar tabla de naves, líneas y sectores',vista_general.to_csv(index=False).encode('utf-8-sig'),f'catalogo_naves_lineas_{datetime.now().strftime("%Y%m%d_%H%M%S")}.csv','text/csv',key='cat_general_csv')
         nonce_general=st.session_state.get('cat_general_nonce',0)
         evento_general=st.dataframe(vista_general,use_container_width=True,hide_index=True,on_select='rerun',selection_mode='single-row',key=f'cat_general_tabla_{nonce_general}') if not vista_general.empty else None
         filas_general=getattr(evento_general,'selection',{}).get('rows',[]) if evento_general is not None else []
@@ -1804,6 +1888,7 @@ def page_catalogos():
         tipo_fmt=st.radio('Sección',['PROCESO','ANALISIS'],format_func=lambda x:'Líneas y sectores' if x=='PROCESO' else 'Análisis fisicoquímicos',horizontal=True,key='fmt_tipo')
         df=read_df('SELECT id,linea,sector,tipo_analisis,orden_linea,orden_sector FROM catalogo_formatos_entrega WHERE formato_nave=? AND tipo=? AND activo=1 ORDER BY orden_linea,orden_sector,id',(nave_fmt,tipo_fmt))
         vista=df.rename(columns={'id':'ID','linea':'Línea','sector':'Sector','tipo_analisis':'Tipo de análisis','orden_linea':'Orden línea','orden_sector':'Orden sector'})
+        st.download_button('Descargar tabla del formato seleccionado',vista.to_csv(index=False).encode('utf-8-sig'),f'formato_entrega_{nave_fmt}_{tipo_fmt}_{datetime.now().strftime("%Y%m%d_%H%M%S")}.csv','text/csv',key=f'fmt_csv_{nave_fmt}_{tipo_fmt}')
         nonce=st.session_state.get('fmt_nonce',0)
         evento=st.dataframe(vista,use_container_width=True,hide_index=True,on_select='rerun',selection_mode='single-row',key=f'fmt_table_{nave_fmt}_{tipo_fmt}_{nonce}') if not vista.empty else None
         rows=getattr(evento,'selection',{}).get('rows',[]) if evento is not None else []
@@ -2007,7 +2092,7 @@ def main():
     if FORCE_RESET_ADMIN: reset_admin()
     user=login()
     styles(False)
-    left_col, right_col = st.columns([0.18, 0.82], gap='medium')
+    left_col, right_col = st.columns([0.15, 0.85], gap='medium')
     with left_col:
         left_menu()
     with right_col:
