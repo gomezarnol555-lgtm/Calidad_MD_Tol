@@ -224,6 +224,133 @@ def pdf_pnc(rid):
     parrafo(c,observaciones,izq+6,obs_sup-32,ancho-12)
     c.showPage(); c.save(); return b.getvalue()
 
+def _pdf_hallazgo_base(tabla,rid,tipo_formato):
+    """Genera los formatos ME y Detector/RX sin alterar los datos ni la logica operativa."""
+    try:
+        from reportlab.lib.pagesizes import A4
+        from reportlab.pdfgen import canvas
+        from reportlab.pdfbase.pdfmetrics import stringWidth
+        from reportlab.lib.utils import ImageReader
+    except ModuleNotFoundError:
+        return None
+    df=read_df(f'SELECT * FROM {tabla} WHERE id=?',(rid,))
+    if df.empty: return None
+    r=df.iloc[0].to_dict()
+    def v(campo):
+        x=r.get(campo,'')
+        return '' if x is None or pd.isna(x) else str(x)
+    def fecha_registro():
+        try: return date(int(float(v('anio'))),int(float(v('mes'))),int(float(v('dia')))).strftime('%d/%m/%Y')
+        except Exception: return ''
+    def t(c,texto,x,y,tam=8,negrita=False):
+        c.setFont('Helvetica-Bold' if negrita else 'Helvetica',tam); c.drawString(x,y,str(texto or ''))
+    def fit(c,texto,x,y,ancho,tam=8,negrita=False):
+        texto=str(texto or '').replace('\n',' / '); fuente='Helvetica-Bold' if negrita else 'Helvetica'; actual=tam
+        while actual>5.5 and stringWidth(texto,fuente,actual)>ancho: actual-=.25
+        if stringWidth(texto,fuente,actual)>ancho:
+            while texto and stringWidth(texto+'...',fuente,actual)>ancho: texto=texto[:-1]
+            texto+='...'
+        c.setFont(fuente,actual); c.drawString(x,y,texto)
+    def wrap(c,texto,x,y,ancho,tam=8,leading=11,max_lines=8):
+        lineas=[]
+        for bloque in str(texto or '').splitlines() or ['']:
+            linea=''
+            for palabra in bloque.split():
+                prueba=(linea+' '+palabra).strip()
+                if stringWidth(prueba,'Helvetica',tam)<=ancho: linea=prueba
+                else:
+                    if linea: lineas.append(linea)
+                    linea=palabra
+            if linea: lineas.append(linea)
+        c.setFont('Helvetica',tam)
+        for i,linea in enumerate(lineas[:max_lines]): c.drawString(x,y-i*leading,linea)
+        if len(lineas)>max_lines: c.drawRightString(x+ancho,y-(max_lines-1)*leading,'...')
+    def line_value(c,etiqueta,valor,y,label_x=45,value_x=108,right=557,bold=False):
+        t(c,etiqueta,label_x,y,7.7,bold); c.line(value_x,y-2,right,y-2); fit(c,valor,value_x+3,y, right-value_x-6,7.7)
+    def logo(c,x,y,w,h):
+        try:
+            data=BytesIO(base64.b64decode(LOGO_MUNDO_DULCE_BASE64))
+            c.drawImage(ImageReader(data),x,y,width=w,height=h,preserveAspectRatio=True,anchor='c',mask='auto')
+        except Exception: t(c,'Mundo Dulce',x+12,y+h/2,10,True)
+    b=BytesIO(); c=canvas.Canvas(b,pagesize=A4); W,H=A4
+    c.setLineWidth(.8)
+    if tipo_formato=='ME':
+        c.setTitle('Reporte de Hallazgos de Materia Extraña')
+        # Encabezado de la primera imagen
+        x0=45; x1=198; x2=508; x3=558; top=800; bot=758
+        c.rect(x0,bot,x3-x0,top-bot); c.line(x1,bot,x1,top); c.line(x2,bot,x2,top)
+        logo(c,x0+15,bot+6,x1-x0-30,top-bot-12)
+        c.setFont('Helvetica',7.7); c.drawCentredString((x1+x2)/2,top-17,'Anexo 1. Reporte de Hallazgos de Materia Extraña')
+        c.drawCentredString((x1+x2)/2,top-32,'IT-CAL03-2301-03'); c.drawCentredString((x2+x3)/2,top-25,'Rev. 0')
+        t(c,'N° Hallazgo:',46,733,7.5); fit(c,f'{rid}/{v("anio") or datetime.now().year}',108,733,140,7.5,True)
+        t(c,'Fecha:',46,718,7.5); fit(c,fecha_registro(),108,718,140,7.5)
+        line_value(c,'Línea:',v('linea_sector'),688)
+        line_value(c,'Sector:',v('familia'),673)
+        line_value(c,'Equipo:',v('equipo_hallazgo'),658)
+        line_value(c,'Producto:',f'{v("item")} - {v("producto")}'.strip(' -'),643)
+        line_value(c,'Lote:',v('lote'),628)
+        t(c,'Descripción de material hallado:',46,596,7.5)
+        c.line(222,594,557,594); c.line(45,579,557,579); c.line(45,564,557,564)
+        wrap(c,v('descripcion_hallazgo'),225,596,329,7.5,14,3)
+        # Cuadro de muestra
+        c.rect(45,339,512,210); t(c,'Muestra Hallazgo de Materia Extraña:',48,537,7.2)
+        detalle='Tipo: '+v('tipo')+' | Partículas halladas: '+v('particulas_halladas')
+        fit(c,detalle,48,522,500,7)
+        t(c,'Acción contingente:',46,312,7.5); c.line(45,296,557,296); c.line(45,281,557,281)
+        wrap(c,v('accion_contingente') or v('acciones_inmediatas'),48,299,506,7.5,14,2)
+        t(c,'Investigación del origen:',46,254,7.5); c.line(45,238,557,238); c.line(45,223,557,223); c.line(45,208,557,208)
+        wrap(c,v('investigacion_origen'),48,241,506,7.5,14,3)
+        # Firmas
+        for cx,titulo in [(165,'Calidad'),(306,'Producción'),(448,'Mantenimiento')]:
+            c.line(cx-57,142,cx+57,142); c.setFont('Helvetica',7); c.drawCentredString(cx,129,titulo); c.drawCentredString(cx,117,'(Nombre y Firma)')
+    else:
+        c.setTitle('Registro de Materiales Segregados por Detector de Metales')
+        # Encabezado de la segunda imagen
+        x0=27; x1=199; x2=542; x3=609; top=805; mid=772; bot=720
+        c.rect(x0,bot,x3-x0,top-bot); c.line(x1,bot,x1,top); c.line(x2,bot,x2,top); c.line(x1,mid,x2,mid)
+        logo(c,x0+18,bot+16,x1-x0-36,top-bot-30)
+        c.setFont('Helvetica-Bold',7.5); c.drawCentredString((x1+x2)/2,top-18,'Anexo 1. Registro de Materiales Segregados por el detector de')
+        c.drawCentredString((x1+x2)/2,top-30,'metales')
+        c.setFont('Helvetica-Bold',7.1); c.drawCentredString((x1+x2)/2,mid-23,'IT-CAL03-2301-09240-2007 Instructivo para el Tratamiento de')
+        c.drawCentredString((x1+x2)/2,mid-36,'producto separado por Detector de Metales')
+        c.drawCentredString((x2+x3)/2,top-44,'REV: 02')
+        t(c,'RECHAZO No. :',28,643,8,True); fit(c,f'{rid}/{v("anio") or datetime.now().year}',119,643,180,8,True)
+        t(c,'FECHA:',28,602,8,True); fit(c,fecha_registro(),119,602,180,8)
+        t(c,'LINEA DE ELABORACIÓN / EQUIPO:',28,547,8,True); c.line(286,545,609,545); fit(c,v('linea_sector')+' / '+v('equipo_hallazgo'),289,547,316,7.8)
+        t(c,'SECTOR DEL HALLAZGO:',28,520,8,True)
+        # Las opciones se marcan por coincidencia con la descripción, cuando existe.
+        ubic=(v('descripcion_hallazgo')+' '+v('equipo_hallazgo')).upper()
+        opciones=[('CONFORMADO',286),('ENVOLTURA',420),('EMPAQUE',553)]
+        for nombre,x in opciones:
+            t(c,nombre,x-82,520,7.2); c.rect(x,510,56,15)
+            if nombre in ubic: c.setFont('Helvetica-Bold',11); c.drawCentredString(x+28,512,'X')
+        t(c,'e) El producto con metal debe ser llevado al Laboratorio y disuelto para la separación del metal. El metal se guarda e',28,489,6.8)
+        t(c,'identifica para la posterior investigación de su origen.',28,477,6.8)
+        line_value(c,'PRODUCTO:',f'{v("item")} - {v("producto")}'.strip(' -'),442,label_x=28,value_x=119,right=609,bold=True)
+        line_value(c,'LOTE:',v('lote'),400,label_x=28,value_x=119,right=609,bold=True)
+        t(c,'DESCRIPCIÓN DEL MATERIAL HALLADO:',28,361,8,True); c.line(343,359,609,359); c.line(27,334,609,334)
+        wrap(c,v('descripcion_hallazgo'),346,362,258,7.6,12,2)
+        t(c,'UBICACIÓN:',28,308,8,True)
+        for nombre,x in [('MASA',239),('RELLENO',400),('RECUBIERTO',556)]:
+            t(c,nombre,x-37,308,7.2); c.rect(x,298,43,15)
+            if nombre in ubic: c.setFont('Helvetica-Bold',11); c.drawCentredString(x+21.5,300,'X')
+        t(c,'ADJUNTAR AQUÍ MUESTRA DEL MATERIAL HALLADO',28,267,8,True)
+        # Área amplia para colocar muestra física
+        c.rect(27,143,582,105)
+        t(c,'ACCIÓN INMEDIATA:',28,112,8,True); c.line(199,110,609,110)
+        fit(c,v('acciones_inmediatas') or v('accion_contingente'),202,112,403,7.5)
+        t(c,'INVESTIGACIÓN DEL ORIGEN:',28,85,7.5); c.line(199,83,609,83)
+        fit(c,v('investigacion_origen'),202,85,403,7.5)
+        for cx,l1,l2 in [(113,'Nombre y Firma del Analista de','Calidad'),(319,'Nombre y Firma del','Supervisor de Producción'),(531,'Nombre y Firma de','Mantenimiento')]:
+            c.line(cx-86,44,cx+86,44); c.setFont('Helvetica',6.7); c.drawCentredString(cx,31,l1); c.drawCentredString(cx,20,l2)
+    c.showPage(); c.save(); return b.getvalue()
+
+def pdf_materia_extrana(rid):
+    return _pdf_hallazgo_base('me_registros',rid,'ME')
+
+def pdf_detector_metales_rx(rid):
+    return _pdf_hallazgo_base('ddm_rx_registros',rid,'DDM')
+
 def pdf_entrega(eid):
     try:
         from reportlab.lib import colors
@@ -1727,6 +1854,11 @@ def page_consulta():
         if not shown.empty: st.download_button('Descargar Materia Extraña CSV',prep(shown).to_csv(index=False).encode('utf-8-sig'),f"materia_extrana_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",'text/csv')
         if selected:
             st.markdown(f'### Registro seleccionado: Número {selected}')
+            contenido_pdf=pdf_materia_extrana(selected)
+            if contenido_pdf:
+                st.download_button('Descargar reporte de Materia Extraña en PDF',contenido_pdf,f'materia_extrana_{selected}.pdf','application/pdf',key=f'me_pdf_{selected}')
+            else:
+                st.warning('No fue posible generar el PDF. Verifica que reportlab esté incluido en requirements.txt.')
             edit_record('me_registros','me',selected)
             if is_dev(): delete_confirm('me_registros','me','ELIMINAR_ME',selected)
     with t3:
@@ -1734,6 +1866,11 @@ def page_consulta():
         if not shown.empty: st.download_button('Descargar Detector de metales y RX CSV',prep(shown).to_csv(index=False).encode('utf-8-sig'),f"ddm_rx_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",'text/csv')
         if selected:
             st.markdown(f'### Registro seleccionado: Número {selected}')
+            contenido_pdf=pdf_detector_metales_rx(selected)
+            if contenido_pdf:
+                st.download_button('Descargar registro de Detector de metales y RX en PDF',contenido_pdf,f'detector_metales_rx_{selected}.pdf','application/pdf',key=f'ddm_pdf_{selected}')
+            else:
+                st.warning('No fue posible generar el PDF. Verifica que reportlab esté incluido en requirements.txt.')
             edit_record('ddm_rx_registros','ddm',selected)
             if is_dev(): delete_confirm('ddm_rx_registros','ddm','ELIMINAR_DDM_RX',selected)
 
