@@ -133,6 +133,7 @@ def pdf_pnc(rid):
         from reportlab.lib.pagesizes import A4
         from reportlab.pdfgen import canvas
         from reportlab.pdfbase.pdfmetrics import stringWidth
+        from reportlab.lib.utils import ImageReader
     except ModuleNotFoundError:
         return None
     df=read_df('SELECT * FROM pnc_registros WHERE id=?',(rid,))
@@ -174,25 +175,33 @@ def pdf_pnc(rid):
     sup=742; alto=52; logo=132; revision=58
     c.setLineWidth(.7); c.rect(izq,sup-alto,ancho,alto)
     c.line(izq+logo,sup-alto,izq+logo,sup); c.line(der-revision,sup-alto,der-revision,sup)
-    # Marca vectorial, no requiere archivo externo
-    c.setFillColorRGB(.95,.18,.08); c.circle(izq+38,sup-25,11,fill=1,stroke=0)
-    c.setFillColorRGB(1,.75,.05)
-    for desplazamiento in (-7,-3,1,5): c.setLineWidth(1); c.line(izq+30,sup-19+desplazamiento,izq+46,sup-31+desplazamiento)
-    c.setFillColorRGB(.12,.32,.68); texto(c,'Mundo Dulce',izq+55,sup-31,10,True); c.setFillColorRGB(0,0,0)
+    # Logotipo corporativo adjunto. Se busca junto al archivo de la app.
+    logo_path=Path('logo_mundo_dulce.png')
+    if logo_path.exists():
+        try:
+            c.drawImage(ImageReader(str(logo_path)),izq+8,sup-alto+7,width=logo-16,height=alto-14,preserveAspectRatio=True,anchor='c',mask='auto')
+        except Exception:
+            texto(c,'Mundo Dulce',izq+28,sup-31,11,True)
+    else:
+        texto(c,'Mundo Dulce',izq+28,sup-31,11,True)
     centro_izq=izq+logo; centro_der=der-revision
     c.setFont('Helvetica',8.3); c.drawCentredString((centro_izq+centro_der)/2,sup-19,'Anexo 5. Informe de Producto No Conforme')
     c.drawCentredString((centro_izq+centro_der)/2,sup-39,'PG-CAL01-2301-01760-2007')
     c.drawCentredString(der-revision/2,sup-31,'Rev. 0')
     # Folio
     y=665; texto(c,'PNC No.',der-100,y+5,8.5); c.rect(der-58,y,58,18)
-    ajustar(c,valor('folio') or f'ID/{rid}',der-55,y+5,52,8,True)
+    fecha_pnc=valor('fecha_apertura')
+    try: anio_pnc=str(pd.to_datetime(fecha_pnc).year)
+    except Exception: anio_pnc=str(datetime.now().year)
+    ajustar(c,f'{rid}/{anio_pnc}',der-55,y+5,52,8,True)
     # Datos registrados
     producto=' - '.join(x for x in [valor('item'),valor('descripcion_producto')] if x)
     cantidad=valor('cantidad_observada')
     try: cantidad=f"{float(cantidad):.2f} kg"
     except Exception: pass
     responsables=' / '.join(x for x in [valor('supervisor'),valor('analista')] if x)
-    filas=[('Fecha:',valor('fecha_apertura')),('Sector:',valor('linea_sector')),('Código de la No Conformidad:',valor('codigo_defecto')),('Item y Producto o SE:',producto),('Lote:',valor('lote')),('Cantidad observada:',cantidad),('Responsables:',responsables)]
+    codigo_nc='_'.join(x.strip() for x in [valor('etapa'),valor('codigo_defecto')] if x.strip())
+    filas=[('Fecha:',valor('fecha_apertura')),('Sector:',valor('linea_sector')),('Código de la No Conformidad:',codigo_nc),('Item y Producto o SE:',producto),('Lote:',valor('lote')),('Cantidad observada:',cantidad),('Responsables:',responsables)]
     arriba=646; fila_alto=19; etiqueta=150
     c.rect(izq,arriba-fila_alto*len(filas),ancho,fila_alto*len(filas)); c.line(izq+etiqueta,arriba-fila_alto*len(filas),izq+etiqueta,arriba)
     for i,(nombre,dato) in enumerate(filas):
