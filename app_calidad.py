@@ -916,7 +916,7 @@ def styles(compact=False):
     /* Nuevo registro y tablas: diseño corporativo sin afectar menú lateral */
     .registro-landing-hero{background:radial-gradient(circle at 12% 18%,rgba(0,168,132,.14),transparent 30%),linear-gradient(135deg,#fff 0%,#F7FAFC 55%,#EAFBF7 100%);border:1px solid #DDE7F0;border-radius:28px;padding:1.85rem 2rem;margin:0 0 1.4rem 0;box-shadow:0 18px 46px rgba(15,23,42,.08)}
     .registro-landing-title{color:#062C36;font-size:2.18rem;line-height:1.05;font-weight:950;letter-spacing:-.035em;margin:0 0 .55rem 0}.registro-landing-subtitle{color:#667085;font-size:1rem;font-weight:850;margin:0}
-    .registro-card-slot{display:none}div[data-testid="column"]:has(.registro-card-slot) .stButton button{width:100%!important;min-height:205px!important;background:linear-gradient(180deg,#fff 0%,#F8FAFC 100%)!important;border:1px solid #DDE6F0!important;border-radius:26px!important;color:#102A43!important;font-weight:900!important;text-align:left!important;justify-content:flex-start!important;align-items:flex-start!important;padding:1.35rem 1.45rem!important;white-space:pre-line!important;line-height:1.45!important;box-shadow:0 18px 42px rgba(15,23,42,.10)!important;overflow:hidden!important}
+    .registro-card-slot{display:none}div[data-testid="column"]:has(.registro-card-slot) .stButton button{width:100%!important;min-height:145px!important;background:linear-gradient(180deg,#fff 0%,#F8FAFC 100%)!important;border:1px solid #DDE6F0!important;border-radius:26px!important;color:#102A43!important;font-weight:900!important;text-align:left!important;justify-content:flex-start!important;align-items:flex-start!important;padding:1.15rem 1.2rem!important;white-space:pre-line!important;line-height:1.45!important;box-shadow:0 18px 42px rgba(15,23,42,.10)!important;overflow:hidden!important}
     div[data-testid="column"]:has(.registro-card-slot) .stButton button:hover{transform:translateY(-4px)!important;border-color:#00A884!important;background:linear-gradient(180deg,#fff 0%,#ECFDF8 100%)!important;box-shadow:0 24px 54px rgba(15,23,42,.14),0 0 0 4px rgba(0,168,132,.13)!important;color:#062C36!important}
     .registro-full-panel{width:100%;background:radial-gradient(circle at 8% 10%,rgba(0,168,132,.12),transparent 32%),linear-gradient(135deg,#fff 0%,#F8FAFC 58%,#ECFDF8 100%);border:1px solid #DDE7F0;border-radius:30px;padding:1.7rem 1.85rem 1.9rem 1.85rem;box-shadow:0 22px 56px rgba(15,23,42,.11);box-sizing:border-box;overflow:hidden;margin-bottom:1.1rem}.registro-full-title{color:#062C36;font-size:2.05rem;font-weight:950;letter-spacing:-.035em;margin:0 0 .35rem 0}.registro-full-subtitle{color:#667085;font-size:1rem;font-weight:850;margin:0 0 1.2rem 0}.registro-pill{display:inline-flex;align-items:center;border-radius:999px;padding:.38rem .85rem;background:#DCFCE7;color:#027A48;font-size:.8rem;font-weight:950;margin-bottom:1rem}.registro-form-shell{background:#fff;border:1px solid #DDE7F0;border-radius:26px;padding:1.1rem 1.2rem;box-shadow:0 18px 44px rgba(15,23,42,.08);margin-top:.95rem}
 
@@ -930,9 +930,9 @@ def styles(compact=False):
     div[class*="st-key-card_muestras"] button,
     div[class*="st-key-entrega_Nave"] button {
         width:100% !important;
-        min-height:250px !important;
+        min-height:150px !important;
         height:auto !important;
-        padding:1.7rem 1.65rem !important;
+        padding:1.2rem 1.25rem !important;
         display:flex !important;
         align-items:flex-start !important;
         justify-content:flex-start !important;
@@ -940,8 +940,8 @@ def styles(compact=False):
         white-space:pre-line !important;
         overflow:visible !important;
         text-overflow:clip !important;
-        line-height:1.55 !important;
-        font-size:1rem !important;
+        line-height:1.38 !important;
+        font-size:.94rem !important;
         font-weight:850 !important;
         color:#203047 !important;
         background:linear-gradient(180deg,#FFFFFF 0%,#F7FAFC 100%) !important;
@@ -962,7 +962,7 @@ def styles(compact=False):
         text-overflow:clip !important;
         word-break:normal !important;
         overflow-wrap:anywhere !important;
-        line-height:1.55 !important;
+        line-height:1.38 !important;
         margin:0 !important;
     }
     div[class*="st-key-card_pnc"] button:hover,
@@ -1001,9 +1001,9 @@ def styles(compact=False):
         div[class*="st-key-card_muestras_"] button,
         div[class*="st-key-card_muestras"] button,
         div[class*="st-key-entrega_Nave"] button {
-            min-height:225px !important;
-            padding:1.4rem !important;
-            font-size:.95rem !important;
+            min-height:140px !important;
+            padding:1.05rem 1.1rem !important;
+            font-size:.9rem !important;
         }
         .registro-landing-title { font-size:1.85rem !important; }
         .registro-full-title { font-size:1.75rem !important; }
@@ -1020,7 +1020,59 @@ def styles(compact=False):
         div[class*="st-key-card_muestras_"] button,
         div[class*="st-key-card_muestras"] button,
         div[class*="st-key-entrega_Nave"] button {
-            min-height:190px !important;
+            min-height:128px !important;
+        }
+    }
+
+    /* Paneles generales compactos y separados del menu principal */
+    div[data-testid="stHorizontalBlock"]:has(.left-menu-marker) {
+        gap:1.45rem !important;
+    }
+    div[data-testid="stHorizontalBlock"]:has(.left-menu-marker) > div[data-testid="column"]:last-child {
+        padding-left:.75rem !important;
+        padding-right:.4rem !important;
+        min-width:0 !important;
+    }
+    .registro-landing-hero {
+        width:calc(100% - .8rem) !important;
+        margin:0 .4rem 1.05rem .4rem !important;
+        padding:1.35rem 1.5rem !important;
+        border-radius:22px !important;
+    }
+    .registro-full-panel {
+        width:calc(100% - .8rem) !important;
+        margin:0 .4rem .95rem .4rem !important;
+        padding:1.3rem 1.45rem 1.45rem 1.45rem !important;
+        border-radius:24px !important;
+    }
+    .registro-form-shell {
+        padding:.95rem 1rem !important;
+        border-radius:20px !important;
+    }
+    .topbar {
+        width:calc(100% - .8rem) !important;
+        margin-left:.4rem !important;
+        margin-right:.4rem !important;
+        padding:0 1.25rem !important;
+    }
+    .registro-landing-title { font-size:1.9rem !important; }
+    .registro-landing-subtitle { font-size:.92rem !important; }
+    .registro-full-title { font-size:1.8rem !important; }
+    /* Permite que columnas, controles y textos se adapten sin superponerse */
+    div[data-testid="column"] { min-width:0 !important; overflow:visible !important; }
+    .stButton button, .stDownloadButton button { max-width:100% !important; }
+    .stButton button p, .stDownloadButton button p {
+        overflow-wrap:anywhere !important;
+        word-break:normal !important;
+    }
+    @media (max-width:1100px) {
+        .registro-landing-hero, .registro-full-panel, .topbar {
+            width:calc(100% - .4rem) !important;
+            margin-left:.2rem !important;
+            margin-right:.2rem !important;
+        }
+        div[data-testid="stHorizontalBlock"]:has(.left-menu-marker) > div[data-testid="column"]:last-child {
+            padding-left:.35rem !important;
         }
     }
     </style>
@@ -2180,7 +2232,7 @@ def main():
     if FORCE_RESET_ADMIN: reset_admin()
     user=login()
     styles(False)
-    left_col, right_col = st.columns([0.17, 0.83], gap='medium')
+    left_col, right_col = st.columns([0.19, 0.81], gap='large')
     with left_col:
         left_menu()
     with right_col:
