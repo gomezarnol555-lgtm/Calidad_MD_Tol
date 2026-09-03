@@ -128,7 +128,7 @@ def excel_matriz(df):
             for cell in ws[1]:cell.font=Font(bold=True,color='FFFFFF');cell.fill=PatternFill('solid',fgColor='062C36')
     return b.getvalue()
 
-def pdf_pnc_original(rid):
+def pdf_pnc(rid):
     """Genera el formato corporativo de Producto No Conforme del registro seleccionado."""
     try:
         from reportlab.lib.pagesizes import A4
@@ -348,141 +348,135 @@ def _pdf_hallazgo_base(tabla,rid,tipo_formato):
             c.line(cx-78,44,cx+78,44); c.setFont('Helvetica',6.7); c.drawCentredString(cx,31,l1); c.drawCentredString(cx,20,l2)
     c.showPage(); c.save(); return b.getvalue()
 
-def pdf_materia_extrana_original(rid):
+def pdf_materia_extrana(rid):
     return _pdf_hallazgo_base('me_registros',rid,'ME')
 
-def pdf_detector_metales_rx_original(rid):
+def pdf_detector_metales_rx(rid):
     return _pdf_hallazgo_base('ddm_rx_registros',rid,'DDM')
 
-# ===== PLANTILLAS PDF/IMAGEN V3: esquema aislado y compatible =====
-PDFV3_META={
- 'PNC':('Informe de Producto No Conforme','pnc_registros',pdf_pnc_original),
- 'ME':('Reporte de Hallazgos de Materia Extrana','me_registros',pdf_materia_extrana_original),
- 'DDM_RX':('Detector de Metales y RX','ddm_rx_registros',pdf_detector_metales_rx_original)}
-PDFV3_FORMULAS={
- 'PNC':['__numero_anio__','__etapa_codigo__','__item_producto__','__responsables__','__observaciones_pnc__'],
- 'ME':['__numero_anio__','__fecha_dmy__','__item_producto__','__acciones_hallazgo__','__linea_equipo__'],
- 'DDM_RX':['__numero_anio__','__fecha_dmy__','__item_producto__','__acciones_hallazgo__','__linea_equipo__']}
-PDFV3_SEED={
- 'PNC':[('PNC No.','__numero_anio__',482,670,54,8,1),('Fecha','fecha_apertura',211,633,320,8,0),('Sector','linea_sector',211,614,320,8,0),('Codigo NC','__etapa_codigo__',211,595,320,8,0),('Producto','__item_producto__',211,576,320,8,0),('Lote','lote',211,557,320,8,0),('Cantidad','cantidad_observada',211,538,320,8,0),('Responsables','__responsables__',211,519,320,8,0),('Acciones','acciones_inmediatas',64,458,466,8,0),('Observaciones','__observaciones_pnc__',64,299,466,8,0)],
- 'ME':[('N Hallazgo','__numero_anio__',108,733,140,7.5,1),('Fecha','__fecha_dmy__',108,718,140,7.5,0),('Linea','linea_sector',108,688,445,7.7,0),('Sector','familia',108,673,445,7.7,0),('Equipo','equipo_hallazgo',108,658,445,7.7,0),('Producto','__item_producto__',108,643,445,7.7,0),('Lote','lote',108,628,445,7.7,0),('Material','descripcion_hallazgo',225,596,329,7.5,0),('Accion','__acciones_hallazgo__',48,299,506,7.5,0),('Investigacion','investigacion_origen',48,241,506,7.5,0),('Analista','analista_detecta',108,146,114,7,0),('Supervisor','supervisor_responsable',249,146,114,7,0)],
- 'DDM_RX':[('Rechazo No.','__numero_anio__',119,643,180,8,1),('Fecha','__fecha_dmy__',119,602,180,8,0),('Linea / Equipo','__linea_equipo__',273,547,292,7.8,0),('Producto','__item_producto__',119,442,445,7.7,0),('Lote','lote',119,400,445,7.7,0),('Material','descripcion_hallazgo',323,362,242,7.6,0),('Accion','__acciones_hallazgo__',190,112,375,7.5,0),('Investigacion','investigacion_origen',190,85,375,7.5,0),('Analista','analista_detecta',34,48,156,6.7,0),('Supervisor','supervisor_responsable',220,48,156,6.7,0)]}
-def init_pdfv3(cur):
- # Nombres v3 evitan conflictos con tablas de versiones anteriores.
- cur.execute("CREATE TABLE IF NOT EXISTS pdfv3_formatos(id INTEGER PRIMARY KEY AUTOINCREMENT,codigo TEXT UNIQUE,nombre TEXT,tabla_origen TEXT,activo INTEGER DEFAULT 1)")
- cur.execute("CREATE TABLE IF NOT EXISTS pdfv3_plantillas(id INTEGER PRIMARY KEY AUTOINCREMENT,formato_id INTEGER,version INTEGER,nombre TEXT,mime TEXT,contenido BLOB,ancho REAL,alto REAL,activa INTEGER DEFAULT 0,descripcion TEXT,usuario TEXT,fecha TEXT,UNIQUE(formato_id,version))")
- cur.execute("CREATE TABLE IF NOT EXISTS pdfv3_campos(id INTEGER PRIMARY KEY AUTOINCREMENT,formato_id INTEGER,etiqueta TEXT,origen TEXT,pagina INTEGER DEFAULT 1,x REAL,y REAL,ancho REAL,tamano REAL,negrita INTEGER DEFAULT 0,alineacion TEXT DEFAULT 'IZQUIERDA',lineas INTEGER DEFAULT 1,orden INTEGER DEFAULT 0,activo INTEGER DEFAULT 1,UNIQUE(formato_id,etiqueta))")
- for codigo,(nombre,tabla,_) in PDFV3_META.items():
-  cur.execute('INSERT OR IGNORE INTO pdfv3_formatos(codigo,nombre,tabla_origen,activo) VALUES(?,?,?,1)',(codigo,nombre,tabla)); fid=cur.execute('SELECT id FROM pdfv3_formatos WHERE codigo=?',(codigo,)).fetchone()[0]
-  if cur.execute('SELECT COUNT(*) FROM pdfv3_campos WHERE formato_id=?',(fid,)).fetchone()[0]==0:
-   for i,(et,origen,x,y,a,tam,bold) in enumerate(PDFV3_SEED[codigo]): cur.execute('INSERT INTO pdfv3_campos(formato_id,etiqueta,origen,pagina,x,y,ancho,tamano,negrita,alineacion,lineas,orden,activo) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,1)',(fid,et,origen,1,x,y,a,tam,bold,'IZQUIERDA',6 if et in ('Acciones','Observaciones','Material','Investigacion') else 1,i))
-def _pdfv3_rw():
- try:
-  from pypdf import PdfReader,PdfWriter; return PdfReader,PdfWriter
- except Exception:
-  try:
-   from PyPDF2 import PdfReader,PdfWriter; return PdfReader,PdfWriter
-  except Exception:return None,None
-def _pdfv3_value(o,r,rid):
- def v(k):
-  z=r.get(k,'');return '' if z is None or pd.isna(z) else str(z)
- if o=='__numero_anio__':
-  an=v('anio')
-  if not an:
-   try:an=str(pd.to_datetime(v('fecha_apertura')).year)
-   except Exception:an=str(datetime.now().year)
-  return f'{rid}/{an}'
- if o=='__fecha_dmy__':
-  try:return date(int(float(v('anio'))),int(float(v('mes'))),int(float(v('dia')))).strftime('%d/%m/%Y')
-  except Exception:return ''
- if o=='__etapa_codigo__':return '_'.join(z for z in [v('etapa'),v('codigo_defecto')] if z)
- if o=='__item_producto__':return ' - '.join(z for z in [v('item'),v('descripcion_producto') or v('producto')] if z)
- if o=='__responsables__':return ' / '.join(z for z in [v('supervisor'),v('analista')] if z)
- if o=='__observaciones_pnc__':return ('Descripcion: '+v('descripcion_defecto')+'\n'+v('observaciones')).strip()
- if o=='__acciones_hallazgo__':return v('acciones_inmediatas') or v('accion_contingente')
- if o=='__linea_equipo__':return ' / '.join(z for z in [v('linea_sector'),v('equipo_hallazgo')] if z)
- return v(o)
-def _pdfv3_draw(c,text,x,y,w,size,bold,align,maxlines):
- from reportlab.pdfbase.pdfmetrics import stringWidth
- font='Helvetica-Bold' if bold else 'Helvetica'; lines=[]
- for block in str(text or '').splitlines() or ['']:
-  cur=''
-  for word in block.split():
-   q=(cur+' '+word).strip()
-   if not cur or stringWidth(q,font,size)<=w:cur=q
-   else:lines.append(cur);cur=word
-  if cur:lines.append(cur)
- c.setFont(font,size)
- for i,z in enumerate(lines[:max(1,int(maxlines))]):
-  yy=y-i*(size+2)
-  if align=='CENTRO':c.drawCentredString(x+w/2,yy,z)
-  elif align=='DERECHA':c.drawRightString(x+w,yy,z)
-  else:c.drawString(x,yy,z)
-def _pdfv3_base_pdf(raw,mime,w,h):
- Reader,Writer=_pdfv3_rw()
- if mime=='application/pdf':return raw
- from reportlab.pdfgen import canvas
- from reportlab.lib.utils import ImageReader
- b=BytesIO();c=canvas.Canvas(b,pagesize=(w,h));c.drawImage(ImageReader(BytesIO(raw)),0,0,width=w,height=h,mask='auto');c.showPage();c.save();return b.getvalue()
-def pdfv3_generate(codigo,rid):
- f=read_df('SELECT * FROM pdfv3_formatos WHERE codigo=? AND activo=1',(codigo,))
- if f.empty:return None
- f=f.iloc[0];d=read_df(f'SELECT * FROM {f.tabla_origen} WHERE id=?',(rid,));p=read_df('SELECT * FROM pdfv3_plantillas WHERE formato_id=? AND activa=1 ORDER BY version DESC LIMIT 1',(int(f.id),))
- if d.empty or p.empty:return None
- Reader,Writer=_pdfv3_rw()
- if not Reader:return None
- p=p.iloc[0];base=Reader(BytesIO(_pdfv3_base_pdf(bytes(p.contenido),str(p.mime),float(p.ancho),float(p.alto))));fields=read_df('SELECT * FROM pdfv3_campos WHERE formato_id=? AND activo=1 ORDER BY pagina,orden,id',(int(f.id),));r=d.iloc[0].to_dict();writer=Writer();from reportlab.pdfgen import canvas
- for n,page in enumerate(base.pages,1):
-  box=page.mediabox;b=BytesIO();c=canvas.Canvas(b,pagesize=(float(box.width),float(box.height)))
-  for _,q in fields[fields.pagina==n].iterrows():_pdfv3_draw(c,_pdfv3_value(str(q.origen),r,rid),float(q.x),float(q.y),float(q.ancho),float(q.tamano),bool(q.negrita),str(q.alineacion),int(q.lineas))
-  c.save();page.merge_page(Reader(BytesIO(b.getvalue())).pages[0]);writer.add_page(page)
- z=BytesIO();writer.write(z);return z.getvalue()
-def pdf_pnc(rid):
- try:return pdfv3_generate('PNC',rid) or pdf_pnc_original(rid)
- except Exception:return pdf_pnc_original(rid)
-def pdf_materia_extrana(rid):
- try:return pdfv3_generate('ME',rid) or pdf_materia_extrana_original(rid)
- except Exception:return pdf_materia_extrana_original(rid)
-def pdf_detector_metales_rx(rid):
- try:return pdfv3_generate('DDM_RX',rid) or pdf_detector_metales_rx_original(rid)
- except Exception:return pdf_detector_metales_rx_original(rid)
-def page_pdfv3():
- st.subheader('Formatos PDF e imagen de referencia');st.caption('La plantilla conserva el diseño original. Los valores se leen directamente de la tabla del registro.')
- fs=read_df('SELECT * FROM pdfv3_formatos WHERE activo=1 ORDER BY id');codigo=st.selectbox('Formato',fs.codigo.tolist(),format_func=lambda z:str(fs[fs.codigo==z].iloc[0].nombre),key='pdfv3_codigo');f=fs[fs.codigo==codigo].iloc[0];fid=int(f.id)
- t1,t2,t3=st.tabs(['Relacion de campos','Plantilla de referencia','Prueba'])
- with t1:
-  db=conn();cols=[r[1] for r in db.execute(f'PRAGMA table_info({f.tabla_origen})').fetchall()];db.close();valid=['']+cols+PDFV3_FORMULAS[codigo]
-  df=read_df('SELECT id,etiqueta,origen,pagina,x,y,ancho,tamano,negrita,alineacion,lineas,orden,activo FROM pdfv3_campos WHERE formato_id=? ORDER BY orden',(fid,))
-  ed=st.data_editor(df,use_container_width=True,hide_index=True,num_rows='dynamic',disabled=['id'],key='pdfv3_editor_'+codigo,column_config={'origen':st.column_config.SelectboxColumn('Campo real o formula',options=valid),'alineacion':st.column_config.SelectboxColumn(options=['IZQUIERDA','CENTRO','DERECHA']),'negrita':st.column_config.CheckboxColumn(),'activo':st.column_config.CheckboxColumn()})
-  if st.button('Guardar relacion de campos',type='primary',key='pdfv3_save_fields'):
-   bad=[str(z) for z in ed.origen if str(z) not in valid]
-   if bad:st.error('Existen campos no relacionados con la tabla: '+', '.join(bad))
-   else:
-    db=conn();cur=db.cursor();cur.execute('DELETE FROM pdfv3_campos WHERE formato_id=?',(fid,))
-    for _,q in ed.iterrows():cur.execute('INSERT INTO pdfv3_campos(formato_id,etiqueta,origen,pagina,x,y,ancho,tamano,negrita,alineacion,lineas,orden,activo) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)',(fid,str(q.etiqueta),str(q.origen),int(q.pagina),float(q.x),float(q.y),float(q.ancho),float(q.tamano),int(bool(q.negrita)),str(q.alineacion),int(q.lineas),int(q.orden),int(bool(q.activo))))
-    db.commit();db.close();audit(st.session_state.auth['usuario'],'ACTUALIZAR_CAMPOS_PDF',codigo);st.success('Relacion guardada correctamente.');st.rerun()
- with t2:
-  st.info('Puedes usar PDF, PNG, JPG o JPEG. Si el cargador presenta status code 403, abre la app directamente fuera de un iframe. Mientras tanto, el generador interno actual sigue funcionando.')
-  up=st.file_uploader('Cargar plantilla vacia',type=['pdf','png','jpg','jpeg'],key='pdfv3_upload_'+codigo);desc=st.text_input('Descripcion del cambio',key='pdfv3_desc_'+codigo)
-  if st.button('Guardar y activar plantilla',type='primary',key='pdfv3_save_template'):
-   if up is None:st.error('Selecciona un archivo de referencia.')
-   else:
-    try:
-     raw=bytes(up.getvalue());name=up.name.lower();Reader,_=_pdfv3_rw()
-     if name.endswith('.pdf'):
-      reader=Reader(BytesIO(raw));box=reader.pages[0].mediabox;mime='application/pdf';w=float(box.width);h=float(box.height)
-     else:
-      from PIL import Image
-      im=Image.open(BytesIO(raw));im.verify();im=Image.open(BytesIO(raw));w=float(im.width);h=float(im.height);mime='image/png' if name.endswith('.png') else 'image/jpeg'
-     db=conn();cur=db.cursor();ver=cur.execute('SELECT COALESCE(MAX(version),0)+1 FROM pdfv3_plantillas WHERE formato_id=?',(fid,)).fetchone()[0];cur.execute('UPDATE pdfv3_plantillas SET activa=0 WHERE formato_id=?',(fid,));cur.execute('INSERT INTO pdfv3_plantillas(formato_id,version,nombre,mime,contenido,ancho,alto,activa,descripcion,usuario,fecha) VALUES(?,?,?,?,?,?,?,1,?,?,?)',(fid,ver,up.name,mime,raw,w,h,desc,st.session_state.auth['usuario'],now_iso()));db.commit();db.close();audit(st.session_state.auth['usuario'],'CARGAR_PLANTILLA_PDF',f'{codigo} v{ver}');st.success('Plantilla guardada y activada.');st.rerun()
-    except Exception as e:st.error('No fue posible leer la plantilla: '+str(e))
-  st.dataframe(read_df("SELECT version,nombre,mime,descripcion,CASE WHEN activa=1 THEN 'Activa' ELSE 'Historica' END estado,usuario,fecha FROM pdfv3_plantillas WHERE formato_id=? ORDER BY version DESC",(fid,)),use_container_width=True,hide_index=True)
- with t3:
-  ids=read_df(f'SELECT id FROM {f.tabla_origen} ORDER BY id DESC LIMIT 100')
-  if ids.empty:st.info('No existen registros para la prueba.')
-  else:
-   rid=st.selectbox('Registro de prueba',ids.id.astype(int).tolist(),key='pdfv3_test_id');contenido={'PNC':pdf_pnc,'ME':pdf_materia_extrana,'DDM_RX':pdf_detector_metales_rx}[codigo](rid)
-   if contenido:st.download_button('Descargar prueba',contenido,f'prueba_{codigo}_{rid}.pdf','application/pdf',key='pdfv3_test_down')
+
+# ================================================================
+# ADMINISTRACION DE ARCHIVOS DE REFERENCIA PDF / IMAGEN
+# Usa el mismo st.file_uploader que Adjuntar evidencia de PNC.
+# No requiere bibliotecas adicionales para cargar y conservar archivos.
+# ================================================================
+PDF_REF_FORMATOS={
+    'PNC':('Informe de Producto No Conforme','pnc_registros'),
+    'ME':('Reporte de Hallazgos de Materia Extraña','me_registros'),
+    'DDM_RX':('Detector de Metales y RX','ddm_rx_registros'),
+}
+
+def init_pdf_referencias(cur):
+    # Esquema nuevo y aislado para no chocar con intentos anteriores.
+    cur.execute("""CREATE TABLE IF NOT EXISTS pdf_ref_formatos(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,codigo TEXT NOT NULL UNIQUE,
+        nombre TEXT NOT NULL,tabla_origen TEXT NOT NULL,activo INTEGER DEFAULT 1)""")
+    cur.execute("""CREATE TABLE IF NOT EXISTS pdf_ref_archivos(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,formato_id INTEGER NOT NULL,
+        version INTEGER NOT NULL,nombre_archivo TEXT NOT NULL,mime TEXT NOT NULL,
+        extension TEXT NOT NULL,contenido BLOB NOT NULL,tamano_bytes INTEGER NOT NULL,
+        activa INTEGER DEFAULT 0,descripcion TEXT,cargado_por TEXT,cargado_en TEXT,
+        UNIQUE(formato_id,version))""")
+    for codigo,(nombre,tabla) in PDF_REF_FORMATOS.items():
+        cur.execute("INSERT OR IGNORE INTO pdf_ref_formatos(codigo,nombre,tabla_origen,activo) VALUES(?,?,?,1)",(codigo,nombre,tabla))
+
+def validar_archivo_referencia(nombre,contenido):
+    nombre=str(nombre or '').strip()
+    ext=Path(nombre).suffix.lower()
+    if ext not in {'.pdf','.png','.jpg','.jpeg'}:
+        raise ValueError('Formato no permitido. Selecciona PDF, PNG, JPG o JPEG.')
+    if not contenido:
+        raise ValueError('El archivo seleccionado está vacío.')
+    if len(contenido)>20*1024*1024:
+        raise ValueError('El archivo supera el límite de 20 MB.')
+    if ext=='.pdf' and not contenido.startswith(b'%PDF-'):
+        raise ValueError('El archivo no contiene una firma PDF válida.')
+    if ext=='.png' and not contenido.startswith(b'\x89PNG\r\n\x1a\n'):
+        raise ValueError('El archivo no contiene una firma PNG válida.')
+    if ext in {'.jpg','.jpeg'} and not contenido.startswith(b'\xff\xd8\xff'):
+        raise ValueError('El archivo no contiene una firma JPG válida.')
+    mime={'.pdf':'application/pdf','.png':'image/png','.jpg':'image/jpeg','.jpeg':'image/jpeg'}[ext]
+    return ext,mime
+
+def page_pdf_referencias():
+    st.subheader('Formatos PDF e imágenes de referencia')
+    st.caption('Carga el formato vacío que servirá como referencia de diseño. El archivo se guarda directamente en la base SQLite y no requiere instalar componentes adicionales.')
+    formatos=read_df('SELECT * FROM pdf_ref_formatos WHERE activo=1 ORDER BY id')
+    if formatos.empty:
+        st.warning('No se encontraron formatos configurados.')
+        return
+    opciones=formatos['codigo'].astype(str).tolist()
+    codigo=st.selectbox('Formato correspondiente',opciones,format_func=lambda x:str(formatos[formatos.codigo==x].iloc[0].nombre),key='pdf_ref_codigo')
+    formato=formatos[formatos.codigo==codigo].iloc[0]
+    formato_id=int(formato.id)
+
+    st.markdown('### Adjuntar archivo de referencia')
+    st.info('Este cargador utiliza el mismo componente y configuración que el campo Adjuntar evidencia del registro PNC.')
+    # Se mantiene fuera de formularios, fragmentos y diálogos para evitar reinicios intermedios.
+    archivo=st.file_uploader(
+        'Adjuntar formato vacío',
+        accept_multiple_files=False,
+        type=['pdf','png','jpg','jpeg'],
+        key=f'archivo_formato_pdf_{codigo}',
+        help='Tamaño máximo permitido por este módulo: 20 MB.'
+    )
+    descripcion=st.text_input('Descripción de la versión',placeholder='Ejemplo: Actualización de revisión y encabezado',key=f'pdf_ref_desc_{codigo}')
+
+    if archivo is not None:
+        st.success(f'Archivo seleccionado: {archivo.name} ({archivo.size/1024:.1f} KB)')
+        if str(archivo.type).startswith('image/'):
+            st.image(archivo,use_container_width=True,caption='Vista previa del diseño seleccionado')
+        else:
+            st.caption('El PDF fue recibido correctamente. Se conservará como archivo original de referencia.')
+
+    if st.button('Guardar y activar archivo',type='primary',key=f'pdf_ref_guardar_{codigo}'):
+        if archivo is None:
+            st.error('Adjunta un archivo PDF, PNG, JPG o JPEG antes de guardar.')
+        elif not descripcion.strip():
+            st.error('Ingresa una descripción breve de la versión.')
+        else:
+            try:
+                contenido=bytes(archivo.getvalue())
+                extension,mime=validar_archivo_referencia(archivo.name,contenido)
+                c=conn();cur=c.cursor()
+                try:
+                    version=int(cur.execute('SELECT COALESCE(MAX(version),0)+1 FROM pdf_ref_archivos WHERE formato_id=?',(formato_id,)).fetchone()[0])
+                    cur.execute('UPDATE pdf_ref_archivos SET activa=0 WHERE formato_id=?',(formato_id,))
+                    cur.execute("""INSERT INTO pdf_ref_archivos(
+                        formato_id,version,nombre_archivo,mime,extension,contenido,tamano_bytes,
+                        activa,descripcion,cargado_por,cargado_en)
+                        VALUES(?,?,?,?,?,?,?,1,?,?,?)""",
+                        (formato_id,version,archivo.name,mime,extension,sqlite3.Binary(contenido),len(contenido),descripcion.strip(),st.session_state.auth['usuario'],now_iso()))
+                    c.commit()
+                except Exception:
+                    c.rollback();raise
+                finally:
+                    c.close()
+                audit(st.session_state.auth['usuario'],'CARGAR_ARCHIVO_REFERENCIA_PDF',f'{codigo} | Versión {version} | {archivo.name}')
+                st.session_state.pop(f'archivo_formato_pdf_{codigo}',None)
+                st.success(f'Archivo guardado y activado correctamente. Versión {version}.')
+                st.rerun()
+            except Exception as e:
+                st.error('No fue posible guardar el archivo: '+str(e))
+
+    st.markdown('### Versiones almacenadas')
+    versiones=read_df("""SELECT id,version,nombre_archivo,extension,tamano_bytes,
+        CASE WHEN activa=1 THEN 'Activa' ELSE 'Histórica' END AS estado,
+        descripcion,cargado_por,cargado_en
+        FROM pdf_ref_archivos WHERE formato_id=? ORDER BY version DESC""",(formato_id,))
+    if versiones.empty:
+        st.info('Aún no existen archivos almacenados para este formato.')
+        return
+    vista=versiones.copy();vista['tamano_bytes']=vista['tamano_bytes'].map(lambda x:f'{int(x)/1024:.1f} KB')
+    vista=vista.rename(columns={'version':'Versión','nombre_archivo':'Archivo','extension':'Tipo','tamano_bytes':'Tamaño','estado':'Estado','descripcion':'Descripción','cargado_por':'Cargado por','cargado_en':'Fecha'})
+    st.dataframe(vista.drop(columns=['id']),use_container_width=True,hide_index=True)
+    ids=versiones['id'].astype(int).tolist()
+    elegido=st.selectbox('Versión para descargar o activar',ids,format_func=lambda x:f"Versión {int(versiones[versiones.id==x].iloc[0].version)} | {versiones[versiones.id==x].iloc[0].nombre_archivo}",key=f'pdf_ref_version_{codigo}')
+    fila=read_df('SELECT * FROM pdf_ref_archivos WHERE id=?',(int(elegido),)).iloc[0]
+    st.download_button('Descargar archivo almacenado',bytes(fila.contenido),str(fila.nombre_archivo),str(fila.mime),key=f'pdf_ref_descargar_{elegido}')
+    if int(fila.activa or 0)!=1 and st.button('Activar esta versión',key=f'pdf_ref_activar_{elegido}'):
+        c=conn();cur=c.cursor();cur.execute('UPDATE pdf_ref_archivos SET activa=0 WHERE formato_id=?',(formato_id,));cur.execute('UPDATE pdf_ref_archivos SET activa=1 WHERE id=?',(int(elegido),));c.commit();c.close()
+        audit(st.session_state.auth['usuario'],'ACTIVAR_ARCHIVO_REFERENCIA_PDF',f'{codigo} | ID {elegido}');st.rerun()
 
 def pdf_entrega(eid):
     try:
@@ -991,7 +985,7 @@ def init_db():
     cur.execute("CREATE TABLE IF NOT EXISTS defectos(id INTEGER PRIMARY KEY AUTOINCREMENT, codigo TEXT UNIQUE, defecto TEXT, tipo_defecto TEXT, clasificacion TEXT, activo INTEGER DEFAULT 1)")
     cur.execute("CREATE TABLE IF NOT EXISTS catalogo_naves_lineas(id INTEGER PRIMARY KEY AUTOINCREMENT,nave TEXT,linea TEXT,sector TEXT,linea_norm TEXT,sector_norm TEXT,orden INTEGER DEFAULT 0,activo INTEGER DEFAULT 1,UNIQUE(nave,linea,sector))")
     asegurar_columnas_catalogos(cur)
-    init_pdfv3(cur)
+    init_pdf_referencias(cur)
     cur.execute("""CREATE TABLE IF NOT EXISTS pnc_registros(id INTEGER PRIMARY KEY AUTOINCREMENT, folio TEXT UNIQUE, fecha_apertura TEXT, linea_sector TEXT, nave TEXT, item TEXT, descripcion_producto TEXT, cliente TEXT, familia TEXT, lote TEXT, etapa TEXT, codigo_defecto TEXT, defecto TEXT, tipo_defecto TEXT, clasificacion TEXT, turno TEXT, supervisor TEXT, analista TEXT, responsable_detecta TEXT, descripcion_defecto TEXT, acciones_inmediatas TEXT, disposicion TEXT, cantidad_observada REAL DEFAULT 0, cantidad_reproceso REAL DEFAULT 0, cantidad_decomiso REAL DEFAULT 0, cantidad_aprobado_segunda REAL DEFAULT 0, cantidad_total_pnc REAL DEFAULT 0, status TEXT DEFAULT 'ABIERTO', fecha_final_tratamiento TEXT, observaciones TEXT, material_hallado TEXT, creado_por TEXT, creado_en TEXT)""")
     cur.execute("CREATE TABLE IF NOT EXISTS me_registros(id INTEGER PRIMARY KEY AUTOINCREMENT, dia INTEGER, mes INTEGER, anio INTEGER, nave TEXT, linea_sector TEXT, familia TEXT, equipo_hallazgo TEXT, item TEXT, producto TEXT, lote TEXT, descripcion_hallazgo TEXT, tipo TEXT, particulas_halladas INTEGER DEFAULT 0, accion_contingente TEXT, investigacion_origen TEXT, analista_detecta TEXT, supervisor_responsable TEXT, acciones_evitar_incidencia TEXT, creado_por TEXT, creado_en TEXT)")
     cur.execute("CREATE TABLE IF NOT EXISTS ddm_rx_registros(id INTEGER PRIMARY KEY AUTOINCREMENT, dia INTEGER, mes INTEGER, anio INTEGER, nave TEXT, linea_sector TEXT, familia TEXT, equipo_hallazgo TEXT, item TEXT, producto TEXT, lote TEXT, descripcion_hallazgo TEXT, tipo TEXT, particulas_halladas INTEGER DEFAULT 0, accion_contingente TEXT, investigacion_origen TEXT, analista_detecta TEXT, supervisor_responsable TEXT, acciones_evitar_incidencia TEXT, creado_por TEXT, creado_en TEXT)")
@@ -2534,7 +2528,7 @@ def page_catalogos():
                         if y.button('Cancelar',key=f'fmt_cancel_{rid}'):st.session_state.pop('fmt_confirm',None);st.session_state.fmt_nonce=nonce+1;st.rerun()
 
     with tab6:
-        page_pdfv3()
+        page_pdf_referencias()
 def page_usuarios():
     if not is_dev():
         st.warning('Esta sección está disponible únicamente para administradores.')
