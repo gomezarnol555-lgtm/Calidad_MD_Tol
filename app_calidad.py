@@ -1923,6 +1923,7 @@ def page_registro():
         st.markdown('</div></div>',unsafe_allow_html=True)
     def form_pnc():
         nonce=st.session_state.form_nonce
+        formato_actual='PNC'
         st.markdown("""<div class="registro-full-panel"><div class="registro-pill">Nuevo registro</div><div class="registro-full-title">📝 PNC´s</div><div class="registro-full-subtitle">Los campos marcados con * son obligatorios.</div>""",unsafe_allow_html=True)
         if st.button('← Cambiar tipo de registro',key='volver_pnc'): volver_selector()
         st.markdown('<div class="registro-form-shell">',unsafe_allow_html=True)
