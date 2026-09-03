@@ -306,7 +306,10 @@ def _pdf_hallazgo_base(tabla,rid,tipo_formato):
     else:
         c.setTitle('Registro de Materiales Segregados por Detector de Metales')
         # Encabezado de la segunda imagen
-        x0=27; x1=199; x2=542; x3=609; top=805; mid=772; bot=720
+        # A4 mide 595.28 pt de ancho. El formato anterior terminaba en x=609,
+        # por lo que el borde derecho y varios campos quedaban fuera de la pagina.
+        # Se conserva la estructura y la logica, ajustando solo la geometria horizontal.
+        x0=27; x1=187; x2=506; x3=568; top=805; mid=772; bot=720
         c.rect(x0,bot,x3-x0,top-bot); c.line(x1,bot,x1,top); c.line(x2,bot,x2,top); c.line(x1,mid,x2,mid)
         logo(c,x0+18,bot+16,x1-x0-36,top-bot-30)
         c.setFont('Helvetica-Bold',7.5); c.drawCentredString((x1+x2)/2,top-18,'Anexo 1. Registro de Materiales Segregados por el detector de')
@@ -316,33 +319,33 @@ def _pdf_hallazgo_base(tabla,rid,tipo_formato):
         c.drawCentredString((x2+x3)/2,top-44,'REV: 02')
         t(c,'RECHAZO No. :',28,643,8,True); fit(c,f'{rid}/{v("anio") or datetime.now().year}',119,643,180,8,True)
         t(c,'FECHA:',28,602,8,True); fit(c,fecha_registro(),119,602,180,8)
-        t(c,'LINEA DE ELABORACIÓN / EQUIPO:',28,547,8,True); c.line(286,545,609,545); fit(c,v('linea_sector')+' / '+v('equipo_hallazgo'),289,547,316,7.8)
+        t(c,'LINEA DE ELABORACIÓN / EQUIPO:',28,547,8,True); c.line(270,545,x3,545); fit(c,v('linea_sector')+' / '+v('equipo_hallazgo'),273,547,x3-276,7.8)
         t(c,'SECTOR DEL HALLAZGO:',28,520,8,True)
         # Las opciones se marcan por coincidencia con la descripción, cuando existe.
         ubic=(v('descripcion_hallazgo')+' '+v('equipo_hallazgo')).upper()
-        opciones=[('CONFORMADO',286),('ENVOLTURA',420),('EMPAQUE',553)]
+        opciones=[('CONFORMADO',270),('ENVOLTURA',391),('EMPAQUE',506)]
         for nombre,x in opciones:
             t(c,nombre,x-82,520,7.2); c.rect(x,510,56,15)
             if nombre in ubic: c.setFont('Helvetica-Bold',11); c.drawCentredString(x+28,512,'X')
         t(c,'e) El producto con metal debe ser llevado al Laboratorio y disuelto para la separación del metal. El metal se guarda e',28,489,6.8)
         t(c,'identifica para la posterior investigación de su origen.',28,477,6.8)
-        line_value(c,'PRODUCTO:',f'{v("item")} - {v("producto")}'.strip(' -'),442,label_x=28,value_x=119,right=609,bold=True)
+        line_value(c,'PRODUCTO:',f'{v("item")} - {v("producto")}'.strip(' -'),442,label_x=28,value_x=119,right=x3,bold=True)
         line_value(c,'LOTE:',v('lote'),400,label_x=28,value_x=119,right=609,bold=True)
-        t(c,'DESCRIPCIÓN DEL MATERIAL HALLADO:',28,361,8,True); c.line(343,359,609,359); c.line(27,334,609,334)
-        wrap(c,v('descripcion_hallazgo'),346,362,258,7.6,12,2)
+        t(c,'DESCRIPCIÓN DEL MATERIAL HALLADO:',28,361,8,True); c.line(320,359,x3,359); c.line(x0,334,x3,334)
+        wrap(c,v('descripcion_hallazgo'),323,362,x3-326,7.6,12,2)
         t(c,'UBICACIÓN:',28,308,8,True)
-        for nombre,x in [('MASA',239),('RELLENO',400),('RECUBIERTO',556)]:
+        for nombre,x in [('MASA',221),('RELLENO',371),('RECUBIERTO',515)]:
             t(c,nombre,x-37,308,7.2); c.rect(x,298,43,15)
             if nombre in ubic: c.setFont('Helvetica-Bold',11); c.drawCentredString(x+21.5,300,'X')
         t(c,'ADJUNTAR AQUÍ MUESTRA DEL MATERIAL HALLADO',28,267,8,True)
         # Área amplia para colocar muestra física
-        c.rect(27,143,582,105)
-        t(c,'ACCIÓN INMEDIATA:',28,112,8,True); c.line(199,110,609,110)
-        fit(c,v('acciones_inmediatas') or v('accion_contingente'),202,112,403,7.5)
-        t(c,'INVESTIGACIÓN DEL ORIGEN:',28,85,7.5); c.line(199,83,609,83)
-        fit(c,v('investigacion_origen'),202,85,403,7.5)
-        for cx,l1,l2 in [(113,'Nombre y Firma del Analista de','Calidad'),(319,'Nombre y Firma del','Supervisor de Producción'),(531,'Nombre y Firma de','Mantenimiento')]:
-            c.line(cx-86,44,cx+86,44); c.setFont('Helvetica',6.7); c.drawCentredString(cx,31,l1); c.drawCentredString(cx,20,l2)
+        c.rect(x0,143,x3-x0,105)
+        t(c,'ACCIÓN INMEDIATA:',28,112,8,True); c.line(187,110,x3,110)
+        fit(c,v('acciones_inmediatas') or v('accion_contingente'),190,112,x3-194,7.5)
+        t(c,'INVESTIGACIÓN DEL ORIGEN:',28,85,7.5); c.line(187,83,x3,83)
+        fit(c,v('investigacion_origen'),190,85,x3-194,7.5)
+        for cx,l1,l2 in [(112,'Nombre y Firma del Analista de','Calidad'),(298,'Nombre y Firma del','Supervisor de Producción'),(484,'Nombre y Firma de','Mantenimiento')]:
+            c.line(cx-78,44,cx+78,44); c.setFont('Helvetica',6.7); c.drawCentredString(cx,31,l1); c.drawCentredString(cx,20,l2)
     c.showPage(); c.save(); return b.getvalue()
 
 def pdf_materia_extrana(rid):
