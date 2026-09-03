@@ -987,19 +987,8 @@ def init_db():
     cur.execute("CREATE TABLE IF NOT EXISTS catalogo_formatos_entrega(id INTEGER PRIMARY KEY AUTOINCREMENT,formato_nave TEXT NOT NULL,tipo TEXT NOT NULL,linea TEXT NOT NULL,sector TEXT NOT NULL,tipo_analisis TEXT DEFAULT '',orden_linea INTEGER DEFAULT 0,orden_sector INTEGER DEFAULT 0,activo INTEGER DEFAULT 1,UNIQUE(formato_nave,tipo,linea,sector,tipo_analisis))")
     migrar_catalogo_formatos_entrega(cur)
     cur.execute("CREATE TABLE IF NOT EXISTS catalogos(id INTEGER PRIMARY KEY AUTOINCREMENT, categoria TEXT, valor TEXT, activo INTEGER DEFAULT 1, UNIQUE(categoria,valor))")
-    cur.execute("""CREATE TABLE IF NOT EXISTS catalogo_campos_registro(
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        formato TEXT NOT NULL,
-        campo TEXT NOT NULL,
-        etiqueta TEXT NOT NULL,
-        tipo_control TEXT DEFAULT 'texto',
-        catalogo_origen TEXT DEFAULT '',
-        obligatorio INTEGER DEFAULT 0,
-        solo_lectura INTEGER DEFAULT 0,
-        orden INTEGER DEFAULT 0,
-        activo INTEGER DEFAULT 1,
-        UNIQUE(formato,campo)
-    )""")
+    cur.execute("CREATE TABLE IF NOT EXISTS catalogo_campos_registro(id INTEGER PRIMARY KEY AUTOINCREMENT,formato TEXT NOT NULL,campo TEXT NOT NULL,etiqueta TEXT NOT NULL,tipo_control TEXT DEFAULT 'texto',catalogo_origen TEXT DEFAULT '',obligatorio INTEGER DEFAULT 0,solo_lectura INTEGER DEFAULT 0,orden INTEGER DEFAULT 0,activo INTEGER DEFAULT 1,es_personalizado INTEGER DEFAULT 0,UNIQUE(formato,campo))")
+    cur.execute("CREATE TABLE IF NOT EXISTS registro_campos_valores(id INTEGER PRIMARY KEY AUTOINCREMENT,formato TEXT NOT NULL,registro_id INTEGER NOT NULL,campo TEXT NOT NULL,valor TEXT,UNIQUE(formato,registro_id,campo))")
     cur.execute("CREATE TABLE IF NOT EXISTS productos(id INTEGER PRIMARY KEY AUTOINCREMENT, item TEXT UNIQUE, descripcion TEXT, cliente TEXT, familia TEXT, activo INTEGER DEFAULT 1)")
     cur.execute("CREATE TABLE IF NOT EXISTS defectos(id INTEGER PRIMARY KEY AUTOINCREMENT, codigo TEXT UNIQUE, defecto TEXT, tipo_defecto TEXT, clasificacion TEXT, activo INTEGER DEFAULT 1)")
     cur.execute("CREATE TABLE IF NOT EXISTS catalogo_naves_lineas(id INTEGER PRIMARY KEY AUTOINCREMENT,nave TEXT,linea TEXT,sector TEXT,linea_norm TEXT,sector_norm TEXT,orden INTEGER DEFAULT 0,activo INTEGER DEFAULT 1,UNIQUE(nave,linea,sector))")
@@ -1019,58 +1008,25 @@ def init_db():
         for col, tipo_sql in columnas_nuevas.items():
             try: cur.execute(f'ALTER TABLE {tbl} ADD COLUMN {col} {tipo_sql}')
             except sqlite3.OperationalError: pass
-    # Catálogo de estructura de los tres registros. Se inicializa una sola vez y después respeta todos los cambios administrativos.
-    if not cur.execute("SELECT 1 FROM app_config WHERE clave='campos_registro_inicializados_v1'").fetchone():
-        etiquetas = {
-            'fecha_apertura':'Fecha','dia':'Día','mes':'Mes','anio':'Año','semana':'Semana','nave':'Nave',
-            'linea_sector':'Línea/Sector','item':'ITEM','descripcion_producto':'Descripción','producto':'Descripción',
-            'cliente':'Cliente','familia':'Familia','lote':'Lote','etapa':'Etapa','codigo_defecto':'Código / Defecto',
-            'defecto':'Defecto','tipo_defecto':'Tipo de defecto','clasificacion':'Clasificación','turno':'Turno',
-            'supervisor':'Supervisor (Responsable)','supervisor_responsable':'Supervisor (Responsable)',
-            'analista':'Analista (Persona que detecta)','analista_detecta':'Analista (Persona que detecta)',
-            'responsable_detecta':'Responsable de detectar el PNC','descripcion_defecto':'Descripción del defecto',
-            'descripcion_hallazgo':'Descripción del defecto','acciones_inmediatas':'Acciones inmediatas',
-            'accion_contingente':'Acciones inmediatas','disposicion':'Disposición','cantidad_observada':'Cantidad observada (kg)',
-            'status':'Status','categoria_inicial':'Clasificación','categoria_inicial_pnc':'Categoría inicial',
-            'categoria_final_pnc':'Categoría final','equipo_hallazgo':'Equipo en donde se tiene el hallazgo',
-            'tipo':'Tipo','#particulas_halladas':'# de partículas halladas','particulas_halladas':'# de partículas halladas',
-            'investigacion_origen':'Investigación del origen','acciones_evitar_incidencia':'Acciones para evitar la incidencia',
-            'cantidad_reproceso':'Reproceso kg','cantidad_decomiso':'Decomiso kg',
-            'cantidad_aprobado_segunda':'Aprobado 2da kg','fecha_final_tratamiento':'Fecha final',
-            'observaciones':'Observaciones','material_hallado':'Material hallado / ME'
-        }
-        catalogos_campo = {
-            'nave':'nave','linea_sector':'linea_sector','etapa':'etapa','turno':'turno','status':'status',
-            'supervisor':'supervisor','supervisor_responsable':'supervisor','analista':'analista',
-            'analista_detecta':'analista','responsable_detecta':'responsable_detecta','disposicion':'disposicion',
-            'item':'productos','codigo_defecto':'defectos'
-        }
-        obligatorios_pnc = {'fecha_apertura','semana','nave','linea_sector','item','lote','etapa','codigo_defecto','turno','status','supervisor','analista','responsable_detecta','descripcion_defecto','acciones_inmediatas','disposicion','cantidad_observada','categoria_inicial_pnc'}
-        obligatorios_h = {'dia','mes','anio','semana','nave','linea_sector','item','lote','etapa','codigo_defecto','turno','supervisor_responsable','analista_detecta','descripcion_hallazgo','acciones_inmediatas','disposicion','status'}
-        for formato, tabla in [('PNC','pnc_registros'),('ME','me_registros'),('DDM_RX','ddm_rx_registros')]:
-            columnas = [r[1] for r in cur.execute(f'PRAGMA table_info({tabla})').fetchall()]
-            orden = 0
-            for campo in columnas:
-                if campo in CAMPOS_SISTEMA_NO_EDITABLES:
-                    continue
-                if formato in ('ME','DDM_RX') and campo in CAMPOS_OCULTOS_HALLAZGOS:
-                    continue
-                requerido = campo in (obligatorios_pnc if formato=='PNC' else obligatorios_h)
-                solo_lectura = campo in {'descripcion_producto','producto','cliente','familia','defecto','tipo_defecto','clasificacion','categoria_inicial'}
-                tipo_control = 'numero' if campo in {'dia','mes','anio','semana','particulas_halladas','cantidad_observada','cantidad_reproceso','cantidad_decomiso','cantidad_aprobado_segunda'} else 'texto'
-                if campo in catalogos_campo: tipo_control='catalogo'
-                if campo in {'descripcion_defecto','descripcion_hallazgo','acciones_inmediatas','accion_contingente','investigacion_origen','acciones_evitar_incidencia','observaciones','material_hallado','lote'}: tipo_control='area'
-                cur.execute('''INSERT OR IGNORE INTO catalogo_campos_registro
-                    (formato,campo,etiqueta,tipo_control,catalogo_origen,obligatorio,solo_lectura,orden,activo)
-                    VALUES(?,?,?,?,?,?,?,?,1)''',
-                    (formato,campo,etiquetas.get(campo,campo.replace('_',' ').title()),tipo_control,catalogos_campo.get(campo,''),int(requerido),int(solo_lectura),orden))
-                orden += 1
-        cur.execute("INSERT OR REPLACE INTO app_config(clave,valor,actualizado_en) VALUES('campos_registro_inicializados_v1','1',?)",(now_iso(),))
     try: cur.execute('ALTER TABLE pnc_registros ADD COLUMN semana INTEGER')
     except sqlite3.OperationalError: pass
     for col in ['categoria_inicial_pnc','categoria_final_pnc']:
         try: cur.execute(f'ALTER TABLE pnc_registros ADD COLUMN {col} TEXT')
         except sqlite3.OperationalError: pass
+    if cur.execute("SELECT COUNT(*) FROM catalogo_campos_registro").fetchone()[0]==0:
+        labels={'fecha_apertura':'Fecha','dia':'Día','mes':'Mes','anio':'Año','semana':'Semana','nave':'Nave','linea_sector':'Línea/Sector','item':'ITEM / Producto','descripcion_producto':'Descripción','producto':'Descripción','cliente':'Cliente','familia':'Familia','lote':'Lote','etapa':'Etapa','codigo_defecto':'Código / Defecto','defecto':'Defecto','tipo_defecto':'Tipo de defecto','clasificacion':'Clasificación','turno':'Turno','supervisor':'Supervisor (Responsable)','supervisor_responsable':'Supervisor (Responsable)','analista':'Analista (Persona que detecta)','analista_detecta':'Analista (Persona que detecta)','responsable_detecta':'Responsable de detectar el PNC','descripcion_defecto':'Descripción del defecto','descripcion_hallazgo':'Descripción del defecto','acciones_inmediatas':'Acciones inmediatas','accion_contingente':'Acciones inmediatas','disposicion':'Disposición','cantidad_observada':'Cantidad observada (kg)','status':'Status','categoria_inicial':'Clasificación','categoria_inicial_pnc':'Categoría inicial','categoria_final_pnc':'Categoría final','equipo_hallazgo':'Equipo en donde se tiene el hallazgo','tipo':'Tipo','particulas_halladas':'# de partículas halladas','investigacion_origen':'Investigación del origen','acciones_evitar_incidencia':'Acciones a realizar para evitar la incidencia','cantidad_reproceso':'Reproceso kg','cantidad_decomiso':'Decomiso kg','cantidad_aprobado_segunda':'Aprobado 2da kg','fecha_final_tratamiento':'Fecha final','observaciones':'Observaciones','material_hallado':'Material hallado / ME'}
+        cats={'nave':'nave','linea_sector':'linea_sector','etapa':'etapa','turno':'turno','status':'status','supervisor':'supervisor','supervisor_responsable':'supervisor','analista':'analista','analista_detecta':'analista','responsable_detecta':'responsable_detecta','disposicion':'disposicion'}
+        reqp={'fecha_apertura','semana','nave','linea_sector','item','lote','etapa','codigo_defecto','turno','status','supervisor','analista','responsable_detecta','descripcion_defecto','acciones_inmediatas','disposicion','cantidad_observada','categoria_inicial_pnc'}
+        reqh={'dia','mes','anio','semana','nave','linea_sector','item','lote','etapa','codigo_defecto','turno','supervisor_responsable','analista_detecta','descripcion_hallazgo','acciones_inmediatas','disposicion','status'}
+        for formato,tabla in [('PNC','pnc_registros'),('ME','me_registros'),('DDM_RX','ddm_rx_registros')]:
+            orden=0
+            for campo in [x[1] for x in cur.execute(f'PRAGMA table_info({tabla})').fetchall()]:
+                if campo in CAMPOS_INTERNOS or (formato!='PNC' and campo in CAMPOS_RETIRADOS_HALLAZGO):continue
+                tipo='numero' if campo in {'dia','mes','anio','semana','particulas_halladas','cantidad_observada','cantidad_reproceso','cantidad_decomiso','cantidad_aprobado_segunda'} else 'texto'
+                if campo in cats:tipo='catalogo'
+                if campo in {'lote','descripcion_defecto','descripcion_hallazgo','acciones_inmediatas','accion_contingente','investigacion_origen','acciones_evitar_incidencia','observaciones','material_hallado'}:tipo='area'
+                req=campo in (reqp if formato=='PNC' else reqh)
+                cur.execute("INSERT OR IGNORE INTO catalogo_campos_registro(formato,campo,etiqueta,tipo_control,catalogo_origen,obligatorio,solo_lectura,orden,activo,es_personalizado) VALUES(?,?,?,?,?,?,?,?,1,0)",(formato,campo,labels.get(campo,campo.replace('_',' ').title()),tipo,cats.get(campo,''),int(req),0,orden));orden+=1
     cur.execute("""CREATE TABLE IF NOT EXISTS muestras_retencion(
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         periodo_codigo TEXT NOT NULL,
@@ -1709,61 +1665,64 @@ def page_inicio():
         st.markdown('</div></div>',unsafe_allow_html=True)
     panel_indicadores_spac_inicio()
 
-REGISTRO_FORMATOS = {
-    'PNC': 'pnc_registros',
-    'ME': 'me_registros',
-    'DDM_RX': 'ddm_rx_registros',
-}
+REGISTRO_TABLAS={'PNC':'pnc_registros','ME':'me_registros','DDM_RX':'ddm_rx_registros'}
+CAMPOS_INTERNOS={'id','folio','creado_por','creado_en','cantidad_total_pnc'}
+CAMPOS_RETIRADOS_HALLAZGO={'responsable_detecta','cantidad_observada'}
 
-CAMPOS_SISTEMA_NO_EDITABLES = {
-    'id', 'folio', 'creado_por', 'creado_en', 'cantidad_total_pnc'
-}
+def cfg_campos(formato, activos=True):
+    extra=' AND activo=1' if activos else ''
+    return read_df("SELECT * FROM catalogo_campos_registro WHERE formato=?"+extra+" ORDER BY orden,id",(formato,))
 
-CAMPOS_OCULTOS_HALLAZGOS = {'responsable_detecta', 'cantidad_observada'}
+def cfg_campo(formato,campo):
+    d=read_df("SELECT * FROM catalogo_campos_registro WHERE formato=? AND campo=? AND activo=1",(formato,campo))
+    return None if d.empty else d.iloc[0]
 
-def campos_registro(formato, solo_activos=True):
-    # Devuelve la configuracion administrable de campos por tipo de registro.
-    where = ' AND activo=1' if solo_activos else ''
-    return read_df('''SELECT id,formato,campo,etiqueta,tipo_control,catalogo_origen,
-                             obligatorio,solo_lectura,orden,activo
-                      FROM catalogo_campos_registro
-                      WHERE formato=?''' + where + ' ORDER BY orden,id', (formato,))
+def campo_visible(formato,campo):
+    return cfg_campo(formato,campo) is not None
 
-def nombres_campos_activos(formato):
-    df = campos_registro(formato, True)
-    return df['campo'].astype(str).tolist() if not df.empty else []
+def campo_requerido(formato,campo,default=False):
+    r=cfg_campo(formato,campo)
+    return bool(int(r.obligatorio)) if r is not None else False
 
-def etiqueta_campo(formato, campo, predeterminada=None):
-    df = read_df('SELECT etiqueta FROM catalogo_campos_registro WHERE formato=? AND campo=? AND activo=1',
-                 (formato, campo))
-    if not df.empty and str(df.iloc[0]['etiqueta'] or '').strip():
-        return str(df.iloc[0]['etiqueta']).strip()
-    return predeterminada or campo.replace('_', ' ').title()
+def etiqueta_cfg(formato,campo,base):
+    r=cfg_campo(formato,campo)
+    if r is None:return base
+    nombre=str(r.etiqueta or base).strip()
+    return nombre+' *' if bool(int(r.obligatorio)) else nombre
 
-def campo_obligatorio(formato, campo, predeterminado=False):
-    df = read_df('SELECT obligatorio FROM catalogo_campos_registro WHERE formato=? AND campo=? AND activo=1',
-                 (formato, campo))
-    return bool(int(df.iloc[0]['obligatorio'])) if not df.empty else bool(predeterminado)
+def campos_personalizados(formato):
+    d=cfg_campos(formato,True)
+    return d[d['es_personalizado']==1] if not d.empty else d
 
-def formato_por_tabla(tabla):
-    return {'pnc_registros':'PNC','me_registros':'ME','ddm_rx_registros':'DDM_RX'}.get(tabla, '')
+def render_personalizados(formato,nonce,prefijo):
+    valores={}
+    d=campos_personalizados(formato)
+    if d.empty:return valores
+    st.markdown('#### Campos adicionales')
+    for _,r in d.iterrows():
+        campo=str(r.campo); label=etiqueta_cfg(formato,campo,str(r.etiqueta)); key=f'{prefijo}_extra_{campo}_{nonce}'
+        tipo=str(r.tipo_control or 'texto'); cat=str(r.catalogo_origen or '')
+        if tipo=='numero': valores[campo]=st.number_input(label,min_value=0.0,step=1.0,key=key)
+        elif tipo=='area': valores[campo]=st.text_area(label,key=key)
+        elif tipo=='fecha': valores[campo]=st.date_input(label,value=date.today(),key=key).isoformat()
+        elif tipo=='catalogo' and cat: valores[campo]=st.selectbox(label,opt_blank(catalog(cat)),key=key)
+        else: valores[campo]=st.text_input(label,key=key)
+    return valores
 
-def crear_hallazgo_desde_pnc(tabla, datos, usuario):
-    # Crea el registro relacionado usando los datos ya validados del PNC.
-    fecha = datos['fecha']
-    return exec_sql(f'''INSERT INTO {tabla}(
-        dia,mes,anio,nave,linea_sector,familia,equipo_hallazgo,item,producto,lote,
-        descripcion_hallazgo,tipo,particulas_halladas,accion_contingente,
-        investigacion_origen,analista_detecta,supervisor_responsable,
-        acciones_evitar_incidencia,creado_por,creado_en,etapa,codigo_defecto,
-        semana,turno,responsable_detecta,acciones_inmediatas,disposicion,
-        cantidad_observada,status,categoria_inicial)
-        VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)''', (
-        fecha.day, fecha.month, fecha.year, datos['nave'], datos['linea'], datos['familia'], '',
-        datos['item'], datos['producto'], datos['lote'], datos['descripcion'], '', 0,
-        datos['acciones'], '', datos['analista'], datos['supervisor'], '', usuario, now_iso(),
-        datos['etapa'], datos['codigo'], int(datos['semana']), datos['turno'], None,
-        datos['acciones'], datos['disposicion'], 0, datos['status'], datos['clasificacion']))
+def validar_personalizados(formato,valores):
+    faltan=[]
+    for _,r in campos_personalizados(formato).iterrows():
+        v=valores.get(str(r.campo)); vacio=v is None or (isinstance(v,str) and not v.strip())
+        if bool(int(r.obligatorio)) and vacio:faltan.append(str(r.etiqueta))
+    return faltan
+
+def guardar_personalizados(formato,rid,valores):
+    for campo,valor in valores.items():
+        exec_sql("INSERT INTO registro_campos_valores(formato,registro_id,campo,valor) VALUES(?,?,?,?) ON CONFLICT(formato,registro_id,campo) DO UPDATE SET valor=excluded.valor",(formato,rid,campo,'' if valor is None else str(valor)))
+
+def crear_hallazgo_desde_pnc(tabla,d,u):
+    f=d['fecha']
+    return exec_sql(f"INSERT INTO {tabla}(dia,mes,anio,nave,linea_sector,familia,equipo_hallazgo,item,producto,lote,descripcion_hallazgo,tipo,particulas_halladas,accion_contingente,investigacion_origen,analista_detecta,supervisor_responsable,acciones_evitar_incidencia,creado_por,creado_en,etapa,codigo_defecto,semana,turno,responsable_detecta,acciones_inmediatas,disposicion,cantidad_observada,status,categoria_inicial) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",(f.day,f.month,f.year,d['nave'],d['linea'],d['familia'],'',d['item'],d['producto'],d['lote'],d['descripcion'],'',0,d['acciones'],'',d['analista'],d['supervisor'],'',u,now_iso(),d['etapa'],d['codigo'],int(d['semana']),d['turno'],None,d['acciones'],d['disposicion'],0,d['status'],d['clasificacion']))
 
 def page_registro():
     if 'registro_tipo' not in st.session_state:
@@ -1835,14 +1794,15 @@ def page_registro():
             x1.text_input('Clasificación *',value=categoria,disabled=True)
             turno=x2.selectbox('Turno *',opt_blank(catalog('turno')),key=f'turno_{tabla}_{nonce}')
             a,b=st.columns(2)
-            supervisor=a.selectbox('Supervisor (Responsable) *',opt_blank(catalog('supervisor')),key=f'sup_{tabla}_{nonce}')
-            analista=b.selectbox('Analista (Persona que detecta) *',opt_blank(catalog('analista')),key=f'ana_{tabla}_{nonce}')
+            supervisor=a.selectbox(etiqueta_cfg('ME' if tabla=='me_registros' else 'DDM_RX','supervisor_responsable','Supervisor (Responsable)'),opt_blank(catalog('supervisor')),key=f'sup_{tabla}_{nonce}')
+            analista=b.selectbox(etiqueta_cfg('ME' if tabla=='me_registros' else 'DDM_RX','analista_detecta','Analista (Persona que detecta)'),opt_blank(catalog('analista')),key=f'ana_{tabla}_{nonce}')
             responsable=None
             descripcion=st.text_area('Descripción del defecto *',key=f'desc_{tabla}_{nonce}')
             acciones=st.text_area('Acciones inmediatas *',key=f'accion_{tabla}_{nonce}')
             a,b=st.columns(2)
-            disposicion=a.selectbox('Disposición *',opt_blank(catalog('disposicion')),key=f'disp_{tabla}_{nonce}')
-            status=b.selectbox('Status *',opt_blank(catalog('status')),key=f'status_{tabla}_{nonce}')
+            formato_h='ME' if tabla=='me_registros' else 'DDM_RX'
+            disposicion=a.selectbox(etiqueta_cfg(formato_h,'disposicion','Disposición'),opt_blank(catalog('disposicion')),key=f'disp_{tabla}_{nonce}')
+            status=b.selectbox(etiqueta_cfg(formato_h,'status','Status'),opt_blank(catalog('status')),key=f'status_{tabla}_{nonce}')
             cantidad=0.0
             a,b,c=st.columns(3)
             equipo=a.text_input('Equipo en donde se tiene el hallazgo',key=f'equipo_{tabla}_{nonce}')
@@ -1850,14 +1810,18 @@ def page_registro():
             particulas=c.number_input('# de partículas halladas',min_value=0,step=1,key=f'part_{tabla}_{nonce}')
             investigacion=st.text_area('Investigación del origen',key=f'inv_{tabla}_{nonce}')
             evitar=st.text_area('Acciones a realizar para evitar la incidencia',key=f'evitar_{tabla}_{nonce}')
+            formato_h='ME' if tabla=='me_registros' else 'DDM_RX'
+            extras=render_personalizados(formato_h,nonce,tabla)
             ok=st.button('Guardar registro',key=f'guardar_{tabla}_{nonce}',type='primary')
         if ok:
-            obligatorios={'Línea/Sector':linea_sector,'Nave':nave,'ITEM':item,'Descripción':producto,'Cliente':cliente,'Familia':familia,'Lote':lote,'Etapa':etapa,'Código':codigo,'Defecto':defecto,'Tipo de defecto':tipo_defecto,'Semana':semana,'Turno':turno,'Fecha':fecha,'Supervisor':supervisor,'Analista':analista,'Descripción del defecto':descripcion,'Acciones inmediatas':acciones,'Disposición':disposicion,'Status':status,'Categoría inicial':categoria}
-            faltantes=[k for k,v in obligatorios.items() if v is None or (isinstance(v,str) and not v.strip())]
+            datos_req={'linea_sector':linea_sector,'nave':nave,'item':item,'producto':producto,'familia':familia,'lote':lote,'etapa':etapa,'codigo_defecto':codigo,'semana':semana,'turno':turno,'dia':fecha,'supervisor_responsable':supervisor,'analista_detecta':analista,'descripcion_hallazgo':descripcion,'acciones_inmediatas':acciones,'disposicion':disposicion,'status':status,'categoria_inicial':categoria}
+            obligatorios={etiqueta_cfg(formato_h,k,k.replace('_',' ').title()).replace(' *',''):v for k,v in datos_req.items() if campo_requerido(formato_h,k)}
+            faltantes=[k for k,v in obligatorios.items() if v is None or (isinstance(v,str) and not v.strip())]+validar_personalizados(formato_h,extras)
             if faltantes:
                 st.error('Completa los siguientes campos obligatorios: '+', '.join(faltantes)+'.')
             else:
                 rid=exec_sql(f'INSERT INTO {tabla}(dia,mes,anio,nave,linea_sector,familia,equipo_hallazgo,item,producto,lote,descripcion_hallazgo,tipo,particulas_halladas,accion_contingente,investigacion_origen,analista_detecta,supervisor_responsable,acciones_evitar_incidencia,creado_por,creado_en,etapa,codigo_defecto,semana,turno,responsable_detecta,acciones_inmediatas,disposicion,cantidad_observada,status,categoria_inicial) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',(fecha.day,fecha.month,fecha.year,nave,linea_sector,familia,equipo,item,producto,lote,descripcion,tipo,int(particulas),acciones,investigacion,analista,supervisor,evitar,st.session_state.auth['usuario'],now_iso(),etapa,codigo,int(semana),turno,responsable,acciones,disposicion,float(cantidad),status,categoria))
+                guardar_personalizados(formato_h,rid,extras)
                 audit(st.session_state.auth['usuario'],audit_action,f'ID {rid}')
                 limpiar_form(); st.session_state.flash_registro_guardado=f'Registro guardado correctamente: Número {rid}'
                 st.rerun()
@@ -1893,43 +1857,35 @@ def page_registro():
             d3.text_input('Clasificación *',value=clas,disabled=True)
             cat1,cat2=st.columns(2)
             categoria_inicial_pnc=cat1.selectbox('Categoría inicial *',['','1','2','3'],key=f'pnc_cat_inicial_{nonce}')
-            categoria_final_pnc=cat2.selectbox('Categoría final',['','1','2','3'],key=f'pnc_cat_final_{nonce}')
+            categoria_final_pnc=cat2.selectbox(etiqueta_cfg('PNC','categoria_final_pnc','Categoría final'),['','1','2','3'],key=f'pnc_cat_final_{nonce}')
             registro_relacionado='SOLO_PNC'
             if clas in ('Inocuidad','Salubridad'):
-                st.info('La clasificación seleccionada puede requerir un registro complementario. Indica si deseas generarlo automáticamente con la información de este PNC.')
-                registro_relacionado=st.radio('¿Deseas registrar también este evento?',
-                    ['SOLO_PNC','ME','DDM_RX'],horizontal=True,
-                    format_func=lambda x:{'SOLO_PNC':'No, continuar solo con PNC','ME':'Sí, Materia Extraña','DDM_RX':'Sí, Detector de metales y RX'}[x],
-                    key=f'pnc_registro_relacionado_{nonce}')
+                st.info('La clasificación seleccionada puede requerir un registro complementario.')
+                registro_relacionado=st.radio('¿Deseas registrar también este evento?',['SOLO_PNC','ME','DDM_RX'],horizontal=True,format_func=lambda x:{'SOLO_PNC':'No, continuar solo con PNC','ME':'Sí, Materia Extraña','DDM_RX':'Sí, Detector de metales y RX'}[x],key=f'pnc_rel_{nonce}')
             descripcion=st.text_area('Descripción del defecto *',key=f'pnc_desc_{nonce}'); acciones=st.text_area('Acciones inmediatas *',key=f'pnc_accion_{nonce}')
             a,b,c=st.columns(3)
             sup=a.selectbox('Supervisor (Responsable) *',opt_blank(catalog('supervisor')),key=f'pnc_sup_{nonce}'); ana=b.selectbox('Analista (Persona que detecta) *',opt_blank(catalog('analista')),key=f'pnc_ana_{nonce}'); resp=c.selectbox('Responsable de detectar el PNC *',opt_blank(catalog('responsable_detecta')),key=f'pnc_resp_{nonce}')
             a,b,c=st.columns(3)
             disp=a.selectbox('Disposición *',opt_blank(catalog('disposicion')),key=f'pnc_disp_{nonce}'); obs=b.number_input('Cantidad observada (kg) *',min_value=0.0,step=1.0,format='%.2f',key=f'pnc_obs_{nonce}'); fecha_final=c.date_input('Fecha final',value=date.today(),key=f'pnc_final_{nonce}') if status=='CERRADO' else None
             q1,q2,q3=st.columns(3); rep=q1.number_input('Reproceso kg',min_value=0.0,step=1.0,format='%.2f',key=f'pnc_rep_{nonce}'); dec=q2.number_input('Decomiso kg',min_value=0.0,step=1.0,format='%.2f',key=f'pnc_dec_{nonce}'); apr=q3.number_input('Aprobado 2da kg',min_value=0.0,step=1.0,format='%.2f',key=f'pnc_apr_{nonce}'); total=rep+dec+apr
-            mat=st.text_area('Material hallado / ME',key=f'pnc_mat_{nonce}'); notas=st.text_area('Observaciones',key=f'pnc_notas_{nonce}'); files=st.file_uploader('Adjuntar evidencia',accept_multiple_files=True,type=['pdf','png','jpg','jpeg','xlsx','csv','txt','docx'],key=f'pnc_files_{nonce}')
+            mat=st.text_area('Material hallado / ME',key=f'pnc_mat_{nonce}'); notas=st.text_area('Observaciones',key=f'pnc_notas_{nonce}'); extras_pnc=render_personalizados('PNC',nonce,'pnc'); files=st.file_uploader('Adjuntar evidencia',accept_multiple_files=True,type=['pdf','png','jpg','jpeg','xlsx','csv','txt','docx'],key=f'pnc_files_{nonce}')
             ok=st.button('Guardar registro',key=f'guardar_pnc_{nonce}',type='primary')
         if ok:
-            obligatorios={'Línea/Sector':linea,'Nave':nave,'ITEM':item,'Descripción':descp,'Cliente':cliente,'Familia':familia,'Lote':lote,'Etapa':etapa,'Código':cod,'Defecto':defecto,'Tipo de defecto':tipo,'Semana':semana,'Turno':turno,'Fecha':fecha,'Supervisor':sup,'Analista':ana,'Responsable de detectar el PNC':resp,'Descripción del defecto':descripcion,'Acciones inmediatas':acciones,'Disposición':disp,'Cantidad observada':obs,'Status':status,'Clasificación':clas,'Categoría inicial':categoria_inicial_pnc}
-            faltantes=[k for k,v in obligatorios.items() if v is None or (isinstance(v,str) and not v.strip()) or (k=='Cantidad observada' and float(v)<=0)]
+            datos_req={'linea_sector':linea,'nave':nave,'item':item,'descripcion_producto':descp,'cliente':cliente,'familia':familia,'lote':lote,'etapa':etapa,'codigo_defecto':cod,'defecto':defecto,'tipo_defecto':tipo,'semana':semana,'turno':turno,'fecha_apertura':fecha,'supervisor':sup,'analista':ana,'responsable_detecta':resp,'descripcion_defecto':descripcion,'acciones_inmediatas':acciones,'disposicion':disp,'cantidad_observada':obs,'status':status,'clasificacion':clas,'categoria_inicial_pnc':categoria_inicial_pnc}
+            obligatorios={etiqueta_cfg('PNC',k,k.replace('_',' ').title()).replace(' *',''):v for k,v in datos_req.items() if campo_requerido('PNC',k)}
+            faltantes=[k for k,v in obligatorios.items() if v is None or (isinstance(v,str) and not v.strip()) or ('Cantidad observada' in k and float(v)<=0)]+validar_personalizados('PNC',extras_pnc)
             if faltantes:
                 st.error('Completa los siguientes campos obligatorios: '+', '.join(faltantes)+'.')
             else:
                 folio=new_folio(); rid=exec_sql('INSERT INTO pnc_registros(folio,fecha_apertura,linea_sector,nave,item,descripcion_producto,cliente,familia,lote,etapa,codigo_defecto,defecto,tipo_defecto,clasificacion,turno,supervisor,analista,responsable_detecta,descripcion_defecto,acciones_inmediatas,disposicion,cantidad_observada,cantidad_reproceso,cantidad_decomiso,cantidad_aprobado_segunda,cantidad_total_pnc,status,fecha_final_tratamiento,observaciones,material_hallado,creado_por,creado_en,semana,categoria_inicial_pnc,categoria_final_pnc) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',(folio,fecha.isoformat(),linea,nave,item,descp,cliente,familia,lote,etapa,cod,defecto,tipo,clas,turno,sup,ana,resp,descripcion,acciones,disp,float(obs),rep,dec,apr,total,status,fecha_final.isoformat() if fecha_final else None,notas,mat,st.session_state.auth['usuario'],now_iso(),int(semana),categoria_inicial_pnc,categoria_final_pnc))
-                relacionado_id=None
+                guardar_personalizados('PNC',rid,extras_pnc)
+                relacionado=None
                 if clas in ('Inocuidad','Salubridad') and registro_relacionado in ('ME','DDM_RX'):
-                    tabla_relacionada='me_registros' if registro_relacionado=='ME' else 'ddm_rx_registros'
-                    relacionado_id=crear_hallazgo_desde_pnc(tabla_relacionada,{
-                        'fecha':fecha,'semana':semana,'nave':nave,'linea':linea,'item':item,'producto':descp,
-                        'cliente':cliente,'familia':familia,'lote':lote,'etapa':etapa,'codigo':cod,
-                        'clasificacion':clas,'turno':turno,'supervisor':sup,'analista':ana,
-                        'descripcion':descripcion,'acciones':acciones,'disposicion':disp,'status':status
-                    },st.session_state.auth['usuario'])
-                    audit(st.session_state.auth['usuario'],'CREAR_REGISTRO_RELACIONADO',f'PNC {rid} | {registro_relacionado} {relacionado_id}')
+                    tr='me_registros' if registro_relacionado=='ME' else 'ddm_rx_registros'
+                    relacionado=crear_hallazgo_desde_pnc(tr,{'fecha':fecha,'semana':semana,'nave':nave,'linea':linea,'item':item,'producto':descp,'familia':familia,'lote':lote,'etapa':etapa,'codigo':cod,'clasificacion':clas,'turno':turno,'supervisor':sup,'analista':ana,'descripcion':descripcion,'acciones':acciones,'disposicion':disp,'status':status},st.session_state.auth['usuario'])
+                    audit(st.session_state.auth['usuario'],'CREAR_REGISTRO_RELACIONADO',f'PNC {rid} | {registro_relacionado} {relacionado}')
                 save_files(files,rid,folio,st.session_state.auth['usuario']); audit(st.session_state.auth['usuario'],'CREAR_PNC',f'ID {rid}')
-                limpiar_form()
-                extra=f' y registro relacionado {registro_relacionado} Número {relacionado_id}' if relacionado_id else ''
-                st.session_state.flash_registro_guardado=f'Registro PNC guardado correctamente: Número {rid}{extra}'
+                limpiar_form(); st.session_state.flash_registro_guardado=f'Registro guardado correctamente: Número {rid}'
                 st.rerun()
         st.markdown('</div></div>',unsafe_allow_html=True)
     if st.session_state.registro_tipo is None: selector()
@@ -1967,13 +1923,8 @@ def page_consulta():
     }
     st.markdown(f'''<div class="registro-full-panel"><div class="registro-pill">Consulta y descarga</div><div class="registro-full-title">{titulos.get(tipo_consulta,'Consulta')}</div></div>''',unsafe_allow_html=True)
     if st.session_state.pop('excel_sync_error',None): st.warning('No fue posible actualizar el libro Excel. Verifica que el archivo no esté abierto en otro programa.')
-    def prep(df, formato=''):
+    def prep(df):
         v=df.copy()
-        if formato:
-            activos=set(nombres_campos_activos(formato)) | {'id','folio','numero','dia','mes','anio','fecha_apertura'}
-            v=v[[c for c in v.columns if c in activos]]
-        if formato in ('ME','DDM_RX'):
-            v=v.drop(columns=[c for c in CAMPOS_OCULTOS_HALLAZGOS if c in v.columns],errors='ignore')
         if all(c in v.columns for c in ['dia','mes','anio']):
             v['Fecha']=pd.to_datetime(dict(year=v['anio'].fillna(1900).astype(int),month=v['mes'].fillna(1).astype(int),day=v['dia'].fillna(1).astype(int)),errors='coerce').dt.date
             v=v.drop(columns=['dia','mes','anio'])
@@ -1993,7 +1944,7 @@ def page_consulta():
         df=filtered(df,key)
         if df.empty:
             st.info('No se encontraron registros para mostrar.'); return None,df
-        v=prep(df, {'pnc':'PNC','me':'ME','ddm':'DDM_RX'}.get(key,''))
+        v=prep(df)
         try:
             nonce_key=f'table_nonce_{key}'
             nonce=st.session_state.get(nonce_key,0)
@@ -2065,11 +2016,7 @@ def page_consulta():
             d2.text_input('Tipo de defecto',value=tipo_defecto,disabled=True)
             d3.text_input('Clasificación',value=clasificacion,disabled=True)
             values={}
-            formato_actual=formato_por_tabla(table_name)
-            activos=set(nombres_campos_activos(formato_actual))
-            columns=[c for c in row_df.columns if c!='id' and c not in protected and (not activos or c in activos)]
-            if table_name in ('me_registros','ddm_rx_registros'):
-                columns=[c for c in columns if c not in CAMPOS_OCULTOS_HALLAZGOS]
+            columns=[c for c in row_df.columns if c!='id' and c not in protected]
             with st.form(f'editar_form_{key}_{selected}'):
                 for pos in range(0,len(columns),3):
                     cols_ui=st.columns(3)
@@ -2091,18 +2038,14 @@ def page_consulta():
                 auto={'item':item,'cliente':cliente,'familia':familia,'codigo_defecto':codigo,'defecto':defecto,'tipo_defecto':tipo_defecto}
                 if table_name=='pnc_registros': auto.update({'descripcion_producto':descripcion,'clasificacion':clasificacion})
                 else: auto.update({'producto':descripcion,'categoria_inicial':clasificacion})
-                required=['linea_sector','nave','lote','etapa','semana','turno','acciones_inmediatas','disposicion','status']
-                if table_name=='pnc_registros':
-                    required += ['responsable_detecta','cantidad_observada','supervisor','analista','descripcion_defecto','categoria_inicial_pnc']
-                else:
-                    required += ['supervisor_responsable','analista_detecta','descripcion_hallazgo']
-                required=[c for c in required if campo_obligatorio(formato_actual,c,True)]
+                required=['linea_sector','nave','lote','etapa','semana','turno','responsable_detecta','acciones_inmediatas','disposicion','cantidad_observada','status']
+                required += ['supervisor','analista','descripcion_defecto','categoria_inicial_pnc'] if table_name=='pnc_registros' else ['supervisor_responsable','analista_detecta','descripcion_hallazgo']
                 missing=[]
                 for name,val in {'ITEM':item,'Descripción':descripcion,'Cliente':cliente,'Familia':familia,'Código':codigo,'Defecto':defecto,'Tipo de defecto':tipo_defecto,'Clasificación':clasificacion}.items():
                     if not str(val).strip(): missing.append(name)
                 for col in required:
                     val=values.get(col)
-                    if val is None or (isinstance(val,str) and not val.strip()) or (col=='cantidad_observada' and table_name=='pnc_registros' and float(val)<=0): missing.append(labels.get(col,col))
+                    if val is None or (isinstance(val,str) and not val.strip()) or (col=='cantidad_observada' and float(val)<=0): missing.append(labels.get(col,col))
                 if missing: st.error('Completa los siguientes campos obligatorios: '+', '.join(dict.fromkeys(missing))+'.')
                 else:
                     updates={**values,**auto}; update_cols=list(updates.keys())
@@ -2685,52 +2628,33 @@ def page_catalogos():
         page_pdfv3()
     with tab7:
         st.subheader('Campos de los registros')
-        st.caption('Administra qué campos están disponibles por formato. Los catálogos de Productos, Defectos y Datos generales continúan siendo la fuente de sus listas relacionadas.')
-        formato=st.radio('Registro',['PNC','ME','DDM_RX'],horizontal=True,
-            format_func=lambda x:{'PNC':'PNC','ME':'Materia Extraña','DDM_RX':'Detector de metales y RX'}[x],key='campos_formato')
-        tabla=REGISTRO_FORMATOS[formato]
-        db=conn(); columnas_tabla=[r[1] for r in db.execute(f'PRAGMA table_info({tabla})').fetchall()]; db.close()
-        permitidos=[c for c in columnas_tabla if c not in CAMPOS_SISTEMA_NO_EDITABLES]
-        if formato in ('ME','DDM_RX'):
-            permitidos=[c for c in permitidos if c not in CAMPOS_OCULTOS_HALLAZGOS]
-        df=campos_registro(formato,False)
-        vista=df.rename(columns={'id':'ID','campo':'Campo','etiqueta':'Etiqueta','tipo_control':'Tipo de control','catalogo_origen':'Catálogo relacionado','obligatorio':'Obligatorio','solo_lectura':'Solo lectura','orden':'Orden','activo':'Activo'})
-        editado=st.data_editor(vista,use_container_width=True,hide_index=True,num_rows='dynamic',disabled=['ID'],key=f'editor_campos_{formato}',
-            column_config={
-                'Campo':st.column_config.SelectboxColumn(options=permitidos,required=True),
-                'Tipo de control':st.column_config.SelectboxColumn(options=['texto','area','numero','catalogo','fecha'],required=True),
-                'Catálogo relacionado':st.column_config.SelectboxColumn(options=['','productos','defectos']+sorted(SEED_CATALOGS.keys())),
-                'Obligatorio':st.column_config.CheckboxColumn(),'Solo lectura':st.column_config.CheckboxColumn(),'Activo':st.column_config.CheckboxColumn(),
-                'Orden':st.column_config.NumberColumn(min_value=0,step=1)
-            })
-        if st.button('Guardar catálogo de campos',type='primary',key=f'guardar_campos_{formato}'):
-            errores=[]; vistos=set()
-            for _,r in editado.iterrows():
-                campo=str(r.get('Campo') or '').strip(); etiqueta=str(r.get('Etiqueta') or '').strip()
-                if not campo or campo not in permitidos: errores.append(f'Campo no válido: {campo or "vacío"}')
-                if campo in vistos: errores.append(f'Campo duplicado: {campo}')
-                if not etiqueta: errores.append(f'Falta la etiqueta de {campo or "un campo"}')
-                vistos.add(campo)
-            if errores:
-                st.error('Corrige el catálogo: '+', '.join(dict.fromkeys(errores))+'.')
-            else:
-                cdb=conn();cur=cdb.cursor()
-                try:
-                    cur.execute('DELETE FROM catalogo_campos_registro WHERE formato=?',(formato,))
-                    for pos,r in editado.iterrows():
-                        cur.execute('''INSERT INTO catalogo_campos_registro
-                            (formato,campo,etiqueta,tipo_control,catalogo_origen,obligatorio,solo_lectura,orden,activo)
-                            VALUES(?,?,?,?,?,?,?,?,?)''',(
-                            formato,str(r['Campo']).strip(),str(r['Etiqueta']).strip(),str(r.get('Tipo de control') or 'texto'),
-                            str(r.get('Catálogo relacionado') or ''),int(bool(r.get('Obligatorio'))),int(bool(r.get('Solo lectura'))),
-                            int(r.get('Orden') or pos),int(bool(r.get('Activo')))))
-                    cdb.commit()
-                except Exception:
-                    cdb.rollback();raise
-                finally:cdb.close()
-                audit(st.session_state.auth['usuario'],'ACTUALIZAR_CAMPOS_REGISTRO',formato)
-                st.success('Catálogo de campos actualizado correctamente. Los cambios ya se aplican en consulta y edición.')
-                st.rerun()
+        st.caption('Los cambios se aplican al formulario, validación y consulta. Los campos nuevos se guardan sin alterar los catálogos relacionados existentes.')
+        formato=st.radio('Formato',['PNC','ME','DDM_RX'],horizontal=True,format_func=lambda x:{'PNC':'PNC','ME':'Materia Extraña','DDM_RX':'Detector de metales y RX'}[x],key='cfg_formato')
+        base=cfg_campos(formato,False)
+        st.dataframe(base.rename(columns={'campo':'Campo','etiqueta':'Etiqueta','tipo_control':'Control','catalogo_origen':'Catálogo','obligatorio':'Obligatorio','orden':'Orden','activo':'Activo','es_personalizado':'Personalizado'}),use_container_width=True,hide_index=True)
+        with st.expander('Agregar nuevo campo',expanded=False):
+            with st.form(f'nuevo_campo_{formato}',clear_on_submit=True):
+                a,b=st.columns(2); nombre=a.text_input('Nombre interno *',placeholder='Ejemplo: proveedor_material'); etiqueta=b.text_input('Etiqueta visible *',placeholder='Ejemplo: Proveedor del material')
+                c,d,e=st.columns(3); control=c.selectbox('Tipo de control',['texto','area','numero','fecha','catalogo']); origen=d.selectbox('Catálogo relacionado',['']+sorted(SEED_CATALOGS.keys())); obligatorio=e.checkbox('Obligatorio'); agregar=st.form_submit_button('Agregar campo',type='primary')
+            if agregar:
+                import re
+                campo=re.sub(r'[^a-z0-9_]+','_',normalizar_catalogo(nombre).lower().replace(' ','_')).strip('_')
+                if not campo or not etiqueta.strip():st.error('Completa el nombre interno y la etiqueta visible.')
+                elif not read_df('SELECT id FROM catalogo_campos_registro WHERE formato=? AND campo=?',(formato,campo)).empty:st.error('Ya existe un campo con ese nombre interno.')
+                else:
+                    orden=int(read_df('SELECT COALESCE(MAX(orden),-1)+1 n FROM catalogo_campos_registro WHERE formato=?',(formato,)).iloc[0].n)
+                    exec_sql('INSERT INTO catalogo_campos_registro(formato,campo,etiqueta,tipo_control,catalogo_origen,obligatorio,solo_lectura,orden,activo,es_personalizado) VALUES(?,?,?,?,?,?,0,?,1,1)',(formato,campo,etiqueta.strip(),control,origen,int(obligatorio),orden));audit(st.session_state.auth['usuario'],'AGREGAR_CAMPO_REGISTRO',f'{formato} | {campo}');st.rerun()
+        ids=base.id.astype(int).tolist() if not base.empty else []
+        if ids:
+            rid=st.selectbox('Campo que deseas editar',ids,format_func=lambda x:str(base[base.id==x].iloc[0].etiqueta),key=f'campo_editar_{formato}')
+            r=base[base.id==rid].iloc[0]
+            with st.form(f'editar_campo_{formato}_{rid}'):
+                a,b=st.columns(2); et=a.text_input('Etiqueta visible *',str(r.etiqueta)); tipos=['texto','area','numero','fecha','catalogo']; tc=b.selectbox('Tipo de control',tipos,index=idx_or_zero(tipos,str(r.tipo_control)))
+                c,d,e=st.columns(3); cats=['']+sorted(SEED_CATALOGS.keys()); co=c.selectbox('Catálogo relacionado',cats,index=idx_or_zero(cats,str(r.catalogo_origen or ''))); ob=d.checkbox('Obligatorio',value=bool(r.obligatorio)); ac=e.checkbox('Activo',value=bool(r.activo)); orden=st.number_input('Orden',min_value=0,value=int(r.orden),step=1); guardar=st.form_submit_button('Guardar cambios',type='primary')
+            if guardar:
+                exec_sql('UPDATE catalogo_campos_registro SET etiqueta=?,tipo_control=?,catalogo_origen=?,obligatorio=?,orden=?,activo=? WHERE id=?',(et.strip(),tc,co,int(ob),int(orden),int(ac),rid));audit(st.session_state.auth['usuario'],'EDITAR_CAMPO_REGISTRO',f'{formato} | ID {rid}');st.success('Campo actualizado. El cambio se aplicará inmediatamente al formulario.');st.rerun()
+            if bool(r.es_personalizado) and st.button('Eliminar campo personalizado',key=f'eliminar_campo_{rid}'):
+                exec_sql('DELETE FROM catalogo_campos_registro WHERE id=?',(rid,));audit(st.session_state.auth['usuario'],'ELIMINAR_CAMPO_REGISTRO',f'{formato} | ID {rid}');st.rerun()
 
 def page_usuarios():
     if not is_dev():
