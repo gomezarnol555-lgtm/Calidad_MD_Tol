@@ -2838,7 +2838,12 @@ def page_catalogos():
                         formulario=0 if eliminar or not activo else int(bool(r['Formulario']))
                         consulta=0 if eliminar or not activo else int(bool(r['Consulta']))
                         pdf=0 if eliminar or not activo else int(bool(r['PDF']))
-                        anterior=cur.execute('SELECT tipo_control,catalogo_origen FROM catalogo_campos_registro WHERE id=? AND formato=?',(rid,formato)).fetchone()
+                        anterior=cur.execute('SELECT tipo_control,catalogo_origen,activo,mostrar_formulario FROM catalogo_campos_registro WHERE id=? AND formato=?',(rid,formato)).fetchone()
+                        # Si un campo estaba desactivado y el administrador vuelve a marcar Activo,
+                        # se restaura automaticamente en el formulario. Al eliminarlo se habian
+                        # apagado ambas banderas, por eso antes no reaparecia al reactivarlo.
+                        if anterior and not bool(anterior[2]) and activo and not bool(r['Formulario']):
+                            formulario=1
                         cur.execute('UPDATE catalogo_campos_registro SET etiqueta=?,tipo_control=?,catalogo_origen=?,obligatorio=?,solo_lectura=?,orden=?,activo=?,mostrar_formulario=?,mostrar_consulta=?,mostrar_pdf=? WHERE id=? AND formato=?',
                             (str(r['Etiqueta']).strip(),tipo,fuente,int(bool(r['Obligatorio'])),int(bool(r['Solo lectura'])),
                              int(r['Orden']),activo,formulario,consulta,pdf,rid,formato))
@@ -2850,8 +2855,21 @@ def page_catalogos():
                 finally: db.close()
                 audit(st.session_state.auth['usuario'],'EDITAR_TABLA_CAMPOS_REGISTRO',f'{formato} | {len(editado)} campos')
                 st.session_state.campos_nonce=st.session_state.get('campos_nonce',0)+1
-                st.success('Configuración actualizada. Los cambios ya se aplican al formato correspondiente.')
+                st.success('Configuración actualizada. Los campos reactivados volverán a mostrarse automáticamente en el formulario correspondiente.')
                 st.rerun()
+        campos_reactivar={f"{int(r.id)} | {r.etiqueta} ({r.campo})":int(r.id) for _,r in df.iterrows() if not bool(r.activo)}
+        with st.expander('Reactivar un campo eliminado o desactivado',expanded=False):
+            if not campos_reactivar:
+                st.info('No existen campos desactivados para reactivar.')
+            else:
+                seleccion_reactivar=st.selectbox('Campo que deseas reactivar',list(campos_reactivar),key=f'seleccion_reactivar_campo_{formato}')
+                if st.button('Reactivar campo seleccionado',key=f'boton_reactivar_campo_{formato}',type='primary'):
+                    rid_reactivar=campos_reactivar[seleccion_reactivar]
+                    exec_sql('UPDATE catalogo_campos_registro SET activo=1,mostrar_formulario=1 WHERE id=? AND formato=?',(rid_reactivar,formato))
+                    audit(st.session_state.auth['usuario'],'REACTIVAR_CAMPO_REGISTRO',f'{formato} | ID {rid_reactivar}')
+                    st.session_state.campos_nonce=st.session_state.get('campos_nonce',0)+1
+                    st.success('Campo reactivado correctamente. Ya volverá a aparecer en el formulario correspondiente.')
+                    st.rerun()
         campos_eliminar={f"{int(r.id)} | {r.etiqueta} ({r.campo})":int(r.id) for _,r in df.iterrows() if bool(r.activo)}
         with st.expander('Eliminar o desactivar un campo',expanded=False):
             if not campos_eliminar:
