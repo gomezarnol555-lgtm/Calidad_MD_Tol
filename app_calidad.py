@@ -1749,8 +1749,8 @@ def opciones_campo(campo_id,catalogo_origen=''):
     propias=read_df('SELECT valor FROM catalogo_campos_opciones WHERE campo_id=? AND activo=1 ORDER BY orden,id',(campo_id,))
     if not propias.empty:return propias.valor.astype(str).tolist()
     if catalogo_origen in ('productos','defectos'):
-        if catalogo_origen=='productos':return read_df('SELECT item||' | '||descripcion valor FROM productos WHERE activo=1 ORDER BY descripcion').valor.astype(str).tolist()
-        return read_df('SELECT codigo||' | '||defecto valor FROM defectos WHERE activo=1 ORDER BY CAST(codigo AS INTEGER)').valor.astype(str).tolist()
+        if catalogo_origen=='productos':return read_df("SELECT item || ' | ' || descripcion AS valor FROM productos WHERE activo=1 ORDER BY descripcion").valor.astype(str).tolist()
+        return read_df("SELECT codigo || ' | ' || defecto AS valor FROM defectos WHERE activo=1 ORDER BY CAST(codigo AS INTEGER)").valor.astype(str).tolist()
     return catalog(catalogo_origen) if catalogo_origen else []
 def render_campos_personalizados(formato,nonce,prefijo):
     valores={}; d=campos_registro(formato,True)
@@ -2733,67 +2733,97 @@ def page_catalogos():
         page_pdfv3()
     with tab7:
         st.subheader('Campos de los registros')
-        st.caption('Cada configuración está ligada exclusivamente a PNC, Materia Extraña o Detector de metales y RX. Al guardar, el cambio se aplica al formulario, validación, consulta y disponibilidad para PDF.')
+        st.caption('Edita directamente la tabla. Los cambios se aplican al formulario, validación, consulta y disponibilidad para PDF del formato seleccionado.')
         formato=st.radio('Formato correspondiente',['PNC','ME','DDM_RX'],horizontal=True,format_func=lambda x:{'PNC':'PNC','ME':'Materia Extraña','DDM_RX':'Detector de metales y RX'}[x],key='campos_formato')
+        categorias=read_df('SELECT DISTINCT categoria FROM catalogos ORDER BY categoria').categoria.astype(str).tolist()
+        fuentes=['','productos','defectos']+categorias
+        tipos=['texto','area','numero','fecha','catalogo']
         df=campos_registro(formato,False)
-        vista=df[['id','campo','etiqueta','tipo_control','catalogo_origen','obligatorio','orden','activo','es_personalizado','mostrar_formulario','mostrar_consulta','mostrar_pdf']].rename(columns={'id':'ID','campo':'Campo','etiqueta':'Etiqueta','tipo_control':'Tipo','catalogo_origen':'Catálogo','obligatorio':'Obligatorio','orden':'Orden','activo':'Activo','es_personalizado':'Personalizado','mostrar_formulario':'Formulario','mostrar_consulta':'Consulta','mostrar_pdf':'PDF'})
-        evento=st.dataframe(vista,use_container_width=True,hide_index=True,on_select='rerun',selection_mode='single-row',key=f'tabla_campos_{formato}_{st.session_state.get("campos_nonce",0)}') if not vista.empty else None
-        rows=getattr(evento,'selection',{}).get('rows',[]) if evento is not None else []
-        rid=int(vista.iloc[rows[0]].ID) if rows and isinstance(rows[0],int) and 0<=rows[0]<len(vista) else None
+        columnas_cfg=['id','campo','etiqueta','tipo_control','catalogo_origen','obligatorio','solo_lectura','orden','activo','es_personalizado','mostrar_formulario','mostrar_consulta','mostrar_pdf']
+        for col in columnas_cfg:
+            if col not in df.columns: df[col]=0 if col in ('obligatorio','solo_lectura','orden','activo','es_personalizado','mostrar_formulario','mostrar_consulta','mostrar_pdf') else ''
+        editor=df[columnas_cfg].rename(columns={
+            'id':'ID','campo':'Campo','etiqueta':'Etiqueta','tipo_control':'Tipo','catalogo_origen':'Catálogo',
+            'obligatorio':'Obligatorio','solo_lectura':'Solo lectura','orden':'Orden','activo':'Activo',
+            'es_personalizado':'Personalizado','mostrar_formulario':'Formulario','mostrar_consulta':'Consulta','mostrar_pdf':'PDF'
+        })
+        editor['Eliminar']=False
+        for col in ['Obligatorio','Solo lectura','Activo','Personalizado','Formulario','Consulta','PDF','Eliminar']:
+            editor[col]=editor[col].fillna(0).astype(bool)
+        editor['Orden']=pd.to_numeric(editor['Orden'],errors='coerce').fillna(0).astype(int)
+        st.info('Para eliminar un campo, marca la casilla Eliminar y guarda. Los valores históricos se conservan para auditoría.')
+        editado=st.data_editor(
+            editor,use_container_width=True,hide_index=True,num_rows='fixed',
+            key=f'editor_campos_directo_{formato}_{st.session_state.get("campos_nonce",0)}',
+            disabled=['ID','Campo','Personalizado'],
+            column_config={
+                'ID':st.column_config.NumberColumn('ID',disabled=True),
+                'Campo':st.column_config.TextColumn('Campo',disabled=True),
+                'Etiqueta':st.column_config.TextColumn('Etiqueta',required=True),
+                'Tipo':st.column_config.SelectboxColumn('Tipo',options=tipos,required=True),
+                'Catálogo':st.column_config.SelectboxColumn('Catálogo',options=fuentes),
+                'Obligatorio':st.column_config.CheckboxColumn('Obligatorio'),
+                'Solo lectura':st.column_config.CheckboxColumn('Solo lectura'),
+                'Orden':st.column_config.NumberColumn('Orden',min_value=0,step=1),
+                'Activo':st.column_config.CheckboxColumn('Activo'),
+                'Personalizado':st.column_config.CheckboxColumn('Personalizado',disabled=True),
+                'Formulario':st.column_config.CheckboxColumn('Formulario'),
+                'Consulta':st.column_config.CheckboxColumn('Consulta'),
+                'PDF':st.column_config.CheckboxColumn('PDF'),
+                'Eliminar':st.column_config.CheckboxColumn('Eliminar',help='Desactiva el campo y lo oculta del formulario, consulta y PDF.')
+            }
+        )
+        if st.button('Guardar cambios de la tabla',type='primary',key=f'guardar_tabla_campos_{formato}'):
+            errores=[]
+            ids_vistos=set()
+            for pos,r in editado.iterrows():
+                try: rid=int(r['ID'])
+                except Exception:
+                    errores.append(f'Fila {pos+1}: ID no válido.'); continue
+                ids_vistos.add(rid)
+                etiqueta=str(r['Etiqueta'] or '').strip(); tipo=str(r['Tipo'] or '').strip(); fuente=str(r['Catálogo'] or '').strip()
+                if not etiqueta: errores.append(f'Campo {r["Campo"]}: la etiqueta no puede quedar vacía.')
+                if tipo not in tipos: errores.append(f'Campo {r["Campo"]}: tipo de control no válido.')
+                if tipo=='catalogo' and not fuente: errores.append(f'Campo {r["Campo"]}: selecciona un catálogo de origen.')
+                if fuente and fuente not in fuentes: errores.append(f'Campo {r["Campo"]}: catálogo de origen no válido.')
+            if errores:
+                st.error('No se guardaron los cambios. '+' '.join(errores))
+            else:
+                db=conn();cur=db.cursor()
+                try:
+                    for _,r in editado.iterrows():
+                        rid=int(r['ID']); eliminar=bool(r['Eliminar']); tipo=str(r['Tipo']); fuente=str(r['Catálogo'] or '') if tipo=='catalogo' else ''
+                        activo=0 if eliminar else int(bool(r['Activo']))
+                        formulario=0 if eliminar or not activo else int(bool(r['Formulario']))
+                        consulta=0 if eliminar or not activo else int(bool(r['Consulta']))
+                        pdf=0 if eliminar or not activo else int(bool(r['PDF']))
+                        cur.execute('UPDATE catalogo_campos_registro SET etiqueta=?,tipo_control=?,catalogo_origen=?,obligatorio=?,solo_lectura=?,orden=?,activo=?,mostrar_formulario=?,mostrar_consulta=?,mostrar_pdf=? WHERE id=? AND formato=?',
+                            (str(r['Etiqueta']).strip(),tipo,fuente,int(bool(r['Obligatorio'])),int(bool(r['Solo lectura'])),
+                             int(r['Orden']),activo,formulario,consulta,pdf,rid,formato))
+                    db.commit()
+                except Exception:
+                    db.rollback();raise
+                finally: db.close()
+                audit(st.session_state.auth['usuario'],'EDITAR_TABLA_CAMPOS_REGISTRO',f'{formato} | {len(editado)} campos')
+                st.session_state.campos_nonce=st.session_state.get('campos_nonce',0)+1
+                st.success('Configuración actualizada. Los cambios ya se aplican al formato correspondiente.')
+                st.rerun()
         with st.expander('Agregar nuevo campo',expanded=False):
             modo=st.radio('Origen del llenado',['LIBRE','CATALOGO'],horizontal=True,format_func=lambda x:'Llenado libre' if x=='LIBRE' else 'Relacionado con catálogo',key=f'modo_nuevo_{formato}')
-            categorias=read_df('SELECT DISTINCT categoria FROM catalogos ORDER BY categoria').categoria.astype(str).tolist()
-            fuentes=['productos','defectos']+categorias
-            fuente=st.selectbox('Catálogo de origen',fuentes,key=f'fuente_nuevo_{formato}') if modo=='CATALOGO' else ''
-            disponibles=[]
-            if modo=='CATALOGO':
-                if fuente=='productos': disponibles=read_df('SELECT item||' | '||descripcion valor FROM productos WHERE activo=1 ORDER BY descripcion').valor.astype(str).tolist()
-                elif fuente=='defectos': disponibles=read_df('SELECT codigo||' | '||defecto valor FROM defectos WHERE activo=1 ORDER BY CAST(codigo AS INTEGER)').valor.astype(str).tolist()
-                else: disponibles=catalog(fuente)
-            seleccion=st.multiselect('Valores que estarán disponibles en este campo',disponibles,default=disponibles,key=f'valores_nuevo_{formato}') if modo=='CATALOGO' else []
+            fuente=st.selectbox('Catálogo de origen',fuentes[1:],key=f'fuente_nuevo_{formato}') if modo=='CATALOGO' else ''
             with st.form(f'nuevo_campo_{formato}',clear_on_submit=True):
                 a,b=st.columns(2); nombre=a.text_input('Nombre interno *',placeholder='Ejemplo: proveedor_material'); etiqueta=b.text_input('Etiqueta visible *',placeholder='Ejemplo: Proveedor del material')
-                c,d,e=st.columns(3); tipos=['texto','area','numero','fecha'] if modo=='LIBRE' else ['catalogo']; tipo=c.selectbox('Tipo de control',tipos); obligatorio=d.checkbox('Obligatorio'); mostrar_pdf=e.checkbox('Disponible para PDF',value=True); guardar=st.form_submit_button('Agregar campo',type='primary')
+                c,d,e=st.columns(3); tipo=c.selectbox('Tipo de control',['texto','area','numero','fecha'] if modo=='LIBRE' else ['catalogo']); obligatorio=d.checkbox('Obligatorio'); mostrar_pdf=e.checkbox('Disponible para PDF',value=True); guardar=st.form_submit_button('Agregar campo',type='primary')
             if guardar:
                 import re,unicodedata
                 limpio=''.join(ch for ch in unicodedata.normalize('NFKD',nombre.lower()) if not unicodedata.combining(ch));campo=re.sub(r'[^a-z0-9_]+','_',limpio).strip('_')
-                if not campo or not etiqueta.strip():st.error('Completa el nombre interno y la etiqueta visible.')
-                elif not read_df('SELECT id FROM catalogo_campos_registro WHERE formato=? AND campo=?',(formato,campo)).empty:st.error('Ese nombre interno ya existe en el formato seleccionado.')
-                elif modo=='CATALOGO' and not seleccion:st.error('Selecciona al menos un valor para el campo relacionado.')
+                if not campo or not etiqueta.strip(): st.error('Completa el nombre interno y la etiqueta visible.')
+                elif not read_df('SELECT id FROM catalogo_campos_registro WHERE formato=? AND campo=?',(formato,campo)).empty: st.error('Ese nombre interno ya existe en el formato seleccionado.')
                 else:
                     orden=int(read_df('SELECT COALESCE(MAX(orden),-1)+1 n FROM catalogo_campos_registro WHERE formato=?',(formato,)).iloc[0].n)
-                    cid=exec_sql('INSERT INTO catalogo_campos_registro(formato,campo,etiqueta,tipo_control,catalogo_origen,obligatorio,solo_lectura,orden,activo,es_personalizado,mostrar_formulario,mostrar_consulta,mostrar_pdf) VALUES(?,?,?,?,?,?,0,?,1,1,1,1,?)',(formato,campo,etiqueta.strip(),tipo,fuente,int(obligatorio),orden,int(mostrar_pdf)))
-                    for pos,val in enumerate(seleccion):exec_sql('INSERT OR IGNORE INTO catalogo_campos_opciones(campo_id,valor,activo,orden) VALUES(?,?,1,?)',(cid,val,pos))
+                    exec_sql('INSERT INTO catalogo_campos_registro(formato,campo,etiqueta,tipo_control,catalogo_origen,obligatorio,solo_lectura,orden,activo,es_personalizado,mostrar_formulario,mostrar_consulta,mostrar_pdf) VALUES(?,?,?,?,?,?,0,?,1,1,1,1,?)',(formato,campo,etiqueta.strip(),tipo,fuente,int(obligatorio),orden,int(mostrar_pdf)))
                     audit(st.session_state.auth['usuario'],'AGREGAR_CAMPO_REGISTRO',f'{formato} | {campo}');st.session_state.campos_nonce=st.session_state.get('campos_nonce',0)+1;st.rerun()
-        if rid:
-            r=df[df.id==rid].iloc[0]
-            with st.expander('Editar campo seleccionado',expanded=True):
-                modo_actual='CATALOGO' if str(r.tipo_control)=='catalogo' else 'LIBRE'
-                categorias=read_df('SELECT DISTINCT categoria FROM catalogos ORDER BY categoria').categoria.astype(str).tolist();fuentes=['']+['productos','defectos']+categorias
-                with st.form(f'editar_campo_{rid}'):
-                    a,b=st.columns(2); et=a.text_input('Etiqueta visible *',str(r.etiqueta)); tipos=['texto','area','numero','fecha','catalogo']; tc=b.selectbox('Tipo',tipos,index=idx_or_zero(tipos,str(r.tipo_control)))
-                    c,d=st.columns(2); fuente_edit=c.selectbox('Catálogo de origen',fuentes,index=idx_or_zero(fuentes,str(r.catalogo_origen or '')),disabled=tc!='catalogo'); orden=d.number_input('Orden',min_value=0,value=int(r.orden),step=1)
-                    x,y,z,w=st.columns(4); ob=x.checkbox('Obligatorio',bool(r.obligatorio)); activo=y.checkbox('Activo',bool(r.activo)); consulta=z.checkbox('Mostrar en consulta',bool(r.mostrar_consulta)); pdf=w.checkbox('Disponible para PDF',bool(r.mostrar_pdf)); actualizar=st.form_submit_button('Guardar cambios',type='primary')
-                if actualizar:
-                    exec_sql('UPDATE catalogo_campos_registro SET etiqueta=?,tipo_control=?,catalogo_origen=?,obligatorio=?,orden=?,activo=?,mostrar_formulario=?,mostrar_consulta=?,mostrar_pdf=? WHERE id=?',(et.strip(),tc,fuente_edit if tc=='catalogo' else '',int(ob),int(orden),int(activo),int(activo),int(consulta),int(pdf),rid));audit(st.session_state.auth['usuario'],'EDITAR_CAMPO_REGISTRO',f'{formato} | ID {rid}');st.session_state.campos_nonce=st.session_state.get('campos_nonce',0)+1;st.rerun()
-                if tc=='catalogo':
-                    if fuente_edit=='productos': universo=read_df('SELECT item||' | '||descripcion valor FROM productos WHERE activo=1 ORDER BY descripcion').valor.astype(str).tolist()
-                    elif fuente_edit=='defectos': universo=read_df('SELECT codigo||' | '||defecto valor FROM defectos WHERE activo=1 ORDER BY CAST(codigo AS INTEGER)').valor.astype(str).tolist()
-                    else: universo=catalog(fuente_edit) if fuente_edit else []
-                    actuales=opciones_campo(rid,str(r.catalogo_origen or '')); elegidos=st.multiselect('Valores permitidos',universo,default=[v for v in actuales if v in universo],key=f'opciones_{rid}')
-                    if st.button('Guardar valores permitidos',key=f'guardar_opciones_{rid}'):
-                        exec_sql('UPDATE catalogo_campos_opciones SET activo=0 WHERE campo_id=?',(rid,))
-                        for pos,val in enumerate(elegidos):exec_sql('INSERT INTO catalogo_campos_opciones(campo_id,valor,activo,orden) VALUES(?,?,1,?) ON CONFLICT(campo_id,valor) DO UPDATE SET activo=1,orden=excluded.orden',(rid,val,pos))
-                        audit(st.session_state.auth['usuario'],'ACTUALIZAR_OPCIONES_CAMPO',f'{formato} | ID {rid}');st.rerun()
-            if st.button('Eliminar campo del formato',key=f'eliminar_campo_{rid}'):
-                st.session_state.confirmar_eliminar_campo=rid
-            if st.session_state.get('confirmar_eliminar_campo')==rid:
-                st.warning('El campo dejará de aparecer en el formato. Los valores históricos capturados se conservarán para auditoría.')
-                x,y=st.columns(2)
-                if x.button('Confirmar eliminación',key=f'ok_eliminar_campo_{rid}'):
-                    exec_sql('UPDATE catalogo_campos_registro SET activo=0,mostrar_formulario=0,mostrar_consulta=0,mostrar_pdf=0 WHERE id=?',(rid,));audit(st.session_state.auth['usuario'],'ELIMINAR_CAMPO_REGISTRO',f'{formato} | ID {rid}');st.session_state.pop('confirmar_eliminar_campo',None);st.session_state.campos_nonce=st.session_state.get('campos_nonce',0)+1;st.rerun()
-                if y.button('Cancelar',key=f'cancelar_eliminar_campo_{rid}'):st.session_state.pop('confirmar_eliminar_campo',None);st.rerun()
-
+        st.caption('Nota: si cambias un campo a tipo Catálogo, la lista se toma automáticamente del catálogo seleccionado. Si lo desactivas o eliminas, deja de aparecer en nuevos registros, pero la información histórica no se borra.')
 def page_usuarios():
     if not is_dev():
         st.warning('Esta sección está disponible únicamente para administradores.')
