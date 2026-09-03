@@ -354,310 +354,118 @@ def pdf_materia_extrana_legacy(rid):
 def pdf_detector_metales_rx_legacy(rid):
     return _pdf_hallazgo_base('ddm_rx_registros',rid,'DDM')
 
-# ================================================================
-# MODULO ADMINISTRABLE DE FORMATOS PDF
-# Mantiene los generadores anteriores como respaldo y no altera la
-# logica de captura, consulta, edicion ni almacenamiento operativo.
-# ================================================================
-PDF_FORMATOS_SEMILLA = [
-    ('PNC', 'Informe de Producto No Conforme', 'pnc_registros', 'pdf_pnc_legacy'),
-    ('ME', 'Reporte de Hallazgos de Materia Extraña', 'me_registros', 'pdf_materia_extrana_legacy'),
-    ('DDM_RX', 'Registro de Materiales Segregados por Detector de Metales y RX', 'ddm_rx_registros', 'pdf_detector_metales_rx_legacy'),
-]
-
-PDF_CAMPOS_SEMILLA = {
-    'PNC': [
-        ('numero_pnc','PNC No.','__numero_anio__','TEXTO',1,482,670,54,14,8,'Helvetica',1,'IZQUIERDA',1,10,'','',10),
-        ('fecha','Fecha','fecha_apertura','FECHA',1,211,633,320,14,8,'Helvetica',0,'IZQUIERDA',1,10,'%d/%m/%Y','',20),
-        ('sector','Sector','linea_sector','TEXTO',1,211,614,320,14,8,'Helvetica',0,'IZQUIERDA',1,10,'','',30),
-        ('codigo_nc','Codigo de la No Conformidad','__etapa_codigo__','TEXTO',1,211,595,320,14,8,'Helvetica',0,'IZQUIERDA',1,10,'','',40),
-        ('producto','Item y Producto o SE','__item_producto__','TEXTO',1,211,576,320,14,8,'Helvetica',0,'IZQUIERDA',1,10,'','',50),
-        ('lote','Lote','lote','TEXTO',1,211,557,320,14,8,'Helvetica',0,'IZQUIERDA',1,10,'','',60),
-        ('cantidad','Cantidad observada','cantidad_observada','NUMERO',1,211,538,320,14,8,'Helvetica',0,'IZQUIERDA',1,10,'{:.2f} kg','',70),
-        ('responsables','Responsables','__responsables__','TEXTO',1,211,519,320,14,8,'Helvetica',0,'IZQUIERDA',1,10,'','',80),
-        ('acciones','Acciones inmediatas','acciones_inmediatas','PARRAFO',1,64,458,466,70,8.5,'Helvetica',0,'IZQUIERDA',7,11,'','',90),
-        ('responsable','Responsable','__responsable__','TEXTO',1,64,353,466,14,8,'Helvetica',0,'IZQUIERDA',1,10,'','',100),
-        ('observaciones','Observaciones','__observaciones_pnc__','PARRAFO',1,64,299,466,75,8.5,'Helvetica',0,'IZQUIERDA',7,11,'','',110),
-    ],
-    'ME': [
-        ('numero','N Hallazgo','__numero_anio__','TEXTO',1,108,733,140,14,7.5,'Helvetica',1,'IZQUIERDA',1,10,'','',10),
-        ('fecha','Fecha','__fecha_dmy__','FECHA',1,108,718,140,14,7.5,'Helvetica',0,'IZQUIERDA',1,10,'%d/%m/%Y','',20),
-        ('linea','Linea','linea_sector','TEXTO',1,108,688,445,14,7.7,'Helvetica',0,'IZQUIERDA',1,10,'','',30),
-        ('sector','Sector','familia','TEXTO',1,108,673,445,14,7.7,'Helvetica',0,'IZQUIERDA',1,10,'','',40),
-        ('equipo','Equipo','equipo_hallazgo','TEXTO',1,108,658,445,14,7.7,'Helvetica',0,'IZQUIERDA',1,10,'','',50),
-        ('producto','Producto','__item_producto__','TEXTO',1,108,643,445,14,7.7,'Helvetica',0,'IZQUIERDA',1,10,'','',60),
-        ('lote','Lote','lote','TEXTO',1,108,628,445,14,7.7,'Helvetica',0,'IZQUIERDA',1,10,'','',70),
-        ('hallazgo','Descripcion material hallado','descripcion_hallazgo','PARRAFO',1,225,596,329,40,7.5,'Helvetica',0,'IZQUIERDA',3,14,'','',80),
-        ('detalle','Detalle de muestra','__detalle_hallazgo__','TEXTO',1,48,522,500,14,7,'Helvetica',0,'IZQUIERDA',1,10,'','',90),
-        ('accion','Accion contingente','__acciones_hallazgo__','PARRAFO',1,48,299,506,30,7.5,'Helvetica',0,'IZQUIERDA',2,14,'','',100),
-        ('investigacion','Investigacion del origen','investigacion_origen','PARRAFO',1,48,241,506,45,7.5,'Helvetica',0,'IZQUIERDA',3,14,'','',110),
-        ('analista','Analista de Calidad','analista_detecta','TEXTO',1,108,146,114,14,7,'Helvetica',0,'CENTRO',1,10,'','',120),
-        ('supervisor','Supervisor de Produccion','supervisor_responsable','TEXTO',1,249,146,114,14,7,'Helvetica',0,'CENTRO',1,10,'','',130),
-    ],
-    'DDM_RX': [
-        ('numero','Rechazo No.','__numero_anio__','TEXTO',1,119,643,180,14,8,'Helvetica',1,'IZQUIERDA',1,10,'','',10),
-        ('fecha','Fecha','__fecha_dmy__','FECHA',1,119,602,180,14,8,'Helvetica',0,'IZQUIERDA',1,10,'%d/%m/%Y','',20),
-        ('linea_equipo','Linea / Equipo','__linea_equipo__','TEXTO',1,273,547,292,14,7.8,'Helvetica',0,'IZQUIERDA',1,10,'','',30),
-        ('producto','Producto','__item_producto__','TEXTO',1,119,442,445,14,7.7,'Helvetica',0,'IZQUIERDA',1,10,'','',40),
-        ('lote','Lote','lote','TEXTO',1,119,400,445,14,7.7,'Helvetica',0,'IZQUIERDA',1,10,'','',50),
-        ('material','Descripcion material hallado','descripcion_hallazgo','PARRAFO',1,323,362,242,30,7.6,'Helvetica',0,'IZQUIERDA',2,12,'','',60),
-        ('accion','Accion inmediata','__acciones_hallazgo__','TEXTO',1,190,112,375,14,7.5,'Helvetica',0,'IZQUIERDA',1,10,'','',70),
-        ('investigacion','Investigacion del origen','investigacion_origen','TEXTO',1,190,85,375,14,7.5,'Helvetica',0,'IZQUIERDA',1,10,'','',80),
-        ('analista','Analista de Calidad','analista_detecta','TEXTO',1,34,48,156,14,6.7,'Helvetica',0,'CENTRO',1,10,'','',90),
-        ('supervisor','Supervisor de Produccion','supervisor_responsable','TEXTO',1,220,48,156,14,6.7,'Helvetica',0,'CENTRO',1,10,'','',100),
-    ],
-}
-
-def inicializar_catalogos_pdf(cur):
-    cur.execute("""CREATE TABLE IF NOT EXISTS pdf_formatos(
-        id INTEGER PRIMARY KEY AUTOINCREMENT,codigo TEXT NOT NULL UNIQUE,nombre TEXT NOT NULL,
-        tabla_origen TEXT NOT NULL,generador_respaldo TEXT,descripcion TEXT,activo INTEGER DEFAULT 1,
-        creado_en TEXT,actualizado_en TEXT)""")
-    cur.execute("""CREATE TABLE IF NOT EXISTS pdf_plantillas(
-        id INTEGER PRIMARY KEY AUTOINCREMENT,formato_id INTEGER NOT NULL,version INTEGER NOT NULL,
-        nombre_archivo TEXT NOT NULL,tipo_archivo TEXT NOT NULL,contenido BLOB NOT NULL,
-        ancho_pagina REAL,alto_pagina REAL,descripcion_cambio TEXT,activa INTEGER DEFAULT 0,
-        cargado_por TEXT,cargado_en TEXT,FOREIGN KEY(formato_id) REFERENCES pdf_formatos(id),
-        UNIQUE(formato_id,version))""")
-    cur.execute("""CREATE TABLE IF NOT EXISTS pdf_campos(
-        id INTEGER PRIMARY KEY AUTOINCREMENT,formato_id INTEGER NOT NULL,clave_campo TEXT NOT NULL,
-        etiqueta TEXT NOT NULL,campo_origen TEXT,tipo_elemento TEXT DEFAULT 'TEXTO',pagina INTEGER DEFAULT 1,
-        posicion_x REAL DEFAULT 0,posicion_y REAL DEFAULT 0,ancho REAL DEFAULT 100,alto REAL DEFAULT 15,
-        tamano_fuente REAL DEFAULT 8,fuente TEXT DEFAULT 'Helvetica',negrita INTEGER DEFAULT 0,
-        alineacion TEXT DEFAULT 'IZQUIERDA',maximo_lineas INTEGER DEFAULT 1,interlineado REAL DEFAULT 10,
-        formato_valor TEXT,valor_fijo TEXT,orden INTEGER DEFAULT 0,activo INTEGER DEFAULT 1,
-        FOREIGN KEY(formato_id) REFERENCES pdf_formatos(id),UNIQUE(formato_id,clave_campo))""")
-    for codigo,nombre,tabla,generador in PDF_FORMATOS_SEMILLA:
-        cur.execute("""INSERT INTO pdf_formatos(codigo,nombre,tabla_origen,generador_respaldo,descripcion,activo,creado_en,actualizado_en)
-            VALUES(?,?,?,?,?,1,?,?) ON CONFLICT(codigo) DO NOTHING""",
-            (codigo,nombre,tabla,generador,'Formato administrable con generador interno de respaldo.',now_iso(),now_iso()))
-        formato_id=cur.execute('SELECT id FROM pdf_formatos WHERE codigo=?',(codigo,)).fetchone()[0]
-        if cur.execute('SELECT COUNT(*) FROM pdf_campos WHERE formato_id=?',(formato_id,)).fetchone()[0]==0:
-            for row in PDF_CAMPOS_SEMILLA[codigo]:
-                cur.execute("""INSERT OR IGNORE INTO pdf_campos(formato_id,clave_campo,etiqueta,campo_origen,tipo_elemento,pagina,
-                    posicion_x,posicion_y,ancho,alto,tamano_fuente,fuente,negrita,alineacion,maximo_lineas,interlineado,
-                    formato_valor,valor_fijo,orden,activo) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1)""",(formato_id,)+row)
-
-def _pdf_import_reader_writer():
-    try:
-        from pypdf import PdfReader, PdfWriter
-        return PdfReader, PdfWriter
-    except ModuleNotFoundError:
-        try:
-            from PyPDF2 import PdfReader, PdfWriter
-            return PdfReader, PdfWriter
-        except ModuleNotFoundError:
-            return None, None
-
-def _pdf_valor_compuesto(origen, r, rid):
-    def val(k):
-        x=r.get(k,'')
-        return '' if x is None or pd.isna(x) else str(x)
-    if origen=='__numero_anio__':
-        anio=val('anio')
-        if not anio:
-            f=val('fecha_apertura')
-            try: anio=str(pd.to_datetime(f).year)
-            except Exception: anio=str(datetime.now().year)
-        return f'{rid}/{anio}'
-    if origen=='__fecha_dmy__':
-        try: return date(int(float(val('anio'))),int(float(val('mes'))),int(float(val('dia')))).strftime('%d/%m/%Y')
-        except Exception: return ''
-    if origen=='__etapa_codigo__': return '_'.join(x for x in [val('etapa').strip(),val('codigo_defecto').strip()] if x)
-    if origen=='__item_producto__': return ' - '.join(x for x in [val('item').strip(),(val('descripcion_producto') or val('producto')).strip()] if x)
-    if origen=='__responsables__': return ' / '.join(x for x in [val('supervisor').strip(),val('analista').strip()] if x)
-    if origen=='__responsable__': return val('analista') or val('supervisor')
-    if origen=='__observaciones_pnc__':
-        partes=[]
-        if val('descripcion_defecto'): partes.append('Descripcion de la no conformidad: '+val('descripcion_defecto'))
-        if val('observaciones'): partes.append(val('observaciones'))
-        return '\n'.join(partes)
-    if origen=='__detalle_hallazgo__': return 'Tipo: '+val('tipo')+' | Particulas halladas: '+val('particulas_halladas')
-    if origen=='__acciones_hallazgo__': return val('acciones_inmediatas') or val('accion_contingente')
-    if origen=='__linea_equipo__': return ' / '.join(x for x in [val('linea_sector').strip(),val('equipo_hallazgo').strip()] if x)
-    return val(origen)
-
-def _pdf_formatear(valor, tipo, formato):
-    if valor in (None,''): return ''
-    if tipo=='FECHA' and formato:
-        try: return pd.to_datetime(valor).strftime(formato)
-        except Exception: return str(valor)
-    if tipo=='NUMERO' and formato:
-        try: return formato.format(float(valor))
-        except Exception: return str(valor)
-    return str(valor)
-
-def _pdf_dibujar_campo(c, cfg, valor):
-    from reportlab.pdfbase.pdfmetrics import stringWidth
-    x=float(cfg['posicion_x'] or 0); y=float(cfg['posicion_y'] or 0); ancho=max(float(cfg['ancho'] or 100),1)
-    tam=max(float(cfg['tamano_fuente'] or 8),5); max_lineas=max(int(cfg['maximo_lineas'] or 1),1)
-    leading=max(float(cfg['interlineado'] or tam+2),tam); negrita=int(cfg['negrita'] or 0)==1
-    fuente=str(cfg['fuente'] or 'Helvetica')
-    if fuente not in ('Helvetica','Times-Roman','Courier'): fuente='Helvetica'
-    fuente = {'Helvetica':'Helvetica-Bold','Times-Roman':'Times-Bold','Courier':'Courier-Bold'}.get(fuente,fuente) if negrita else fuente
-    texto=str(valor or '').replace('\r','')
-    palabras=[]
-    for bloque in texto.split('\n'):
-        if palabras: palabras.append('\n')
-        palabras.extend(bloque.split())
-    lineas=[]; actual=''
-    for palabra in palabras:
-        if palabra=='\n':
-            lineas.append(actual); actual=''; continue
-        prueba=(actual+' '+palabra).strip()
-        if stringWidth(prueba,fuente,tam)<=ancho or not actual: actual=prueba
-        else: lineas.append(actual); actual=palabra
-    if actual or not lineas: lineas.append(actual)
-    lineas=lineas[:max_lineas]
-    c.setFont(fuente,tam)
-    align=str(cfg['alineacion'] or 'IZQUIERDA').upper()
-    for i,linea in enumerate(lineas):
-        yy=y-i*leading
-        if align=='CENTRO': c.drawCentredString(x+ancho/2,yy,linea)
-        elif align=='DERECHA': c.drawRightString(x+ancho,yy,linea)
-        else: c.drawString(x,yy,linea)
-
-def _pdf_generar_configurado(codigo, rid):
-    formato=read_df('SELECT * FROM pdf_formatos WHERE codigo=? AND activo=1',(codigo,))
-    if formato.empty: return None
-    f=formato.iloc[0]
-    datos=read_df(f'SELECT * FROM {f.tabla_origen} WHERE id=?',(rid,))
-    if datos.empty: return None
-    plantilla=read_df('SELECT * FROM pdf_plantillas WHERE formato_id=? AND activa=1 ORDER BY version DESC LIMIT 1',(int(f.id),))
-    if plantilla.empty: return None
-    campos=read_df('SELECT * FROM pdf_campos WHERE formato_id=? AND activo=1 ORDER BY pagina,orden,id',(int(f.id),))
-    if campos.empty: return None
-    from reportlab.pdfgen import canvas
-    from reportlab.lib.pagesizes import A4
-    from reportlab.lib.utils import ImageReader
-    raw=bytes(plantilla.iloc[0]['contenido']); tipo=str(plantilla.iloc[0]['tipo_archivo']).lower()
-    r=datos.iloc[0].to_dict(); ancho=float(plantilla.iloc[0].get('ancho_pagina') or A4[0]); alto=float(plantilla.iloc[0].get('alto_pagina') or A4[1])
-    paginas=max(int(campos['pagina'].max()),1)
-    overlays=[]
-    for pagina in range(1,paginas+1):
-        b=BytesIO(); c=canvas.Canvas(b,pagesize=(ancho,alto))
-        if tipo in ('image/png','image/jpeg','image/jpg'):
-            try: c.drawImage(ImageReader(BytesIO(raw)),0,0,width=ancho,height=alto,mask='auto')
-            except Exception: pass
-        for _,cfg in campos[campos['pagina']==pagina].iterrows():
-            valor=cfg['valor_fijo'] if str(cfg.get('valor_fijo') or '').strip() else _pdf_valor_compuesto(str(cfg['campo_origen'] or ''),r,rid)
-            valor=_pdf_formatear(valor,str(cfg['tipo_elemento'] or 'TEXTO').upper(),str(cfg['formato_valor'] or ''))
-            _pdf_dibujar_campo(c,cfg,valor)
-        c.showPage(); c.save(); b.seek(0); overlays.append(b.getvalue())
-    if tipo=='application/pdf' or str(plantilla.iloc[0]['nombre_archivo']).lower().endswith('.pdf'):
-        PdfReader,PdfWriter=_pdf_import_reader_writer()
-        if not PdfReader: return None
-        base=PdfReader(BytesIO(raw)); writer=PdfWriter()
-        for i,overlay_raw in enumerate(overlays):
-            base_page=base.pages[min(i,len(base.pages)-1)]
-            overlay_page=PdfReader(BytesIO(overlay_raw)).pages[0]
-            base_page.merge_page(overlay_page); writer.add_page(base_page)
-        result=BytesIO(); writer.write(result); return result.getvalue()
-    PdfReader,PdfWriter=_pdf_import_reader_writer()
-    if not PdfReader: return overlays[0]
-    writer=PdfWriter()
-    for overlay_raw in overlays: writer.add_page(PdfReader(BytesIO(overlay_raw)).pages[0])
-    result=BytesIO(); writer.write(result); return result.getvalue()
-
+# MODULO DE PLANTILLAS PDF ADMINISTRABLES
+PDF_FORMULAS={
+'PNC':{'PNC No.':'__numero_anio__','Fecha':'fecha_apertura','Sector':'linea_sector','Codigo NC':'__etapa_codigo__','Producto':'__item_producto__','Lote':'lote','Cantidad':'cantidad_observada','Responsables':'__responsables__','Acciones':'acciones_inmediatas','Observaciones':'__observaciones_pnc__'},
+'ME':{'N Hallazgo':'__numero_anio__','Fecha':'__fecha_dmy__','Linea':'linea_sector','Sector':'familia','Equipo':'equipo_hallazgo','Producto':'__item_producto__','Lote':'lote','Material':'descripcion_hallazgo','Accion':'__acciones_hallazgo__','Investigacion':'investigacion_origen','Analista':'analista_detecta','Supervisor':'supervisor_responsable'},
+'DDM_RX':{'Rechazo No.':'__numero_anio__','Fecha':'__fecha_dmy__','Linea / Equipo':'__linea_equipo__','Producto':'__item_producto__','Lote':'lote','Material':'descripcion_hallazgo','Accion':'__acciones_hallazgo__','Investigacion':'investigacion_origen','Analista':'analista_detecta','Supervisor':'supervisor_responsable'}}
+PDF_META={'PNC':('Informe de Producto No Conforme','pnc_registros'),'ME':('Reporte de Hallazgos de Materia Extrana','me_registros'),'DDM_RX':('Detector de Metales y RX','ddm_rx_registros')}
+PDF_COORDS={'PNC':[(482,670,54,8),(211,633,320,8),(211,614,320,8),(211,595,320,8),(211,576,320,8),(211,557,320,8),(211,538,320,8),(211,519,320,8),(64,458,466,8),(64,299,466,8)],'ME':[(108,733,140,7.5),(108,718,140,7.5),(108,688,445,7.7),(108,673,445,7.7),(108,658,445,7.7),(108,643,445,7.7),(108,628,445,7.7),(225,596,329,7.5),(48,299,506,7.5),(48,241,506,7.5),(108,146,114,7),(249,146,114,7)],'DDM_RX':[(119,643,180,8),(119,602,180,8),(273,547,292,7.8),(119,442,445,7.7),(119,400,445,7.7),(323,362,242,7.6),(190,112,375,7.5),(190,85,375,7.5),(34,48,156,6.7),(220,48,156,6.7)]}
+def init_pdf_templates(cur):
+ cur.execute("CREATE TABLE IF NOT EXISTS pdf_formatos(id INTEGER PRIMARY KEY AUTOINCREMENT,codigo TEXT UNIQUE,nombre TEXT,tabla_origen TEXT,activo INTEGER DEFAULT 1)")
+ cur.execute("CREATE TABLE IF NOT EXISTS pdf_plantillas(id INTEGER PRIMARY KEY AUTOINCREMENT,formato_id INTEGER,version INTEGER,nombre_archivo TEXT,tipo_archivo TEXT,contenido BLOB,ancho REAL,alto REAL,activa INTEGER DEFAULT 0,descripcion TEXT,cargado_por TEXT,cargado_en TEXT,UNIQUE(formato_id,version))")
+ cur.execute("CREATE TABLE IF NOT EXISTS pdf_campos(id INTEGER PRIMARY KEY AUTOINCREMENT,formato_id INTEGER,etiqueta TEXT,campo_origen TEXT,pagina INTEGER DEFAULT 1,x REAL,y REAL,ancho REAL,tamano REAL,negrita INTEGER DEFAULT 0,alineacion TEXT DEFAULT 'IZQUIERDA',max_lineas INTEGER DEFAULT 1,orden INTEGER,activo INTEGER DEFAULT 1,UNIQUE(formato_id,etiqueta))")
+ for codigo,(nombre,tabla) in PDF_META.items():
+  cur.execute('INSERT OR IGNORE INTO pdf_formatos(codigo,nombre,tabla_origen,activo) VALUES(?,?,?,1)',(codigo,nombre,tabla)); fid=cur.execute('SELECT id FROM pdf_formatos WHERE codigo=?',(codigo,)).fetchone()[0]
+  if cur.execute('SELECT COUNT(*) FROM pdf_campos WHERE formato_id=?',(fid,)).fetchone()[0]==0:
+   for i,((et,origen),(x,y,a,tam)) in enumerate(zip(PDF_FORMULAS[codigo].items(),PDF_COORDS[codigo])): cur.execute('INSERT INTO pdf_campos(formato_id,etiqueta,campo_origen,pagina,x,y,ancho,tamano,negrita,alineacion,max_lineas,orden,activo) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,1)',(fid,et,origen,1,x,y,a,tam,1 if i==0 else 0,'IZQUIERDA',6 if et in ('Acciones','Observaciones','Material','Investigacion') else 1,i))
+def _pdf_rw():
+ try:
+  from pypdf import PdfReader,PdfWriter; return PdfReader,PdfWriter
+ except Exception:
+  try:
+   from PyPDF2 import PdfReader,PdfWriter; return PdfReader,PdfWriter
+  except Exception:return None,None
+def _pdf_value(o,r,rid):
+ def v(k):
+  x=r.get(k,''); return '' if x is None or pd.isna(x) else str(x)
+ if o=='__numero_anio__':
+  an=v('anio')
+  if not an:
+   try:an=str(pd.to_datetime(v('fecha_apertura')).year)
+   except:an=str(datetime.now().year)
+  return f'{rid}/{an}'
+ if o=='__fecha_dmy__':
+  try:return date(int(v('anio')),int(v('mes')),int(v('dia'))).strftime('%d/%m/%Y')
+  except:return ''
+ if o=='__etapa_codigo__':return '_'.join(x for x in [v('etapa'),v('codigo_defecto')] if x)
+ if o=='__item_producto__':return ' - '.join(x for x in [v('item'),v('descripcion_producto') or v('producto')] if x)
+ if o=='__responsables__':return ' / '.join(x for x in [v('supervisor'),v('analista')] if x)
+ if o=='__observaciones_pnc__':return ('Descripcion: '+v('descripcion_defecto')+'\n'+v('observaciones')).strip()
+ if o=='__acciones_hallazgo__':return v('acciones_inmediatas') or v('accion_contingente')
+ if o=='__linea_equipo__':return ' / '.join(x for x in [v('linea_sector'),v('equipo_hallazgo')] if x)
+ return v(o)
+def _pdf_draw(c,text,x,y,w,size,bold,align,lines):
+ from reportlab.pdfbase.pdfmetrics import stringWidth
+ font='Helvetica-Bold' if bold else 'Helvetica'; words=str(text or '').replace('\n',' \n ').split(); out=[]; line=''
+ for z in words:
+  if z=='\n':out.append(line);line='';continue
+  q=(line+' '+z).strip()
+  if stringWidth(q,font,size)<=w or not line:line=q
+  else:out.append(line);line=z
+ if line:out.append(line)
+ c.setFont(font,size)
+ for i,z in enumerate(out[:max(1,int(lines))]):
+  yy=y-i*(size+2)
+  if align=='CENTRO':c.drawCentredString(x+w/2,yy,z)
+  elif align=='DERECHA':c.drawRightString(x+w,yy,z)
+  else:c.drawString(x,yy,z)
+def pdf_configurado(codigo,rid):
+ f=read_df('SELECT * FROM pdf_formatos WHERE codigo=? AND activo=1',(codigo,));
+ if f.empty:return None
+ f=f.iloc[0]; d=read_df(f'SELECT * FROM {f.tabla_origen} WHERE id=?',(rid,)); p=read_df('SELECT * FROM pdf_plantillas WHERE formato_id=? AND activa=1 ORDER BY version DESC LIMIT 1',(int(f.id),))
+ if d.empty or p.empty:return None
+ campos=read_df('SELECT * FROM pdf_campos WHERE formato_id=? AND activo=1 ORDER BY pagina,orden,id',(int(f.id),)); raw=bytes(p.iloc[0].contenido); Reader,Writer=_pdf_rw()
+ if not Reader:return None
+ base=Reader(BytesIO(raw)); from reportlab.pdfgen import canvas; writer=Writer(); r=d.iloc[0].to_dict()
+ for i,page in enumerate(base.pages):
+  box=page.mediabox; b=BytesIO(); c=canvas.Canvas(b,pagesize=(float(box.width),float(box.height)))
+  for _,q in campos[campos.pagina==i+1].iterrows():_pdf_draw(c,_pdf_value(str(q.campo_origen),r,rid),float(q.x),float(q.y),float(q.ancho),float(q.tamano),bool(q.negrita),str(q.alineacion),int(q.max_lineas))
+  c.save(); page.merge_page(Reader(BytesIO(b.getvalue())).pages[0]);writer.add_page(page)
+ z=BytesIO();writer.write(z);return z.getvalue()
 def pdf_pnc(rid):
-    try: return _pdf_generar_configurado('PNC',rid) or pdf_pnc_legacy(rid)
-    except Exception: return pdf_pnc_legacy(rid)
-
+ try:return pdf_configurado('PNC',rid) or pdf_pnc_legacy(rid)
+ except:return pdf_pnc_legacy(rid)
 def pdf_materia_extrana(rid):
-    try: return _pdf_generar_configurado('ME',rid) or pdf_materia_extrana_legacy(rid)
-    except Exception: return pdf_materia_extrana_legacy(rid)
-
+ try:return pdf_configurado('ME',rid) or pdf_materia_extrana_legacy(rid)
+ except:return pdf_materia_extrana_legacy(rid)
 def pdf_detector_metales_rx(rid):
-    try: return _pdf_generar_configurado('DDM_RX',rid) or pdf_detector_metales_rx_legacy(rid)
-    except Exception: return pdf_detector_metales_rx_legacy(rid)
-
-def page_catalogos_pdf():
-    st.subheader('Formatos y plantillas PDF')
-    st.caption('Administra por separado los campos de PNC, Materia Extraña y Detector de metales/RX. Si no existe una plantilla activa, la aplicación conserva el diseño interno actual.')
-    formatos=read_df('SELECT * FROM pdf_formatos WHERE activo=1 ORDER BY id')
-    if formatos.empty:
-        st.warning('No se encontraron formatos PDF configurados.')
-        return
-    nombres={str(r.codigo):str(r.nombre) for r in formatos.itertuples()}
-    codigo=st.selectbox('Formato PDF',list(nombres),format_func=lambda x:nombres[x],key='pdf_formato_codigo')
-    formato=formatos[formatos['codigo']==codigo].iloc[0]; formato_id=int(formato.id)
-    t1,t2,t3=st.tabs(['Campos de impresión','Plantillas y versiones','Prueba de diseño'])
-    with t1:
-        st.info('Las coordenadas X/Y se expresan en puntos PDF. El origen está en la esquina inferior izquierda. Una hoja A4 mide aproximadamente 595 x 842 puntos.')
-        campos=read_df('SELECT id,clave_campo,etiqueta,campo_origen,tipo_elemento,pagina,posicion_x,posicion_y,ancho,alto,tamano_fuente,fuente,negrita,alineacion,maximo_lineas,interlineado,formato_valor,valor_fijo,orden,activo FROM pdf_campos WHERE formato_id=? ORDER BY pagina,orden,id',(formato_id,))
-        editado=st.data_editor(campos,use_container_width=True,hide_index=True,num_rows='dynamic',key=f'pdf_campos_{codigo}',disabled=['id'],column_config={
-            'tipo_elemento':st.column_config.SelectboxColumn('Tipo',options=['TEXTO','PARRAFO','FECHA','NUMERO']),
-            'alineacion':st.column_config.SelectboxColumn('Alineación',options=['IZQUIERDA','CENTRO','DERECHA']),
-            'activo':st.column_config.CheckboxColumn('Activo'),'negrita':st.column_config.CheckboxColumn('Negrita')})
-        if st.button('Guardar catálogo de campos',type='primary',key=f'pdf_guardar_campos_{codigo}'):
-            errores=[]; claves=[]
-            for i,row in editado.iterrows():
-                clave=str(row.get('clave_campo') or '').strip(); etiqueta=str(row.get('etiqueta') or '').strip(); origen=str(row.get('campo_origen') or '').strip()
-                if not clave or not etiqueta or (not origen and not str(row.get('valor_fijo') or '').strip()): errores.append(f'Fila {i+1}')
-                if clave in claves: errores.append(f'Clave duplicada: {clave}')
-                claves.append(clave)
-            if errores: st.error('Corrige el catálogo antes de guardar: '+', '.join(errores)+'.')
-            else:
-                c=conn(); cur=c.cursor()
-                try:
-                    ids=[]
-                    for _,row in editado.iterrows():
-                        rid=row.get('id'); vals=(str(row['clave_campo']).strip(),str(row['etiqueta']).strip(),str(row.get('campo_origen') or '').strip(),str(row.get('tipo_elemento') or 'TEXTO'),int(row.get('pagina') or 1),float(row.get('posicion_x') or 0),float(row.get('posicion_y') or 0),float(row.get('ancho') or 100),float(row.get('alto') or 15),float(row.get('tamano_fuente') or 8),str(row.get('fuente') or 'Helvetica'),1 if bool(row.get('negrita')) else 0,str(row.get('alineacion') or 'IZQUIERDA'),int(row.get('maximo_lineas') or 1),float(row.get('interlineado') or 10),str(row.get('formato_valor') or ''),str(row.get('valor_fijo') or ''),int(row.get('orden') or 0),1 if bool(row.get('activo')) else 0)
-                        if pd.notna(rid):
-                            cur.execute('UPDATE pdf_campos SET clave_campo=?,etiqueta=?,campo_origen=?,tipo_elemento=?,pagina=?,posicion_x=?,posicion_y=?,ancho=?,alto=?,tamano_fuente=?,fuente=?,negrita=?,alineacion=?,maximo_lineas=?,interlineado=?,formato_valor=?,valor_fijo=?,orden=?,activo=? WHERE id=? AND formato_id=?',vals+(int(rid),formato_id)); ids.append(int(rid))
-                        else:
-                            cur.execute('INSERT INTO pdf_campos(formato_id,clave_campo,etiqueta,campo_origen,tipo_elemento,pagina,posicion_x,posicion_y,ancho,alto,tamano_fuente,fuente,negrita,alineacion,maximo_lineas,interlineado,formato_valor,valor_fijo,orden,activo) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',(formato_id,)+vals); ids.append(cur.lastrowid)
-                    if ids:
-                        marcas=','.join('?'*len(ids)); cur.execute(f'DELETE FROM pdf_campos WHERE formato_id=? AND id NOT IN ({marcas})',(formato_id,*ids))
-                    else: cur.execute('DELETE FROM pdf_campos WHERE formato_id=?',(formato_id,))
-                    c.commit()
-                except Exception as e: c.rollback(); st.error('No fue posible guardar el catálogo: '+str(e)); return
-                finally: c.close()
-                audit(st.session_state.auth['usuario'],'ACTUALIZAR_CATALOGO_PDF',codigo); st.success('Catálogo de campos actualizado correctamente.'); st.rerun()
-    with t2:
-        versiones=read_df("SELECT id,version,nombre_archivo,tipo_archivo,descripcion_cambio,CASE WHEN activa=1 THEN 'Activa' ELSE 'Histórica' END AS estado,cargado_por,cargado_en FROM pdf_plantillas WHERE formato_id=? ORDER BY version DESC",(formato_id,))
-        st.dataframe(versiones,use_container_width=True,hide_index=True)
-        archivo=st.file_uploader('Cargar nueva plantilla',type=['pdf','png','jpg','jpeg'],key=f'pdf_upload_{codigo}')
-        descripcion=st.text_input('Descripción del cambio',key=f'pdf_desc_{codigo}')
-        activar=st.checkbox('Activar inmediatamente después de cargar',value=True,key=f'pdf_activar_{codigo}')
-        if st.button('Guardar nueva versión',type='primary',key=f'pdf_subir_{codigo}'):
-            if archivo is None: st.error('Selecciona un archivo PDF, PNG, JPG o JPEG.')
-            elif not descripcion.strip(): st.error('Describe brevemente el cambio realizado en el formato.')
-            else:
-                maxv=read_df('SELECT COALESCE(MAX(version),0)+1 AS v FROM pdf_plantillas WHERE formato_id=?',(formato_id,)); version=int(maxv.iloc[0].v)
-                contenido=bytes(archivo.getvalue()); tipo=archivo.type or ('application/pdf' if archivo.name.lower().endswith('.pdf') else 'image/png')
-                ancho,alto=595.28,841.89
-                if tipo.startswith('image/'):
-                    try:
-                        from PIL import Image
-                        im=Image.open(BytesIO(contenido)); ancho,alto=float(im.width),float(im.height)
-                    except Exception: pass
-                c=conn(); cur=c.cursor()
-                try:
-                    if activar: cur.execute('UPDATE pdf_plantillas SET activa=0 WHERE formato_id=?',(formato_id,))
-                    cur.execute('INSERT INTO pdf_plantillas(formato_id,version,nombre_archivo,tipo_archivo,contenido,ancho_pagina,alto_pagina,descripcion_cambio,activa,cargado_por,cargado_en) VALUES(?,?,?,?,?,?,?,?,?,?,?)',(formato_id,version,archivo.name,tipo,contenido,ancho,alto,descripcion.strip(),1 if activar else 0,st.session_state.auth['usuario'],now_iso())); c.commit()
-                except Exception: c.rollback(); raise
-                finally: c.close()
-                audit(st.session_state.auth['usuario'],'CARGAR_PLANTILLA_PDF',f'{codigo} | Version {version}'); st.success(f'Plantilla versión {version} guardada correctamente.'); st.rerun()
-        if not versiones.empty:
-            opciones=versiones['id'].astype(int).tolist(); elegido=st.selectbox('Versión para administrar',opciones,format_func=lambda x:'Versión '+str(int(versiones[versiones.id==x].iloc[0].version))+' - '+str(versiones[versiones.id==x].iloc[0].estado),key=f'pdf_version_{codigo}')
-            plantilla=read_df('SELECT * FROM pdf_plantillas WHERE id=?',(int(elegido),)).iloc[0]
-            st.download_button('Descargar plantilla seleccionada',bytes(plantilla.contenido),str(plantilla.nombre_archivo),str(plantilla.tipo_archivo),key=f'pdf_down_{codigo}_{elegido}')
-            ca,cb=st.columns(2)
-            if ca.button('Activar esta versión',key=f'pdf_act_{codigo}_{elegido}'):
-                c=conn(); cur=c.cursor(); cur.execute('UPDATE pdf_plantillas SET activa=0 WHERE formato_id=?',(formato_id,)); cur.execute('UPDATE pdf_plantillas SET activa=1 WHERE id=?',(int(elegido),)); c.commit(); c.close(); audit(st.session_state.auth['usuario'],'ACTIVAR_PLANTILLA_PDF',f'{codigo} | ID {elegido}'); st.rerun()
-            if cb.button('Eliminar versión seleccionada',key=f'pdf_del_{codigo}_{elegido}'):
-                if int(plantilla.activa or 0)==1: st.error('No se puede eliminar la versión activa. Activa primero otra versión.')
-                else: exec_sql('DELETE FROM pdf_plantillas WHERE id=?',(int(elegido),)); audit(st.session_state.auth['usuario'],'ELIMINAR_PLANTILLA_PDF',f'{codigo} | ID {elegido}'); st.rerun()
-    with t3:
-        tabla=str(formato.tabla_origen); registros=read_df(f'SELECT id FROM {tabla} ORDER BY id DESC LIMIT 100')
-        if registros.empty: st.info('No existen registros para generar una prueba.')
-        else:
-            rid=st.selectbox('Registro de prueba',registros['id'].astype(int).tolist(),key=f'pdf_test_id_{codigo}')
-            if st.button('Generar PDF de prueba',key=f'pdf_test_{codigo}'):
-                contenido={'PNC':pdf_pnc,'ME':pdf_materia_extrana,'DDM_RX':pdf_detector_metales_rx}[codigo](int(rid))
-                if contenido: st.download_button('Descargar prueba PDF',contenido,f'prueba_{codigo}_{rid}.pdf','application/pdf',key=f'pdf_test_down_{codigo}_{rid}')
-                else: st.error('No fue posible generar la prueba. Verifica la plantilla y las dependencias PDF.')
+ try:return pdf_configurado('DDM_RX',rid) or pdf_detector_metales_rx_legacy(rid)
+ except:return pdf_detector_metales_rx_legacy(rid)
+def page_pdf_templates():
+ st.subheader('Formatos y plantillas PDF'); st.caption('El PDF cargado se conserva como diseno base. Los datos se toman directamente de la tabla operativa y se imprimen encima.')
+ fs=read_df('SELECT * FROM pdf_formatos WHERE activo=1 ORDER BY id'); codigo=st.selectbox('Formato',fs.codigo.tolist(),format_func=lambda x:str(fs[fs.codigo==x].iloc[0].nombre)); f=fs[fs.codigo==codigo].iloc[0];fid=int(f.id)
+ a,b,c=st.tabs(['Relacion de campos','Plantillas','Prueba'])
+ with a:
+  cols=[r[1] for r in conn().execute(f'PRAGMA table_info({f.tabla_origen})').fetchall()]; valid=['']+cols+list(PDF_FORMULAS[codigo].values()); df=read_df('SELECT id,etiqueta,campo_origen,pagina,x,y,ancho,tamano,negrita,alineacion,max_lineas,orden,activo FROM pdf_campos WHERE formato_id=? ORDER BY orden',(fid,))
+  ed=st.data_editor(df,use_container_width=True,hide_index=True,num_rows='dynamic',disabled=['id'],column_config={'campo_origen':st.column_config.SelectboxColumn('Campo real / formula',options=valid),'alineacion':st.column_config.SelectboxColumn(options=['IZQUIERDA','CENTRO','DERECHA']),'negrita':st.column_config.CheckboxColumn(),'activo':st.column_config.CheckboxColumn()})
+  if st.button('Guardar relacion',type='primary'):
+   bad=[str(x) for x in ed.campo_origen if str(x) not in valid]
+   if bad:st.error('Campos inexistentes: '+', '.join(bad))
+   else:
+    db=conn();cur=db.cursor();cur.execute('DELETE FROM pdf_campos WHERE formato_id=?',(fid,))
+    for _,q in ed.iterrows():cur.execute('INSERT INTO pdf_campos(formato_id,etiqueta,campo_origen,pagina,x,y,ancho,tamano,negrita,alineacion,max_lineas,orden,activo) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)',(fid,str(q.etiqueta),str(q.campo_origen),int(q.pagina),float(q.x),float(q.y),float(q.ancho),float(q.tamano),int(bool(q.negrita)),str(q.alineacion),int(q.max_lineas),int(q.orden),int(bool(q.activo))))
+    db.commit();db.close();audit(st.session_state.auth['usuario'],'ACTUALIZAR_CAMPOS_PDF',codigo);st.success('Relacion guardada.');st.rerun()
+ with b:
+  st.info('Si aparece status code 403, abre la app directamente en una pestana nueva. Tambien puedes usar la carga Base64 inferior, que no utiliza el endpoint bloqueado del cargador.')
+  up=st.file_uploader('PDF original vacio',type=['pdf'],key='pdf_up_'+codigo); desc=st.text_input('Descripcion del cambio');
+  with st.expander('Carga alternativa Base64'):
+   nom=st.text_input('Nombre del archivo',value='plantilla.pdf'); txt=st.text_area('Base64 del PDF',height=120)
+  if st.button('Guardar plantilla',type='primary'):
+   try:
+    if up:data=bytes(up.getvalue());name=up.name
+    elif txt.strip():data=base64.b64decode(''.join(txt.split()),validate=True);name=nom
+    else:raise ValueError('Selecciona el PDF o pega su Base64.')
+    Reader,_=_pdf_rw(); reader=Reader(BytesIO(data)); box=reader.pages[0].mediabox
+    db=conn();cur=db.cursor();v=cur.execute('SELECT COALESCE(MAX(version),0)+1 FROM pdf_plantillas WHERE formato_id=?',(fid,)).fetchone()[0];cur.execute('UPDATE pdf_plantillas SET activa=0 WHERE formato_id=?',(fid,));cur.execute('INSERT INTO pdf_plantillas(formato_id,version,nombre_archivo,tipo_archivo,contenido,ancho,alto,activa,descripcion,cargado_por,cargado_en) VALUES(?,?,?,?,?,?,?,1,?,?,?)',(fid,v,name,'application/pdf',data,float(box.width),float(box.height),desc,st.session_state.auth['usuario'],now_iso()));db.commit();db.close();audit(st.session_state.auth['usuario'],'CARGAR_PLANTILLA_PDF',f'{codigo} v{v}');st.success('Plantilla guardada y activada.');st.rerun()
+   except Exception as e:st.error('No fue posible guardar: '+str(e))
+  vs=read_df("SELECT id,version,nombre_archivo,descripcion,CASE WHEN activa=1 THEN 'Activa' ELSE 'Historica' END estado,cargado_por,cargado_en FROM pdf_plantillas WHERE formato_id=? ORDER BY version DESC",(fid,));st.dataframe(vs,use_container_width=True,hide_index=True)
+ with c:
+  ids=read_df(f'SELECT id FROM {f.tabla_origen} ORDER BY id DESC LIMIT 100')
+  if ids.empty:st.info('No existen registros de prueba.')
+  else:
+   rid=st.selectbox('Registro',ids.id.astype(int).tolist()); contenido={'PNC':pdf_pnc,'ME':pdf_materia_extrana,'DDM_RX':pdf_detector_metales_rx}[codigo](rid)
+   if contenido:st.download_button('Descargar prueba',contenido,f'prueba_{codigo}_{rid}.pdf','application/pdf')
 
 def pdf_entrega(eid):
     try:
@@ -1166,7 +974,7 @@ def init_db():
     cur.execute("CREATE TABLE IF NOT EXISTS defectos(id INTEGER PRIMARY KEY AUTOINCREMENT, codigo TEXT UNIQUE, defecto TEXT, tipo_defecto TEXT, clasificacion TEXT, activo INTEGER DEFAULT 1)")
     cur.execute("CREATE TABLE IF NOT EXISTS catalogo_naves_lineas(id INTEGER PRIMARY KEY AUTOINCREMENT,nave TEXT,linea TEXT,sector TEXT,linea_norm TEXT,sector_norm TEXT,orden INTEGER DEFAULT 0,activo INTEGER DEFAULT 1,UNIQUE(nave,linea,sector))")
     asegurar_columnas_catalogos(cur)
-    inicializar_catalogos_pdf(cur)
+    init_pdf_templates(cur)
     cur.execute("""CREATE TABLE IF NOT EXISTS pnc_registros(id INTEGER PRIMARY KEY AUTOINCREMENT, folio TEXT UNIQUE, fecha_apertura TEXT, linea_sector TEXT, nave TEXT, item TEXT, descripcion_producto TEXT, cliente TEXT, familia TEXT, lote TEXT, etapa TEXT, codigo_defecto TEXT, defecto TEXT, tipo_defecto TEXT, clasificacion TEXT, turno TEXT, supervisor TEXT, analista TEXT, responsable_detecta TEXT, descripcion_defecto TEXT, acciones_inmediatas TEXT, disposicion TEXT, cantidad_observada REAL DEFAULT 0, cantidad_reproceso REAL DEFAULT 0, cantidad_decomiso REAL DEFAULT 0, cantidad_aprobado_segunda REAL DEFAULT 0, cantidad_total_pnc REAL DEFAULT 0, status TEXT DEFAULT 'ABIERTO', fecha_final_tratamiento TEXT, observaciones TEXT, material_hallado TEXT, creado_por TEXT, creado_en TEXT)""")
     cur.execute("CREATE TABLE IF NOT EXISTS me_registros(id INTEGER PRIMARY KEY AUTOINCREMENT, dia INTEGER, mes INTEGER, anio INTEGER, nave TEXT, linea_sector TEXT, familia TEXT, equipo_hallazgo TEXT, item TEXT, producto TEXT, lote TEXT, descripcion_hallazgo TEXT, tipo TEXT, particulas_halladas INTEGER DEFAULT 0, accion_contingente TEXT, investigacion_origen TEXT, analista_detecta TEXT, supervisor_responsable TEXT, acciones_evitar_incidencia TEXT, creado_por TEXT, creado_en TEXT)")
     cur.execute("CREATE TABLE IF NOT EXISTS ddm_rx_registros(id INTEGER PRIMARY KEY AUTOINCREMENT, dia INTEGER, mes INTEGER, anio INTEGER, nave TEXT, linea_sector TEXT, familia TEXT, equipo_hallazgo TEXT, item TEXT, producto TEXT, lote TEXT, descripcion_hallazgo TEXT, tipo TEXT, particulas_halladas INTEGER DEFAULT 0, accion_contingente TEXT, investigacion_origen TEXT, analista_detecta TEXT, supervisor_responsable TEXT, acciones_evitar_incidencia TEXT, creado_por TEXT, creado_en TEXT)")
@@ -2709,7 +2517,7 @@ def page_catalogos():
                         if y.button('Cancelar',key=f'fmt_cancel_{rid}'):st.session_state.pop('fmt_confirm',None);st.session_state.fmt_nonce=nonce+1;st.rerun()
 
     with tab6:
-        page_catalogos_pdf()
+        page_pdf_templates()
 def page_usuarios():
     if not is_dev():
         st.warning('Esta sección está disponible únicamente para administradores.')
