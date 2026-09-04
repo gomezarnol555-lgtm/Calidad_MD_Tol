@@ -450,51 +450,102 @@ def pdf_materia_extrana(rid):
 def pdf_detector_metales_rx(rid):
  try:return pdfv3_generate('DDM_RX',rid) or pdf_detector_metales_rx_original(rid)
  except Exception:return pdf_detector_metales_rx_original(rid)
-def _pdfv3_fuentes_registro(codigo, tabla_origen):
- """Devuelve únicamente campos reales del registro, fórmulas válidas y campos personalizados activos."""
+def _pdfv3_normalizar_etiqueta(texto):
+ import re,unicodedata
+ t=unicodedata.normalize('NFKD',str(texto or '').strip())
+ t=''.join(c for c in t if not unicodedata.combining(c))
+ return re.sub(r'[^A-Z0-9]+',' ',t.upper()).strip()
+
+def _pdfv3_fuentes_registro(codigo,tabla_origen):
  db=conn()
- try:
-  columnas=[r[1] for r in db.execute(f'PRAGMA table_info({tabla_origen})').fetchall()]
- finally:db.close()
+ try: columnas=[r[1] for r in db.execute(f'PRAGMA table_info({tabla_origen})').fetchall()]
+ finally: db.close()
  cfg=campos_registro(codigo,True)
  etiquetas={str(r.campo):str(r.etiqueta or r.campo) for _,r in cfg.iterrows()} if not cfg.empty else {}
- fuentes=[]
+ filas=[]
  for campo in columnas:
-  if campo in CAMPOS_SISTEMA_NO_EDITABLES:continue
-  fuentes.append({'origen':campo,'etiqueta':etiquetas.get(campo,campo.replace('_',' ').title()),'tipo':'CAMPO REAL'})
+  if campo not in CAMPOS_SISTEMA_NO_EDITABLES:filas.append({'origen':campo,'etiqueta':etiquetas.get(campo,campo.replace('_',' ').title()),'tipo':'CAMPO REAL'})
  if not cfg.empty:
-  personalizados=cfg[cfg.es_personalizado.fillna(0).astype(int)==1]
-  for _,r in personalizados.iterrows():
-   fuentes.append({'origen':'__extra__:'+str(r.campo),'etiqueta':str(r.etiqueta),'tipo':'CAMPO PERSONALIZADO'})
- for formula in PDFV3_FORMULAS.get(codigo,[]):
-  fuentes.append({'origen':formula,'etiqueta':formula.replace('__','').replace('_',' ').title(),'tipo':'FÓRMULA'})
- return pd.DataFrame(fuentes).drop_duplicates(subset=['origen'],keep='first')
+  for _,r in cfg[cfg.es_personalizado.fillna(0).astype(int)==1].iterrows():filas.append({'origen':'__extra__:'+str(r.campo),'etiqueta':str(r.etiqueta),'tipo':'CAMPO PERSONALIZADO'})
+ for formula in PDFV3_FORMULAS.get(codigo,[]):filas.append({'origen':formula,'etiqueta':formula.replace('__','').replace('_',' ').title(),'tipo':'FORMULA'})
+ return pd.DataFrame(filas).drop_duplicates(subset=['origen'],keep='first')
 
-def _pdfv3_sincronizar_campos(cur, formato_id, codigo, tabla_origen, ancho, alto):
- """Agrega a la relación los campos del registro que aún no existen, sin alterar relaciones configuradas."""
- fuentes=_pdfv3_fuentes_registro(codigo,tabla_origen)
- existentes={str(r[0]) for r in cur.execute('SELECT origen FROM pdfv3_campos WHERE formato_id=?',(formato_id,)).fetchall()}
- orden=cur.execute('SELECT COALESCE(MAX(orden),-1)+1 FROM pdfv3_campos WHERE formato_id=?',(formato_id,)).fetchone()[0]
- agregados=0
+def _pdfv3_detectar_campos_pdf(raw):
+ """Detecta campos y coordenadas en un PDF. Prioriza widgets; despues cuadros/lineas asociados a etiquetas."""
+ try:
+  import fitz
+ except Exception as e:
+  raise RuntimeError('Para escanear automaticamente la plantilla agrega PyMuPDF a requirements.txt.') from e
+ doc=fitz.open(stream=raw,filetype='pdf');detectados=[]
+ for pagina_indice,page in enumerate(doc,1):
+  alto=float(page.rect.height);ancho_pagina=float(page.rect.width)
+  textos=[]
+  data=page.get_text('dict')
+  for bloque in data.get('blocks',[]):
+   for linea in bloque.get('lines',[]):
+    spans=linea.get('spans',[])
+    texto=' '.join(str(x.get('text','')).strip() for x in spans if str(x.get('text','')).strip()).strip()
+    if texto and spans:
+     x0=min(float(x['bbox'][0]) for x in spans);y0=min(float(x['bbox'][1]) for x in spans);x1=max(float(x['bbox'][2]) for x in spans);y1=max(float(x['bbox'][3]) for x in spans)
+     textos.append({'texto':texto,'x0':x0,'y0':y0,'x1':x1,'y1':y1})
+  widgets=list(page.widgets() or [])
+  for w in widgets:
+   r=w.rect;nombre=str(w.field_label or w.field_name or 'Campo PDF').strip()
+   detectados.append({'etiqueta_pdf':nombre,'pagina':pagina_indice,'x':float(r.x0)+2,'y':alto-float(r.y1)+3,'ancho':max(20.0,float(r.width)-4),'lineas':max(1,int(float(r.height)//11)),'tipo_deteccion':'CAMPO PDF'})
+  if widgets:continue
+  candidatos=[]
+  try:
+   for dibujo in page.get_drawings():
+    rect=dibujo.get('rect')
+    if rect and float(rect.width)>=35 and 8<=float(rect.height)<=90:
+     candidatos.append((float(rect.x0),float(rect.y0),float(rect.x1),float(rect.y1),'CUADRO'))
+    for item in dibujo.get('items',[]):
+     if item and item[0]=='l':
+      p1,p2=item[1],item[2]
+      if abs(float(p1.y)-float(p2.y))<=1.5 and abs(float(p2.x)-float(p1.x))>=45:
+       candidatos.append((min(float(p1.x),float(p2.x)),float(p1.y)-10,max(float(p1.x),float(p2.x)),float(p1.y)+3,'LINEA'))
+  except Exception:pass
+  usados=[]
+  for x0,y0,x1,y1,tipo in candidatos:
+   previos=[t for t in textos if t['x1']<=x0+8 and abs(((t['y0']+t['y1'])/2)-((y0+y1)/2))<=18]
+   superiores=[t for t in textos if t['y1']<=y0+5 and 0<=y0-t['y1']<=24 and t['x0']<=x1 and t['x1']>=x0-20]
+   cerca=previos or superiores
+   if not cerca:continue
+   etiqueta=min(cerca,key=lambda t:abs(t['x1']-x0)+abs(t['y1']-y0))['texto'].strip(' :.-')
+   clave=(pagina_indice,round(x0,1),round(y0,1),_pdfv3_normalizar_etiqueta(etiqueta))
+   if clave in usados or not etiqueta:continue
+   usados.append(clave);detectados.append({'etiqueta_pdf':etiqueta,'pagina':pagina_indice,'x':x0+2,'y':alto-y1+3,'ancho':max(20.0,x1-x0-4),'lineas':max(1,int((y1-y0)//11)),'tipo_deteccion':tipo})
+  # Etiquetas con dos puntos sin cuadro detectable: coloca el valor a la derecha.
+  for t in textos:
+   texto=t['texto'].strip()
+   if not texto.endswith(':') or len(texto)>90:continue
+   etiqueta=texto.rstrip(':').strip();x=min(t['x1']+5,ancho_pagina-40);w=max(25.0,ancho_pagina-x-30)
+   if any(d['pagina']==pagina_indice and _pdfv3_normalizar_etiqueta(d['etiqueta_pdf'])==_pdfv3_normalizar_etiqueta(etiqueta) for d in detectados):continue
+   detectados.append({'etiqueta_pdf':etiqueta,'pagina':pagina_indice,'x':x,'y':alto-t['y1']+2,'ancho':w,'lineas':1,'tipo_deteccion':'ETIQUETA'})
+ doc.close()
+ return detectados
+
+def _pdfv3_origen_sugerido(etiqueta,fuentes):
+ objetivo=_pdfv3_normalizar_etiqueta(etiqueta)
+ if not objetivo:return ''
+ mejor='';puntaje=0
  for _,r in fuentes.iterrows():
-  origen=str(r.origen)
-  if origen in existentes:continue
-  base=str(r.etiqueta or origen).strip() or origen;etiqueta=base;consecutivo=2
-  while cur.execute('SELECT 1 FROM pdfv3_campos WHERE formato_id=? AND etiqueta=?',(formato_id,etiqueta)).fetchone():
-   etiqueta=f'{base} ({consecutivo})';consecutivo+=1
-  y=max(24.0,float(alto)-60.0-(agregados*18.0))
-  cur.execute('INSERT INTO pdfv3_campos(formato_id,etiqueta,origen,pagina,x,y,ancho,tamano,negrita,alineacion,lineas,orden,activo) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,0)',(formato_id,etiqueta,origen,1,36.0,y,max(80.0,float(ancho)-72.0),8.0,0,'IZQUIERDA',1,int(orden)+agregados))
-  existentes.add(origen);agregados+=1
- return agregados
+  candidato=_pdfv3_normalizar_etiqueta(r.etiqueta)
+  if candidato==objetivo:return str(r.origen)
+  a=set(objetivo.split());b=set(candidato.split());score=len(a & b)/max(1,len(a | b))
+  if score>puntaje:puntaje=score;mejor=str(r.origen)
+ return mejor if puntaje>=0.72 else ''
 
-def _pdfv3_reajustar_coordenadas(cur, formato_id, ancho_anterior, alto_anterior, ancho_nuevo, alto_nuevo):
- """Escala coordenadas existentes cuando cambia el tamaño de la plantilla."""
- if not ancho_anterior or not alto_anterior:return 0
- ax=float(ancho_nuevo)/float(ancho_anterior);ay=float(alto_nuevo)/float(alto_anterior)
- if ax<=0 or ay<=0:return 0
- factor_fuente=max(0.65,min(1.60,(ax+ay)/2.0))
- cur.execute('UPDATE pdfv3_campos SET x=x*?,y=y*?,ancho=ancho*?,tamano=MAX(5.0,tamano*?) WHERE formato_id=?',(ax,ay,ax,factor_fuente,formato_id))
- return cur.rowcount
+def _pdfv3_reemplazar_campos_detectados(cur,formato_id,codigo,tabla_origen,detectados):
+ """Reemplaza solo la relacion del formato actualizado; los otros formatos permanecen intactos."""
+ fuentes=_pdfv3_fuentes_registro(codigo,tabla_origen);cur.execute('DELETE FROM pdfv3_campos WHERE formato_id=?',(formato_id,))
+ usados=set()
+ for orden,d in enumerate(detectados):
+  base=str(d['etiqueta_pdf'] or f'Campo {orden+1}').strip();etiqueta=base;n=2
+  while etiqueta in usados:etiqueta=f'{base} ({n})';n+=1
+  usados.add(etiqueta);origen=_pdfv3_origen_sugerido(base,fuentes)
+  cur.execute('INSERT INTO pdfv3_campos(formato_id,etiqueta,origen,pagina,x,y,ancho,tamano,negrita,alineacion,lineas,orden,activo) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)',(formato_id,etiqueta,origen,int(d['pagina']),float(d['x']),float(d['y']),float(d['ancho']),8.0,0,'IZQUIERDA',int(d['lineas']),orden,1 if origen else 0))
+ return len(detectados)
 
 def page_pdfv3():
  if not is_dev():
@@ -505,33 +556,19 @@ def page_pdfv3():
  t1,t2,t3=st.tabs(['Relacion de campos','Plantilla de referencia','Prueba'])
  with t1:
   fuentes=_pdfv3_fuentes_registro(codigo,str(f.tabla_origen));valid=['']+fuentes.origen.astype(str).tolist()
-  st.caption('La lista se obtiene directamente de los campos reales del registro. Activa únicamente los campos que deseas imprimir y define su posición.')
-  with st.expander('Campos disponibles del registro',expanded=False):
-   st.dataframe(fuentes.rename(columns={'origen':'Origen exacto','etiqueta':'Etiqueta del registro','tipo':'Tipo'}),use_container_width=True,hide_index=True)
-  if st.button('Sincronizar campos del registro',key='pdfv3_sync_fields_'+codigo):
-   db=conn();cur=db.cursor()
-   try:
-    plantilla=cur.execute('SELECT ancho,alto FROM pdfv3_plantillas WHERE formato_id=? AND activa=1 ORDER BY version DESC LIMIT 1',(fid,)).fetchone()
-    ancho,alto=(plantilla if plantilla else (595.28,841.89))
-    agregados=_pdfv3_sincronizar_campos(cur,fid,codigo,str(f.tabla_origen),ancho,alto);db.commit()
-   except Exception:
-    db.rollback();raise
-   finally:db.close()
-   audit(st.session_state.auth['usuario'],'SINCRONIZAR_CAMPOS_PDF',f'{codigo} | {agregados} campos');st.success(f'Sincronización terminada. Se agregaron {agregados} campos pendientes.');st.rerun()
-  df=read_df('SELECT id,etiqueta,origen,pagina,x,y,ancho,tamano,negrita,alineacion,lineas,orden,activo FROM pdfv3_campos WHERE formato_id=? ORDER BY orden',(fid,))
+  st.info('Los campos listados se detectaron en la plantilla PDF activa. En Campo real o formula selecciona la informacion que deseas imprimir, o dejalo vacio para no usar ese campo.')
+  df=read_df('SELECT id,etiqueta,origen,pagina,x,y,ancho,tamano,negrita,alineacion,lineas,orden,activo FROM pdfv3_campos WHERE formato_id=? ORDER BY pagina,orden,id',(fid,))
   ed=st.data_editor(df,use_container_width=True,hide_index=True,num_rows='dynamic',disabled=['id'],key='pdfv3_editor_'+codigo,column_config={'origen':st.column_config.SelectboxColumn('Campo real o formula',options=valid),'alineacion':st.column_config.SelectboxColumn(options=['IZQUIERDA','CENTRO','DERECHA']),'negrita':st.column_config.CheckboxColumn(),'activo':st.column_config.CheckboxColumn()})
   if st.button('Guardar relacion de campos',type='primary',key='pdfv3_save_fields'):
    bad=[str(z) for z in ed.origen if str(z) not in valid]
-   activos_sin_origen=[str(r.etiqueta) for _,r in ed.iterrows() if bool(r.activo) and not str(r.origen or '').strip()]
    if bad:st.error('Existen campos no relacionados exactamente con el registro: '+', '.join(dict.fromkeys(bad)))
-   elif activos_sin_origen:st.error('Relaciona un campo real o fórmula para: '+', '.join(activos_sin_origen)+'.')
    else:
     db=conn();cur=db.cursor();cur.execute('DELETE FROM pdfv3_campos WHERE formato_id=?',(fid,))
-    for _,q in ed.iterrows():cur.execute('INSERT INTO pdfv3_campos(formato_id,etiqueta,origen,pagina,x,y,ancho,tamano,negrita,alineacion,lineas,orden,activo) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)',(fid,str(q.etiqueta),str(q.origen),int(q.pagina),float(q.x),float(q.y),float(q.ancho),float(q.tamano),int(bool(q.negrita)),str(q.alineacion),int(q.lineas),int(q.orden),int(bool(q.activo))))
+    for _,q in ed.iterrows():cur.execute('INSERT INTO pdfv3_campos(formato_id,etiqueta,origen,pagina,x,y,ancho,tamano,negrita,alineacion,lineas,orden,activo) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)',(fid,str(q.etiqueta),str(q.origen),int(q.pagina),float(q.x),float(q.y),float(q.ancho),float(q.tamano),int(bool(q.negrita)),str(q.alineacion),int(q.lineas),int(q.orden),int(bool(q.activo) and bool(str(q.origen).strip()))))
     db.commit();db.close();audit(st.session_state.auth['usuario'],'ACTUALIZAR_CAMPOS_PDF',codigo);st.success('Relacion guardada correctamente.');st.rerun()
  with t2:
-  st.info('Puedes usar PDF, PNG, JPG o JPEG. Si el cargador presenta status code 403, abre la app directamente fuera de un iframe. Mientras tanto, el generador interno actual sigue funcionando.')
-  up=st.file_uploader('Cargar plantilla vacia',type=['pdf','png','jpg','jpeg'],key='pdfv3_upload_'+codigo);desc=st.text_input('Descripcion del cambio',key='pdfv3_desc_'+codigo)
+  st.info('Carga un PDF vacio con texto seleccionable o campos PDF. La app detectara etiquetas, cuadros y lineas, calculara sus coordenadas y actualizara unicamente el formato seleccionado.')
+  up=st.file_uploader('Cargar plantilla PDF vacia',type=['pdf'],key='pdfv3_upload_'+codigo);desc=st.text_input('Descripcion del cambio',key='pdfv3_desc_'+codigo)
   if st.button('Guardar y activar plantilla',type='primary',key='pdfv3_save_template'):
    if up is None:st.error('Selecciona un archivo de referencia.')
    else:
@@ -542,19 +579,19 @@ def page_pdfv3():
      else:
       from PIL import Image
       im=Image.open(BytesIO(raw));im.verify();im=Image.open(BytesIO(raw));w=float(im.width);h=float(im.height);mime='image/png' if name.endswith('.png') else 'image/jpeg'
+     detectados=_pdfv3_detectar_campos_pdf(raw)
+     if not detectados:raise ValueError('No se detectaron campos en el PDF. Verifica que el archivo contenga texto seleccionable, campos PDF, cuadros o lineas asociados a etiquetas.')
      db=conn();cur=db.cursor()
      try:
-      anterior=cur.execute('SELECT ancho,alto FROM pdfv3_plantillas WHERE formato_id=? AND activa=1 ORDER BY version DESC LIMIT 1',(fid,)).fetchone()
       ver=cur.execute('SELECT COALESCE(MAX(version),0)+1 FROM pdfv3_plantillas WHERE formato_id=?',(fid,)).fetchone()[0]
-      if anterior:_pdfv3_reajustar_coordenadas(cur,fid,anterior[0],anterior[1],w,h)
-      agregados=_pdfv3_sincronizar_campos(cur,fid,codigo,str(f.tabla_origen),w,h)
+      cantidad=_pdfv3_reemplazar_campos_detectados(cur,fid,codigo,str(f.tabla_origen),detectados)
       cur.execute('UPDATE pdfv3_plantillas SET activa=0 WHERE formato_id=?',(fid,))
       cur.execute('INSERT INTO pdfv3_plantillas(formato_id,version,nombre,mime,contenido,ancho,alto,activa,descripcion,usuario,fecha) VALUES(?,?,?,?,?,?,?,1,?,?,?)',(fid,ver,up.name,mime,raw,w,h,desc,st.session_state.auth['usuario'],now_iso()))
       db.commit()
      except Exception:
       db.rollback();raise
      finally:db.close()
-     audit(st.session_state.auth['usuario'],'CARGAR_PLANTILLA_PDF',f'{codigo} v{ver} | {agregados} campos nuevos');st.success('Plantilla guardada y activada. Las coordenadas se reajustaron y los campos del registro quedaron disponibles para relacionarse.');st.rerun()
+     audit(st.session_state.auth['usuario'],'CARGAR_Y_ESCANEAR_PLANTILLA_PDF',f'{codigo} v{ver} | {cantidad} campos detectados');st.success(f'Plantilla guardada. Se detectaron {cantidad} campos con sus coordenadas. Relaciona cada campo con la informacion del registro o dejalo vacio.');st.rerun()
     except Exception as e:st.error('No fue posible leer la plantilla: '+str(e))
   st.dataframe(read_df("SELECT version,nombre,mime,descripcion,CASE WHEN activa=1 THEN 'Activa' ELSE 'Historica' END estado,usuario,fecha FROM pdfv3_plantillas WHERE formato_id=? ORDER BY version DESC",(fid,)),use_container_width=True,hide_index=True)
  with t3:
