@@ -868,13 +868,13 @@ def init_db():
         columnas_nuevas = {
             'linea_sector': 'TEXT', 'familia': 'TEXT', 'etapa': 'TEXT',
             'codigo_defecto': 'TEXT', 'semana': 'INTEGER', 'turno': 'TEXT',
-            'acciones_inmediatas': 'TEXT', 'status': 'TEXT',
-            'categoria_inicial': 'TEXT'
+            'responsable_detecta': 'TEXT', 'acciones_inmediatas': 'TEXT',
+            'disposicion': 'TEXT', 'cantidad_observada': 'REAL DEFAULT 0',
+            'status': 'TEXT', 'categoria_inicial': 'TEXT'
         }
         for col, tipo_sql in columnas_nuevas.items():
             try: cur.execute(f'ALTER TABLE {tbl} ADD COLUMN {col} {tipo_sql}')
             except sqlite3.OperationalError: pass
-    cur.execute('''UPDATE pnc_registros SET cantidad_total_pnc=COALESCE(cantidad_reproceso,0)+COALESCE(cantidad_decomiso,0) WHERE COALESCE(cantidad_total_pnc,0)<>COALESCE(cantidad_reproceso,0)+COALESCE(cantidad_decomiso,0)''')
     try: cur.execute('ALTER TABLE pnc_registros ADD COLUMN semana INTEGER')
     except sqlite3.OperationalError: pass
     for col in ['categoria_inicial_pnc','categoria_final_pnc']:
@@ -1380,7 +1380,6 @@ def styles(compact=False):
 def init_state():
     if 'auth' not in st.session_state: st.session_state.auth=None
     if 'page' not in st.session_state: st.session_state.page='Inicio'
-    if st.session_state.page=='Nuevo registro': st.session_state.page='Registro de NC Y Hallazgo de ME'
 
 def login():
     if st.session_state.auth: return st.session_state.auth
@@ -1414,7 +1413,7 @@ def left_menu():
     st.markdown('<div class="left-menu-bg"></div><span class="left-menu-marker"></span>', unsafe_allow_html=True)
     st.markdown('<div class="menu-brand"><span>◆</span><span class="menu-brand-text">CALIDAD MD</span></div><div class="menu-section">MENÚ PRINCIPAL</div>', unsafe_allow_html=True)
     menu_button('Inicio','🏠 Inicio','🏠')
-    menu_button('Registro de NC Y Hallazgo de ME','📝 Registro de NC Y Hallazgo de ME','📝')
+    menu_button('Nuevo registro','📝 Nuevo registro','📝')
     menu_button('Consulta y descarga','📊 Consulta y descarga','📊')
     menu_button('Muestras de retención','🧪 Muestras de retención','🧪')
     menu_button('Entrega de turno','🔄 Entrega de turno','🔄')
@@ -1485,99 +1484,145 @@ def panel_indicadores_spac_inicio():
         grafica_lineas_con_valores(grafica_produccion,'Indicador SPAC Produccion','inicio_chart_produccion')
     st.markdown('</div></div>',unsafe_allow_html=True)
 
-def page_inicio():
-    st.markdown('<div class="home-hero"><div class="home-hero-title">Panel ejecutivo de Calidad</div><div style="color:#667085;margin-top:.5rem;font-weight:700">Visión consolidada de no conformidades y hallazgos</div></div>',unsafe_allow_html=True)
-    pnc=read_df('SELECT * FROM pnc_registros')
-    me=read_df('SELECT * FROM me_registros')
-    ddm=read_df('SELECT * FROM ddm_rx_registros')
-    def normalizar(df,tipo):
-        x=df.copy()
-        if tipo=='PNC':
-            x['_fecha']=pd.to_datetime(x.get('fecha_apertura'),errors='coerce')
-            x['_cantidad']=pd.to_numeric(x.get('cantidad_total_pnc',0),errors='coerce').fillna(0)
-            x['_analista']=x.get('analista','')
-            x['_clasificacion']=x.get('clasificacion','')
-        else:
-            x['_fecha']=pd.to_datetime(dict(year=pd.to_numeric(x.get('anio'),errors='coerce'),month=pd.to_numeric(x.get('mes'),errors='coerce'),day=pd.to_numeric(x.get('dia'),errors='coerce')),errors='coerce') if not x.empty else pd.Series(dtype='datetime64[ns]')
-            x['_cantidad']=0.0
-            x['_analista']=x.get('analista_detecta','')
-            x['_clasificacion']=x.get('categoria_inicial','')
-        x['_tipo_registro']=tipo
-        x['_defecto']=x.get('defecto',x.get('descripcion_hallazgo','Sin información')).fillna('Sin información') if not x.empty else pd.Series(dtype=str)
-        return x
-    bases=[normalizar(pnc,'PNC'),normalizar(me,'Materia Extraña'),normalizar(ddm,'Detector/RX')]
-    validas=[x for x in bases if not x.empty]
-    datos=pd.concat(validas,ignore_index=True,sort=False) if validas else pd.DataFrame(columns=['_fecha','_tipo_registro','_cantidad','nave','linea_sector','status','_defecto','_analista'])
-    fechas=datos['_fecha'].dropna()
-    hoy=date.today(); mn=fechas.min().date() if not fechas.empty else hoy; mx=fechas.max().date() if not fechas.empty else hoy
-    with st.expander('Filtros de análisis',expanded=True):
-        a,b,c,d=st.columns(4)
-        desde=a.date_input('Fecha inicial',mn,key='dash_desde')
-        hasta=b.date_input('Fecha final',mx,key='dash_hasta')
-        tipos=c.multiselect('Tipo de registro',['PNC','Materia Extraña','Detector/RX'],default=['PNC','Materia Extraña','Detector/RX'],key='dash_tipos')
-        naves=sorted(datos.get('nave',pd.Series(dtype=str)).dropna().astype(str).unique())
-        filtro_nave=d.multiselect('Nave',naves,key='dash_nave')
-        e,f,g=st.columns(3)
-        lineas=sorted(datos.get('linea_sector',pd.Series(dtype=str)).dropna().astype(str).unique())
-        filtro_linea=e.multiselect('Línea/Sector',lineas,key='dash_linea')
-        estados=sorted(datos.get('status',pd.Series(dtype=str)).dropna().astype(str).unique())
-        filtro_status=f.multiselect('Status',estados,key='dash_status')
-        analistas=sorted(datos.get('_analista',pd.Series(dtype=str)).dropna().astype(str).unique())
-        filtro_analista=g.multiselect('Analista',analistas,key='dash_analista')
-    if desde>hasta:
-        st.error('La fecha inicial no puede ser posterior a la fecha final.'); return
-    data=datos[(datos['_fecha'].dt.date>=desde)&(datos['_fecha'].dt.date<=hasta)].copy()
-    if tipos:data=data[data['_tipo_registro'].isin(tipos)]
-    if filtro_nave:data=data[data['nave'].astype(str).isin(filtro_nave)]
-    if filtro_linea:data=data[data['linea_sector'].astype(str).isin(filtro_linea)]
-    if filtro_status:data=data[data['status'].astype(str).isin(filtro_status)]
-    if filtro_analista:data=data[data['_analista'].astype(str).isin(filtro_analista)]
-    total=len(data); abiertos=int((data.get('status',pd.Series(dtype=str)).astype(str).str.upper()=='ABIERTO').sum())
-    cerrados=int((data.get('status',pd.Series(dtype=str)).astype(str).str.upper()=='CERRADO').sum())
-    kg=float(data.loc[data['_tipo_registro']=='PNC','_cantidad'].sum()) if not data.empty else 0
-    hallazgos=int(data['_tipo_registro'].isin(['Materia Extraña','Detector/RX']).sum()) if not data.empty else 0
-    avance=(cerrados/(abiertos+cerrados)*100) if (abiertos+cerrados) else 0
-    tarjetas=[('Registros totales',f'{total:,}','PNC y hallazgos filtrados','#3F7BFF'),('PNC abiertos',f'{abiertos:,}','Pendientes de cierre','#E11D48'),('Cantidad total PNC',f'{kg:,.2f} kg','Reproceso + decomiso','#F59E0B'),('Hallazgos ME / Detector',f'{hallazgos:,}',f'Cierre general: {avance:.1f}%','#00A884')]
-    cols=st.columns(4)
-    for col,(titulo,valor,pie,color) in zip(cols,tarjetas):
-        col.markdown(f'<div class="kpi" style="--c:{color}"><div class="kpi-label">{titulo}</div><div class="kpi-value">{valor}</div><div class="kpi-foot">{pie}</div></div>',unsafe_allow_html=True)
+def _grafica_conteo_horizontal(data, campo, titulo, etiqueta, key, limite=15):
+    """Grafica horizontal ordenada para variables categoricas."""
+    if data.empty or campo not in data.columns:
+        st.info('No hay informacion disponible para generar esta grafica.')
+        return
+    serie=data[campo].fillna('').astype(str).str.strip()
+    serie=serie[serie.ne('')]
+    if serie.empty:
+        st.info('No hay informacion disponible para generar esta grafica.')
+        return
+    grafica=(serie.value_counts().head(limite).rename_axis(etiqueta).reset_index(name='Numero de registros'))
+    orden=grafica[etiqueta].tolist()
+    barras=alt.Chart(grafica).mark_bar(cornerRadiusEnd=5,color='#00A884').encode(
+        x=alt.X('Numero de registros:Q',title='Numero de registros',axis=alt.Axis(tickMinStep=1)),
+        y=alt.Y(f'{etiqueta}:N',title=None,sort=orden),
+        tooltip=[alt.Tooltip(f'{etiqueta}:N'),alt.Tooltip('Numero de registros:Q',format=',d')]
+    )
+    texto=alt.Chart(grafica).mark_text(align='left',baseline='middle',dx=5,fontWeight='bold',color='#203047').encode(
+        x='Numero de registros:Q',y=alt.Y(f'{etiqueta}:N',sort=orden),text=alt.Text('Numero de registros:Q',format=',d')
+    )
+    altura=max(260,min(520,42*len(grafica)))
+    st.altair_chart((barras+texto).properties(title=titulo,height=altura),use_container_width=True,key=key)
+
+def _grafica_mensual_registros(data, campo_fecha, titulo, key):
+    """Grafica cronologica mensual, incluyendo anio para no mezclar periodos."""
+    if data.empty or campo_fecha not in data.columns:
+        st.info('No hay informacion disponible para generar esta grafica.')
+        return
+    fechas=pd.to_datetime(data[campo_fecha],errors='coerce')
+    fechas=fechas.dropna()
+    if fechas.empty:
+        st.info('No hay fechas validas para generar esta grafica.')
+        return
+    mensual=(fechas.dt.to_period('M').astype(str).value_counts().sort_index().rename_axis('Mes').reset_index(name='Numero de registros'))
+    base=alt.Chart(mensual).encode(
+        x=alt.X('Mes:N',title='Mes',sort=None,axis=alt.Axis(labelAngle=-35)),
+        y=alt.Y('Numero de registros:Q',title='Numero de registros',axis=alt.Axis(tickMinStep=1)),
+        tooltip=['Mes:N',alt.Tooltip('Numero de registros:Q',format=',d')]
+    )
+    linea=base.mark_line(point=alt.OverlayMarkDef(filled=True,size=75),strokeWidth=3,color='#5850EC')
+    etiquetas=base.mark_text(dy=-12,fontWeight='bold',color='#203047').encode(text=alt.Text('Numero de registros:Q',format=',d'))
+    st.altair_chart((linea+etiquetas).properties(title=titulo,height=320),use_container_width=True,key=key)
+
+def _fecha_hallazgo(df):
+    """Construye una fecha valida para ME y DDM/RX sin modificar los registros."""
+    if df.empty or not {'dia','mes','anio'}.issubset(df.columns):
+        return pd.Series(pd.NaT,index=df.index,dtype='datetime64[ns]')
+    return pd.to_datetime(dict(
+        year=pd.to_numeric(df['anio'],errors='coerce'),
+        month=pd.to_numeric(df['mes'],errors='coerce'),
+        day=pd.to_numeric(df['dia'],errors='coerce')
+    ),errors='coerce')
+
+def _panel_registros_inicio(tipo):
+    configuracion={
+        'PNC':{
+            'tabla':'pnc_registros','fecha':'fecha_apertura','defecto':'defecto',
+            'titulo':'Producto No Conforme','color':'#00A884'
+        },
+        'Materia extrana':{
+            'tabla':'me_registros','fecha':'_fecha_panel','defecto':'descripcion_hallazgo',
+            'titulo':'Materia extrana','color':'#F59E0B'
+        },
+        'Producto segregado por detector de metales y RX':{
+            'tabla':'ddm_rx_registros','fecha':'_fecha_panel','defecto':'descripcion_hallazgo',
+            'titulo':'Producto segregado por detector de metales y RX','color':'#E11D48'
+        }
+    }
+    cfg=configuracion[tipo]
+    data=read_df(f"SELECT * FROM {cfg['tabla']}")
+    if cfg['fecha']=='_fecha_panel':
+        data['_fecha_panel']=_fecha_hallazgo(data)
+    else:
+        data[cfg['fecha']]=pd.to_datetime(data[cfg['fecha']],errors='coerce') if cfg['fecha'] in data.columns else pd.NaT
+
+    st.markdown(f'<div class="panel"><div class="panel-header">Indicadores de {cfg["titulo"]}</div><div class="panel-body">',unsafe_allow_html=True)
     if data.empty:
-        st.info('No hay información para los filtros seleccionados.'); panel_indicadores_spac_inicio(); return
-    st.markdown('### Evolución de registros')
-    periodo=st.radio('Periodicidad',['Día','Semana','Mes'],horizontal=True,key='dash_periodo')
-    tendencia=data.dropna(subset=['_fecha']).copy()
-    if periodo=='Día': tendencia['Periodo']=tendencia['_fecha'].dt.strftime('%Y-%m-%d')
-    elif periodo=='Semana': tendencia['Periodo']=tendencia['_fecha'].dt.to_period('W').astype(str)
-    else: tendencia['Periodo']=tendencia['_fecha'].dt.strftime('%Y-%m')
-    serie=tendencia.groupby(['Periodo','_tipo_registro']).size().reset_index(name='Registros')
-    chart=alt.Chart(serie).mark_line(point=True,strokeWidth=3).encode(x=alt.X('Periodo:N',title='Periodo',sort=None),y=alt.Y('Registros:Q',title='Número de registros'),color=alt.Color('_tipo_registro:N',title='Registro'),tooltip=['Periodo','_tipo_registro',alt.Tooltip('Registros:Q')]).properties(height=310)
-    st.altair_chart(chart,use_container_width=True)
-    izq,der=st.columns([1.65,1])
-    with izq:
-        st.markdown('### Tendencia de cantidad PNC por defecto')
-        solo_pnc=tendencia[tendencia['_tipo_registro']=='PNC'].copy()
-        if solo_pnc.empty or solo_pnc['_cantidad'].sum()==0:
-            st.info('No hay cantidades PNC disponibles para los filtros seleccionados.')
+        st.info('Aun no hay registros disponibles para el indicador seleccionado.')
+        st.markdown('</div></div>',unsafe_allow_html=True)
+        return
+
+    fechas=data[cfg['fecha']].dropna()
+    filtrada=data.copy()
+    with st.expander('Filtros',expanded=False):
+        f1,f2,f3=st.columns(3)
+        if not fechas.empty:
+            minima,maxima=fechas.min().date(),fechas.max().date()
+            desde=f1.date_input('Fecha inicial',minima,min_value=minima,max_value=maxima,key=f'inicio_desde_{cfg["tabla"]}')
+            hasta=f2.date_input('Fecha final',maxima,min_value=minima,max_value=maxima,key=f'inicio_hasta_{cfg["tabla"]}')
         else:
-            top=solo_pnc.groupby('_defecto')['_cantidad'].sum().nlargest(6).index
-            q=solo_pnc[solo_pnc['_defecto'].isin(top)].groupby(['Periodo','_defecto'])['_cantidad'].sum().reset_index()
-            ch=alt.Chart(q).mark_line(point=True).encode(x=alt.X('Periodo:N',sort=None,title='Periodo'),y=alt.Y('_cantidad:Q',title='Cantidad PNC (kg)'),color=alt.Color('_defecto:N',title='Defecto'),tooltip=['Periodo','_defecto',alt.Tooltip('_cantidad:Q',format='.2f')]).properties(height=330)
-            st.altair_chart(ch,use_container_width=True)
-    with der:
-        st.markdown('### Defectos con mayor impacto')
-        impacto=data[data['_tipo_registro']=='PNC'].groupby('_defecto').agg(Registros=('_defecto','size'),Cantidad_kg=('_cantidad','sum')).reset_index().sort_values(['Cantidad_kg','Registros'],ascending=False).head(8)
-        if impacto.empty: st.info('No hay defectos PNC disponibles.')
-        else: st.dataframe(impacto.rename(columns={'_defecto':'Defecto','Cantidad_kg':'Cantidad kg'}),use_container_width=True,hide_index=True,column_config={'Cantidad kg':st.column_config.NumberColumn(format='%.2f kg')})
-    a,b=st.columns(2)
-    with a:
-        st.markdown('### Distribución por Línea/Sector')
-        dist=data.get('linea_sector',pd.Series(dtype=str)).fillna('Sin dato').astype(str).replace('','Sin dato').value_counts().head(10).rename_axis('Línea/Sector').reset_index(name='Registros')
-        if not dist.empty: st.bar_chart(dist.set_index('Línea/Sector'),use_container_width=True)
-    with b:
-        st.markdown('### Distribución por nave')
-        dn=data.get('nave',pd.Series(dtype=str)).fillna('Sin dato').astype(str).replace('','Sin dato').value_counts().rename_axis('Nave').reset_index(name='Registros')
-        if not dn.empty: st.dataframe(dn,use_container_width=True,hide_index=True)
-    panel_indicadores_spac_inicio()
+            desde=hasta=None
+            f1.caption('No hay fechas validas.')
+        lineas=sorted(data['linea_sector'].fillna('').astype(str).str.strip().replace('',pd.NA).dropna().unique().tolist()) if 'linea_sector' in data.columns else []
+        seleccion_lineas=f3.multiselect('Linea/Sector',lineas,key=f'inicio_lineas_{cfg["tabla"]}')
+        if desde and hasta:
+            if desde>hasta:
+                st.error('La fecha inicial no puede ser posterior a la fecha final.')
+                st.markdown('</div></div>',unsafe_allow_html=True)
+                return
+            filtrada=filtrada[(filtrada[cfg['fecha']].dt.date>=desde)&(filtrada[cfg['fecha']].dt.date<=hasta)]
+        if seleccion_lineas:
+            filtrada=filtrada[filtrada['linea_sector'].isin(seleccion_lineas)]
+
+    total=len(filtrada)
+    lineas_total=filtrada['linea_sector'].fillna('').astype(str).str.strip().replace('',pd.NA).nunique() if 'linea_sector' in filtrada.columns else 0
+    defectos_total=filtrada[cfg['defecto']].fillna('').astype(str).str.strip().replace('',pd.NA).nunique() if cfg['defecto'] in filtrada.columns else 0
+    meses_total=filtrada[cfg['fecha']].dropna().dt.to_period('M').nunique() if cfg['fecha'] in filtrada.columns else 0
+    c1,c2,c3,c4=st.columns(4)
+    for col,label,value,foot,color in [
+        (c1,'Registros',total,'Total filtrado',cfg['color']),
+        (c2,'Defectos',defectos_total,'Tipos identificados','#5850EC'),
+        (c3,'Lineas / sectores',lineas_total,'Con registros','#3F7BFF'),
+        (c4,'Meses',meses_total,'Periodos con actividad','#F59E0B')]:
+        with col:
+            st.markdown(f'<div class="kpi" style="--c:{color}"><div class="kpi-label">{label}</div><div class="kpi-value">{value}</div><div class="kpi-foot">{foot}</div></div>',unsafe_allow_html=True)
+
+    g1,g2=st.columns(2)
+    with g1:
+        _grafica_conteo_horizontal(filtrada,cfg['defecto'],f'Defectos vs Numero de registros de {"PNC" if tipo=="PNC" else cfg["titulo"]}','Defecto',f'inicio_defectos_{cfg["tabla"]}')
+    with g2:
+        _grafica_conteo_horizontal(filtrada,'linea_sector',f'Linea/Sector vs Numero de registros de {"PNC" if tipo=="PNC" else cfg["titulo"]}','Linea/Sector',f'inicio_lineas_chart_{cfg["tabla"]}')
+    _grafica_mensual_registros(filtrada,cfg['fecha'],f'Mes vs Numero de registros de {"PNC" if tipo=="PNC" else cfg["titulo"]}',f'inicio_mes_{cfg["tabla"]}')
+    st.markdown('</div></div>',unsafe_allow_html=True)
+
+def page_inicio():
+    st.markdown('<div class="home-hero"><div class="home-hero-title">Panel Calidad Mundo Dulce</div></div>',unsafe_allow_html=True)
+    # Selector principal discreto. Solo se renderiza un bloque de indicadores a la vez.
+    espacio1,selector_col,espacio2=st.columns([1.4,2.2,1.4])
+    with selector_col:
+        indicador=st.selectbox(
+            'Indicador',
+            ['PNC','Materia extrana','Producto segregado por detector de metales y RX','SPAC'],
+            key='inicio_indicador_principal',
+            label_visibility='collapsed'
+        )
+    if indicador=='SPAC':
+        panel_indicadores_spac_inicio()
+    else:
+        _panel_registros_inicio(indicador)
 
 def page_registro():
     if 'registro_tipo' not in st.session_state:
@@ -1593,7 +1638,7 @@ def page_registro():
         st.session_state.registro_tipo=None
         st.rerun()
     def selector():
-        st.markdown("""<div class="registro-landing-hero"><div class="registro-landing-title">Registro de NC Y Hallazgo de ME</div><div class="registro-landing-subtitle">Selecciona el tipo de registro que deseas capturar.</div></div>""",unsafe_allow_html=True)
+        st.markdown("""<div class="registro-landing-hero"><div class="registro-landing-title">Nuevo registro</div><div class="registro-landing-subtitle">Selecciona el tipo de registro que deseas capturar.</div></div>""",unsafe_allow_html=True)
         a,b,c=st.columns(3,gap='large')
         with a:
             st.markdown('<span class="registro-card-slot"></span>',unsafe_allow_html=True)
@@ -1648,12 +1693,16 @@ def page_registro():
             x1,x2=st.columns(2)
             x1.text_input('Clasificación *',value=categoria,disabled=True)
             turno=x2.selectbox('Turno *',opt_blank(catalog('turno')),key=f'turno_{tabla}_{nonce}')
-            a,b=st.columns(2)
+            a,b,c=st.columns(3)
             supervisor=a.selectbox('Supervisor (Responsable) *',opt_blank(catalog('supervisor')),key=f'sup_{tabla}_{nonce}')
             analista=b.selectbox('Analista (Persona que detecta) *',opt_blank(catalog('analista')),key=f'ana_{tabla}_{nonce}')
+            responsable=c.selectbox('Responsable de detectar el PNC *',opt_blank(catalog('responsable_detecta')),key=f'resp_{tabla}_{nonce}')
             descripcion=st.text_area('Descripción del defecto *',key=f'desc_{tabla}_{nonce}')
             acciones=st.text_area('Acciones inmediatas *',key=f'accion_{tabla}_{nonce}')
-            status=st.selectbox('Status *',opt_blank(catalog('status')),key=f'status_{tabla}_{nonce}')
+            a,b,c=st.columns(3)
+            disposicion=a.selectbox('Disposición *',opt_blank(catalog('disposicion')),key=f'disp_{tabla}_{nonce}')
+            cantidad=b.number_input('Cantidad observada (kg) *',min_value=0.0,step=1.0,format='%.2f',key=f'cantidad_{tabla}_{nonce}')
+            status=c.selectbox('Status *',opt_blank(catalog('status')),key=f'status_{tabla}_{nonce}')
             a,b,c=st.columns(3)
             equipo=a.text_input('Equipo en donde se tiene el hallazgo',key=f'equipo_{tabla}_{nonce}')
             tipo=b.selectbox('Tipo',opt_blank(['Metal','Plástico duro','Plástico blando','Vidrio','Madera','Papel/Cartón','Cabello','Insecto','Otro']),key=f'tipo_{tabla}_{nonce}')
@@ -1662,12 +1711,12 @@ def page_registro():
             evitar=st.text_area('Acciones a realizar para evitar la incidencia',key=f'evitar_{tabla}_{nonce}')
             ok=st.button('Guardar registro',key=f'guardar_{tabla}_{nonce}',type='primary')
         if ok:
-            obligatorios={'Línea/Sector':linea_sector,'Nave':nave,'ITEM':item,'Descripción':producto,'Cliente':cliente,'Familia':familia,'Lote':lote,'Etapa':etapa,'Código':codigo,'Defecto':defecto,'Tipo de defecto':tipo_defecto,'Semana':semana,'Turno':turno,'Fecha':fecha,'Supervisor':supervisor,'Analista':analista,'Descripción del defecto':descripcion,'Acciones inmediatas':acciones,'Status':status,'Categoría inicial':categoria}
-            faltantes=[k for k,v in obligatorios.items() if v is None or (isinstance(v,str) and not v.strip())]
+            obligatorios={'Línea/Sector':linea_sector,'Nave':nave,'ITEM':item,'Descripción':producto,'Cliente':cliente,'Familia':familia,'Lote':lote,'Etapa':etapa,'Código':codigo,'Defecto':defecto,'Tipo de defecto':tipo_defecto,'Semana':semana,'Turno':turno,'Fecha':fecha,'Supervisor':supervisor,'Analista':analista,'Responsable de detectar el PNC':responsable,'Descripción del defecto':descripcion,'Acciones inmediatas':acciones,'Disposición':disposicion,'Cantidad observada':cantidad,'Status':status,'Categoría inicial':categoria}
+            faltantes=[k for k,v in obligatorios.items() if v is None or (isinstance(v,str) and not v.strip()) or (k=='Cantidad observada' and float(v)<=0)]
             if faltantes:
                 st.error('Completa los siguientes campos obligatorios: '+', '.join(faltantes)+'.')
             else:
-                rid=exec_sql(f'INSERT INTO {tabla}(dia,mes,anio,nave,linea_sector,familia,equipo_hallazgo,item,producto,lote,descripcion_hallazgo,tipo,particulas_halladas,accion_contingente,investigacion_origen,analista_detecta,supervisor_responsable,acciones_evitar_incidencia,creado_por,creado_en,etapa,codigo_defecto,semana,turno,acciones_inmediatas,status,categoria_inicial) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',(fecha.day,fecha.month,fecha.year,nave,linea_sector,familia,equipo,item,producto,lote,descripcion,tipo,int(particulas),acciones,investigacion,analista,supervisor,evitar,st.session_state.auth['usuario'],now_iso(),etapa,codigo,int(semana),turno,acciones,status,categoria))
+                rid=exec_sql(f'INSERT INTO {tabla}(dia,mes,anio,nave,linea_sector,familia,equipo_hallazgo,item,producto,lote,descripcion_hallazgo,tipo,particulas_halladas,accion_contingente,investigacion_origen,analista_detecta,supervisor_responsable,acciones_evitar_incidencia,creado_por,creado_en,etapa,codigo_defecto,semana,turno,responsable_detecta,acciones_inmediatas,disposicion,cantidad_observada,status,categoria_inicial) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',(fecha.day,fecha.month,fecha.year,nave,linea_sector,familia,equipo,item,producto,lote,descripcion,tipo,int(particulas),acciones,investigacion,analista,supervisor,evitar,st.session_state.auth['usuario'],now_iso(),etapa,codigo,int(semana),turno,responsable,acciones,disposicion,float(cantidad),status,categoria))
                 audit(st.session_state.auth['usuario'],audit_action,f'ID {rid}')
                 limpiar_form(); st.session_state.flash_registro_guardado=f'Registro guardado correctamente: Número {rid}'
                 st.rerun()
@@ -1709,7 +1758,7 @@ def page_registro():
             sup=a.selectbox('Supervisor (Responsable) *',opt_blank(catalog('supervisor')),key=f'pnc_sup_{nonce}'); ana=b.selectbox('Analista (Persona que detecta) *',opt_blank(catalog('analista')),key=f'pnc_ana_{nonce}'); resp=c.selectbox('Responsable de detectar el PNC *',opt_blank(catalog('responsable_detecta')),key=f'pnc_resp_{nonce}')
             a,b,c=st.columns(3)
             disp=a.selectbox('Disposición *',opt_blank(catalog('disposicion')),key=f'pnc_disp_{nonce}'); obs=b.number_input('Cantidad observada (kg) *',min_value=0.0,step=1.0,format='%.2f',key=f'pnc_obs_{nonce}'); fecha_final=c.date_input('Fecha final',value=date.today(),key=f'pnc_final_{nonce}') if status=='CERRADO' else None
-            q1,q2,q3=st.columns(3); rep=q1.number_input('Reproceso kg',min_value=0.0,step=1.0,format='%.2f',key=f'pnc_rep_{nonce}'); dec=q2.number_input('Decomiso kg',min_value=0.0,step=1.0,format='%.2f',key=f'pnc_dec_{nonce}'); apr=q3.number_input('Aprobado 2da kg',min_value=0.0,step=1.0,format='%.2f',key=f'pnc_apr_{nonce}'); total=rep+dec
+            q1,q2,q3=st.columns(3); rep=q1.number_input('Reproceso kg',min_value=0.0,step=1.0,format='%.2f',key=f'pnc_rep_{nonce}'); dec=q2.number_input('Decomiso kg',min_value=0.0,step=1.0,format='%.2f',key=f'pnc_dec_{nonce}'); apr=q3.number_input('Aprobado 2da kg',min_value=0.0,step=1.0,format='%.2f',key=f'pnc_apr_{nonce}'); total=rep+dec+apr
             mat=st.text_area('Material hallado / ME',key=f'pnc_mat_{nonce}'); notas=st.text_area('Observaciones',key=f'pnc_notas_{nonce}'); files=st.file_uploader('Adjuntar evidencia',accept_multiple_files=True,type=['pdf','png','jpg','jpeg','xlsx','csv','txt','docx'],key=f'pnc_files_{nonce}')
             ok=st.button('Guardar registro',key=f'guardar_pnc_{nonce}',type='primary')
         if ok:
@@ -1763,7 +1812,6 @@ def page_consulta():
         if all(c in v.columns for c in ['dia','mes','anio']):
             v['Fecha']=pd.to_datetime(dict(year=v['anio'].fillna(1900).astype(int),month=v['mes'].fillna(1).astype(int),day=v['dia'].fillna(1).astype(int)),errors='coerce').dt.date
             v=v.drop(columns=['dia','mes','anio'])
-            v=v.drop(columns=['responsable_detecta','disposicion','cantidad_observada'],errors='ignore')
         for c in ['folio','numero']:
             if c in v.columns: v=v.drop(columns=[c])
         v=v.rename(columns={'id':'Número','fecha_apertura':'Fecha','descripcion_producto':'Producto','linea_sector':'Línea/Sector','descripcion_hallazgo':'Descripción del hallazgo','particulas_halladas':'# partículas','equipo_hallazgo':'Equipo','analista_detecta':'Analista','supervisor_responsable':'Supervisor'})
@@ -1852,8 +1900,7 @@ def page_consulta():
             d2.text_input('Tipo de defecto',value=tipo_defecto,disabled=True,key=f'edit_auto_tipo_defecto_{key}_{selected}')
             d3.text_input('Clasificación',value=clasificacion,disabled=True,key=f'edit_auto_clasificacion_{key}_{selected}')
             values={}
-            excluded_by_table=set() if table_name=='pnc_registros' else {'responsable_detecta','disposicion','cantidad_observada'}
-            columns=[c for c in row_df.columns if c!='id' and c not in protected and c not in excluded_by_table]
+            columns=[c for c in row_df.columns if c!='id' and c not in protected]
             with st.form(f'editar_form_{key}_{selected}'):
                 for pos in range(0,len(columns),3):
                     cols_ui=st.columns(3)
@@ -1875,9 +1922,8 @@ def page_consulta():
                 auto={'item':item,'cliente':cliente,'familia':familia,'codigo_defecto':codigo,'defecto':defecto,'tipo_defecto':tipo_defecto}
                 if table_name=='pnc_registros': auto.update({'descripcion_producto':descripcion,'clasificacion':clasificacion})
                 else: auto.update({'producto':descripcion,'categoria_inicial':clasificacion})
-                required=['linea_sector','nave','lote','etapa','semana','turno','acciones_inmediatas','status']
-                if table_name=='pnc_registros': required += ['responsable_detecta','disposicion','cantidad_observada','supervisor','analista','descripcion_defecto','categoria_inicial_pnc']
-                else: required += ['supervisor_responsable','analista_detecta','descripcion_hallazgo']
+                required=['linea_sector','nave','lote','etapa','semana','turno','responsable_detecta','acciones_inmediatas','disposicion','cantidad_observada','status']
+                required += ['supervisor','analista','descripcion_defecto','categoria_inicial_pnc'] if table_name=='pnc_registros' else ['supervisor_responsable','analista_detecta','descripcion_hallazgo']
                 missing=[]
                 for name,val in {'ITEM':item,'Descripción':descripcion,'Cliente':cliente,'Familia':familia,'Código':codigo,'Defecto':defecto,'Tipo de defecto':tipo_defecto,'Clasificación':clasificacion}.items():
                     if not str(val).strip(): missing.append(name)
@@ -1886,9 +1932,7 @@ def page_consulta():
                     if val is None or (isinstance(val,str) and not val.strip()) or (col=='cantidad_observada' and float(val)<=0): missing.append(labels.get(col,col))
                 if missing: st.error('Completa los siguientes campos obligatorios: '+', '.join(dict.fromkeys(missing))+'.')
                 else:
-                    updates={**values,**auto}
-                    if table_name=='pnc_registros': updates['cantidad_total_pnc']=float(updates.get('cantidad_reproceso',0) or 0)+float(updates.get('cantidad_decomiso',0) or 0)
-                    update_cols=list(updates.keys())
+                    updates={**values,**auto}; update_cols=list(updates.keys())
                     assignments=', '.join([f'"{c}"=?' for c in update_cols])
                     exec_sql(f'UPDATE {table_name} SET {assignments} WHERE id=?',tuple(updates[c] for c in update_cols)+(selected,))
                     audit(st.session_state.auth['usuario'],'EDITAR_REGISTRO',f'Tabla {table_name} | ID {selected}')
@@ -2578,7 +2622,7 @@ def main():
         topbar(user)
         page=st.session_state.page
         if page=='Inicio': page_inicio()
-        elif page=='Registro de NC Y Hallazgo de ME': page_registro()
+        elif page=='Nuevo registro': page_registro()
         elif page=='Consulta y descarga': page_consulta()
         elif page=='Muestras de retención': page_muestras_retencion()
         elif page=='Entrega de turno': page_entrega_turno()
