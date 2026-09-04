@@ -1066,9 +1066,22 @@ def styles(compact=False):
     .avatar { width:42px; height:42px; border-radius:50%; background:linear-gradient(135deg,#D6FFF6,#DFE1FF); display:flex; align-items:center; justify-content:center; color:#0B3440; font-weight:950; }
     .home-hero { background:linear-gradient(135deg,#FFFFFF 0%,#F7FAFC 62%,#ECFDF8 100%); border:1px solid #E2E8F0; border-radius:24px; padding:1.65rem 1.8rem; margin:0 0 1.15rem 0; box-shadow:0 14px 34px rgba(15,23,42,.07); }
     .home-hero-title { color:#203047; font-size:2.05rem; line-height:1.1; font-weight:950; letter-spacing:-.03em; margin:0; }
-    .kpi { background:#FFFFFF; border-radius:18px; padding:1.35rem; min-height:126px; border:1px solid #E3E8EF; box-shadow:0 12px 28px rgba(15,23,42,.07); position:relative; overflow:hidden; }
+    .kpi {
+        width:100%; min-width:0; min-height:158px; height:100%; box-sizing:border-box;
+        background:linear-gradient(145deg,#FFFFFF 0%,#FBFCFE 100%);
+        border-radius:18px; padding:1.35rem 3.3rem 1.2rem 1.55rem;
+        border:1px solid #DDE4ED; box-shadow:0 10px 24px rgba(31,48,71,.09);
+        position:relative; overflow:hidden; display:flex; flex-direction:column; justify-content:center;
+    }
     .kpi:before { content:""; position:absolute; left:0; top:0; bottom:0; width:5px; background:var(--c); }
-    .kpi-label { color:var(--c); font-size:.78rem; font-weight:950; text-transform:uppercase; } .kpi-value { color:#394356; font-size:1.7rem; font-weight:950; margin-top:.35rem; } .kpi-foot { color:#7C8798; font-size:.8rem; margin-top:.35rem; }
+    .kpi:after { content:attr(data-icon); position:absolute; right:1rem; top:50%; transform:translateY(-50%); color:#D9DEEA; font-size:2.35rem; font-weight:900; line-height:1; }
+    .kpi-label { color:var(--c); font-size:.76rem; line-height:1.22; font-weight:950; text-transform:uppercase; letter-spacing:.01em; overflow-wrap:anywhere; }
+    .kpi-value { color:#4B5568; font-size:1.72rem; line-height:1.08; font-weight:950; margin-top:.75rem; white-space:nowrap; }
+    .kpi-foot { color:#7C8798; font-size:.82rem; line-height:1.25; margin-top:.55rem; overflow-wrap:anywhere; }
+    div[data-testid="stHorizontalBlock"]:has(.kpi) { align-items:stretch !important; gap:1rem !important; }
+    div[data-testid="stHorizontalBlock"]:has(.kpi) > div[data-testid="column"] { display:flex !important; min-width:0 !important; }
+    div[data-testid="stHorizontalBlock"]:has(.kpi) > div[data-testid="column"] > div { width:100% !important; }
+    @media (max-width:1100px) { .kpi { min-height:148px; padding:1.15rem 2.8rem 1.05rem 1.25rem; } .kpi-value { font-size:1.45rem; } .kpi:after { font-size:1.9rem; right:.75rem; } }
     .panel { background:#FFFFFF; border:1px solid #E0E6EE; border-radius:18px; box-shadow:0 12px 28px rgba(15,23,42,.07); margin-top:1.25rem; overflow:hidden; } .panel-header { padding:1rem 1.25rem; border-bottom:1px solid #E2E8F0; color:#0B3440; font-weight:950; } .panel-body { padding:1.25rem; }
     div[data-testid="stForm"] { background:#FFFFFF !important; border:1px solid #E4EAF2 !important; border-radius:22px !important; padding:1.15rem 1.25rem !important; box-shadow:0 14px 34px rgba(15,23,42,.07) !important; }
     label, .stTextInput label, .stTextArea label, .stSelectbox label, .stNumberInput label, .stDateInput label, .stFileUploader label { color:#344054 !important; font-weight:850 !important; font-size:.82rem !important; }
@@ -1591,14 +1604,31 @@ def _panel_registros_inicio(tipo):
     lineas_total=filtrada['linea_sector'].fillna('').astype(str).str.strip().replace('',pd.NA).nunique() if 'linea_sector' in filtrada.columns else 0
     defectos_total=filtrada[cfg['defecto']].fillna('').astype(str).str.strip().replace('',pd.NA).nunique() if cfg['defecto'] in filtrada.columns else 0
     meses_total=filtrada[cfg['fecha']].dropna().dt.to_period('M').nunique() if cfg['fecha'] in filtrada.columns else 0
-    c1,c2,c3,c4=st.columns(4)
-    for col,label,value,foot,color in [
-        (c1,'Registros',total,'Total filtrado',cfg['color']),
-        (c2,'Defectos',defectos_total,'Tipos identificados','#5850EC'),
-        (c3,'Lineas / sectores',lineas_total,'Con registros','#3F7BFF'),
-        (c4,'Meses',meses_total,'Periodos con actividad','#F59E0B')]:
+
+    if tipo=='PNC':
+        estados=filtrada['status'].fillna('').astype(str).str.strip().str.upper() if 'status' in filtrada.columns else pd.Series('',index=filtrada.index)
+        cerrados=int(estados.eq('CERRADO').sum())
+        abiertos=int(estados.eq('ABIERTO').sum())
+        porcentaje_cierre=(cerrados/total*100) if total else 0.0
+        kg_totales=pd.to_numeric(filtrada.get('cantidad_total_pnc',pd.Series(0,index=filtrada.index)),errors='coerce').fillna(0).sum()
+        tarjetas=[
+            ('Total de PNC',f'{total:,}','Numero de registros totales','#00A884','▤'),
+            ('% de cierre',f'{porcentaje_cierre:.1f}%','PNC cerrados respecto al total','#5850EC','✓'),
+            ('Kg totales de PNC',f'{kg_totales:,.2f} kg','Cantidad total registrada','#3F7BFF','◆'),
+            ('PNC abiertos',f'{abiertos:,}','Registros pendientes de cierre','#F59E0B','!')
+        ]
+    else:
+        tarjetas=[
+            ('Registros',f'{total:,}','Total filtrado',cfg['color'],'▤'),
+            ('Defectos',f'{defectos_total:,}','Tipos identificados','#5850EC','◆'),
+            ('Lineas / sectores',f'{lineas_total:,}','Con registros','#3F7BFF','▥'),
+            ('Meses',f'{meses_total:,}','Periodos con actividad','#F59E0B','●')
+        ]
+
+    c1,c2,c3,c4=st.columns(4,gap='large')
+    for col,(label,value,foot,color,icono) in zip((c1,c2,c3,c4),tarjetas):
         with col:
-            st.markdown(f'<div class="kpi" style="--c:{color}"><div class="kpi-label">{label}</div><div class="kpi-value">{value}</div><div class="kpi-foot">{foot}</div></div>',unsafe_allow_html=True)
+            st.markdown(f'<div class="kpi" data-icon="{icono}" style="--c:{color}"><div class="kpi-label">{label}</div><div class="kpi-value">{value}</div><div class="kpi-foot">{foot}</div></div>',unsafe_allow_html=True)
 
     g1,g2=st.columns(2)
     with g1:
