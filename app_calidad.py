@@ -1067,7 +1067,7 @@ def styles(compact=False):
     .home-hero { background:linear-gradient(135deg,#FFFFFF 0%,#F7FAFC 62%,#ECFDF8 100%); border:1px solid #E2E8F0; border-radius:24px; padding:1.65rem 1.8rem; margin:0 0 1.15rem 0; box-shadow:0 14px 34px rgba(15,23,42,.07); }
     .home-hero-title { color:#203047; font-size:2.05rem; line-height:1.1; font-weight:950; letter-spacing:-.03em; margin:0; }
     .kpi{width:100%;min-width:0;min-height:150px;height:100%;box-sizing:border-box;background:linear-gradient(145deg,#FFF,#FBFCFE);border-radius:18px;padding:1.25rem 3.1rem 1.1rem 1.45rem;border:1px solid #DDE4ED;box-shadow:0 10px 24px rgba(31,48,71,.09);position:relative;overflow:hidden;display:flex;flex-direction:column;justify-content:center}.kpi:before{content:"";position:absolute;left:0;top:0;bottom:0;width:5px;background:var(--c)}.kpi:after{content:attr(data-icon);position:absolute;right:1rem;top:50%;transform:translateY(-50%);color:#D9DEEA;font-size:2.25rem;font-weight:900}.kpi-label{color:var(--c);font-size:.76rem;line-height:1.22;font-weight:950;text-transform:uppercase;overflow-wrap:anywhere}.kpi-value{color:#4B5568;font-size:1.65rem;line-height:1.08;font-weight:950;margin-top:.68rem;white-space:nowrap}.kpi-foot{color:#7C8798;font-size:.8rem;line-height:1.25;margin-top:.5rem;overflow-wrap:anywhere}
-    .main .block-container{padding-top:.15rem!important}.topbar{height:62px!important;margin-top:0!important;margin-bottom:.5rem!important}.home-hero{min-height:72px!important;padding:.9rem 1.3rem!important;margin:0 0 .55rem 0!important;display:flex;align-items:center}.home-hero-title{font-size:1.7rem!important}.indicator-header{min-height:44px;display:flex;align-items:center;color:#0B3440;font-size:1.03rem;font-weight:950}.indicator-marker{display:none}div[data-testid="column"]:has(.indicator-marker){display:flex!important;align-items:center!important;justify-content:flex-end!important}div[data-testid="column"]:has(.indicator-marker) button{border-radius:999px!important;min-height:36px!important;padding:.3rem .72rem!important;font-size:.76rem!important;font-weight:850!important;border:1px solid #D7E1EC!important;background:#FFF!important;color:#526078!important;box-shadow:0 5px 14px rgba(15,23,42,.06)!important}div[data-testid="stPopoverBody"]{min-width:350px!important}div[data-testid="stHorizontalBlock"]:has(.kpi){align-items:stretch!important;gap:1rem!important}div[data-testid="stHorizontalBlock"]:has(.kpi)>div[data-testid="column"]{display:flex!important;min-width:0!important}div[data-testid="stHorizontalBlock"]:has(.kpi)>div[data-testid="column"]>div{width:100%!important}
+    .main .block-container{padding-top:0!important;margin-top:-5.25rem!important}.main{padding-top:0!important}[data-testid="stAppViewContainer"]>.main{padding-top:0!important}.topbar{height:62px!important;margin-top:0!important;margin-bottom:.5rem!important}.home-hero{min-height:72px!important;padding:.9rem 1.3rem!important;margin:0 0 .55rem 0!important;display:flex;align-items:center}.home-hero-title{font-size:1.7rem!important}.indicator-header{min-height:44px;display:flex;align-items:center;color:#0B3440;font-size:1.03rem;font-weight:950}.indicator-marker{display:none}div[data-testid="column"]:has(.indicator-marker){display:flex!important;align-items:center!important;justify-content:flex-end!important}div[data-testid="column"]:has(.indicator-marker) button{border-radius:999px!important;min-height:36px!important;padding:.3rem .72rem!important;font-size:.76rem!important;font-weight:850!important;border:1px solid #D7E1EC!important;background:#FFF!important;color:#526078!important;box-shadow:0 5px 14px rgba(15,23,42,.06)!important}div[data-testid="stPopoverBody"]{min-width:350px!important}div[data-testid="stHorizontalBlock"]:has(.kpi){align-items:stretch!important;gap:1rem!important}div[data-testid="stHorizontalBlock"]:has(.kpi)>div[data-testid="column"]{display:flex!important;min-width:0!important}div[data-testid="stHorizontalBlock"]:has(.kpi)>div[data-testid="column"]>div{width:100%!important}.kpi-row-spacer{height:.8rem}.chart-row-marker{display:none}div[data-testid="stHorizontalBlock"]:has(.chart-row-marker){margin-top:1rem!important;padding-top:.25rem!important}
     .panel { background:#FFFFFF; border:1px solid #E0E6EE; border-radius:18px; box-shadow:0 12px 28px rgba(15,23,42,.07); margin-top:1.25rem; overflow:hidden; } .panel-header { padding:1rem 1.25rem; border-bottom:1px solid #E2E8F0; color:#0B3440; font-weight:950; } .panel-body { padding:1.25rem; }
     div[data-testid="stForm"] { background:#FFFFFF !important; border:1px solid #E4EAF2 !important; border-radius:22px !important; padding:1.15rem 1.25rem !important; box-shadow:0 14px 34px rgba(15,23,42,.07) !important; }
     label, .stTextInput label, .stTextArea label, .stSelectbox label, .stNumberInput label, .stDateInput label, .stFileUploader label { color:#344054 !important; font-weight:850 !important; font-size:.82rem !important; }
@@ -1507,8 +1507,15 @@ def _panel_registros_inicio(tipo):
         data[fecha]=pd.to_datetime(dict(year=pd.to_numeric(data.get('anio'),errors='coerce'),month=pd.to_numeric(data.get('mes'),errors='coerce'),day=pd.to_numeric(data.get('dia'),errors='coerce')),errors='coerce') if not data.empty else pd.Series(dtype='datetime64[ns]')
     else: data[fecha]=pd.to_datetime(data[fecha],errors='coerce') if fecha in data.columns else pd.NaT
     fechas=data[fecha].dropna(); lineas=sorted(data.get('linea_sector',pd.Series(dtype=str)).fillna('').astype(str).str.strip().replace('',pd.NA).dropna().unique().tolist()); naves=sorted(data.get('nave',pd.Series(dtype=str)).fillna('').astype(str).str.strip().replace('',pd.NA).dropna().unique().tolist()); analistas=sorted(data.get(campo_analista,pd.Series(dtype=str)).fillna('').astype(str).str.strip().replace('',pd.NA).dropna().unique().tolist())
-    h,f=st.columns([8.5,1.5],vertical_alignment='center')
+    h,selector_col,f=st.columns([7.2,1.35,1.45],vertical_alignment='center')
     with h: st.markdown(f'<div class="indicator-header">Indicadores de {titulo}</div>',unsafe_allow_html=True)
+    with selector_col:
+        st.markdown('<span class="indicator-marker"></span>',unsafe_allow_html=True)
+        with st.popover('Indicador',use_container_width=True):
+            tipo_seleccionado=st.radio('Seleccionar indicador',['PNC','Materia extrana','Producto segregado por detector de metales y RX','SPAC'],index=['PNC','Materia extrana','Producto segregado por detector de metales y RX','SPAC'].index(tipo),key='inicio_indicador_selector_panel',label_visibility='collapsed')
+            if tipo_seleccionado!=tipo:
+                st.session_state.inicio_indicador_principal=tipo_seleccionado
+                st.rerun()
     with f:
         st.markdown('<span class="indicator-marker"></span>',unsafe_allow_html=True)
         with st.popover('Filtros',use_container_width=True):
@@ -1530,18 +1537,32 @@ def _panel_registros_inicio(tipo):
     cols=st.columns(4,gap='large')
     for col,(lab,val,pie,color,ico) in zip(cols,tarjetas):
         with col: st.markdown(f'<div class="kpi" data-icon="{ico}" style="--c:{color}"><div class="kpi-label">{lab}</div><div class="kpi-value">{val}</div><div class="kpi-foot">{pie}</div></div>',unsafe_allow_html=True)
+    st.markdown('<div class="kpi-row-spacer"></div>',unsafe_allow_html=True)
     a,b=st.columns(2)
-    with a: _grafica_panel_conteo(d,defecto,f'Defectos vs Numero de registros de {"PNC" if tipo=="PNC" else titulo}','Defecto',f'g_def_{tabla}')
+    with a:
+        st.markdown('<span class="chart-row-marker"></span>',unsafe_allow_html=True)
+        _grafica_panel_conteo(d,defecto,f'Defectos vs Numero de registros de {"PNC" if tipo=="PNC" else titulo}','Defecto',f'g_def_{tabla}')
     with b: _grafica_panel_conteo(d,'linea_sector',f'Linea/Sector vs Numero de registros de {"PNC" if tipo=="PNC" else titulo}','Linea/Sector',f'g_lin_{tabla}')
     _grafica_panel_mes(d,fecha,f'Mes vs Numero de registros de {"PNC" if tipo=="PNC" else titulo}',f'g_mes_{tabla}')
 
 def page_inicio():
-    h,s=st.columns([8.8,1.2],vertical_alignment='center')
-    with h: st.markdown('<div class="home-hero"><div class="home-hero-title">Panel Calidad Mundo Dulce</div></div>',unsafe_allow_html=True)
-    with s:
-        st.markdown('<span class="indicator-marker"></span>',unsafe_allow_html=True)
-        with st.popover('Indicador',use_container_width=True): indicador=st.radio('Seleccionar indicador',['PNC','Materia extrana','Producto segregado por detector de metales y RX','SPAC'],key='inicio_indicador_principal',label_visibility='collapsed')
-    panel_indicadores_spac_inicio() if indicador=='SPAC' else _panel_registros_inicio(indicador)
+    st.markdown('<div class="home-hero"><div class="home-hero-title">Panel Calidad Mundo Dulce</div></div>',unsafe_allow_html=True)
+    indicador=st.session_state.get('inicio_indicador_principal','PNC')
+    opciones=['PNC','Materia extrana','Producto segregado por detector de metales y RX','SPAC']
+    if indicador not in opciones: indicador='PNC'
+    if indicador=='SPAC':
+        h,selector_col,f=st.columns([7.2,1.35,1.45],vertical_alignment='center')
+        with h: st.markdown('<div class="indicator-header">Indicadores SPAC</div>',unsafe_allow_html=True)
+        with selector_col:
+            st.markdown('<span class="indicator-marker"></span>',unsafe_allow_html=True)
+            with st.popover('Indicador',use_container_width=True):
+                nuevo=st.radio('Seleccionar indicador',opciones,index=opciones.index(indicador),key='inicio_indicador_selector_spac',label_visibility='collapsed')
+                if nuevo!=indicador:
+                    st.session_state.inicio_indicador_principal=nuevo
+                    st.rerun()
+        panel_indicadores_spac_inicio()
+    else:
+        _panel_registros_inicio(indicador)
 
 def page_registro():
     if 'registro_tipo' not in st.session_state:
