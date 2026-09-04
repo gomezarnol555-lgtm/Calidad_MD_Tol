@@ -3,9 +3,7 @@ import pandas as pd
 import altair as alt
 import sqlite3, hashlib, os, base64, threading
 from io import BytesIO
-from openpyxl import Workbook, load_workbook
 from openpyxl.styles import Font, PatternFill, Alignment
-from openpyxl.utils import get_column_letter
 from datetime import datetime, date, timedelta
 from pathlib import Path
 from uuid import uuid4
@@ -14,8 +12,6 @@ APP_NAME = "Calidad MD | PNC y ME"
 LOGO_MUNDO_DULCE_BASE64 = "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"
 DB_PATH = "calidad.db"
 UPLOAD_DIR = Path("evidencias_calidad")
-EXCEL_PATH = Path("calidad_registros.xlsx")
-_EXCEL_LOCK = threading.RLock()
 FORCE_RESET_ADMIN = True
 ADMIN_USER = "admin"
 ADMIN_PASS = "Cambiar123!"
@@ -43,41 +39,7 @@ def read_df(q, params=()):
     finally: c.close()
 def exec_sql(q, params=()):
     c=conn(); cur=c.cursor(); cur.execute(q,params); c.commit(); lid=cur.lastrowid; c.close()
-    q_upper=str(q).upper()
-    tablas_excel=['PNC_REGISTROS','ME_REGISTROS','DDM_RX_REGISTROS','MUESTRAS_10_MESES','MUESTRAS_12_MESES_ALERGENO','MUESTRAS_12_MESES_DUVALIN','MUESTRAS_12_MESES_NAVE2','MUESTRAS_15_MESES','MUESTRAS_18_MESES','MUESTRAS_24_MESES']
-    if any(t in q_upper for t in tablas_excel) and any(a in q_upper for a in ['INSERT','UPDATE','DELETE']):
-        try: sync_excel_desde_db()
-        except Exception as e: st.session_state['excel_sync_error']=str(e)
     return lid
-
-def sync_excel_desde_db():
-    """Replica las diez tablas operativas en un único libro, una hoja por tabla."""
-    hojas={
-        'PNC':'pnc_registros','Materia Extraña':'me_registros','Detector Metales RX':'ddm_rx_registros',
-        '10 Meses':'muestras_10_meses','12 Meses Alérgeno':'muestras_12_meses_alergeno',
-        '12 Meses Duvalin':'muestras_12_meses_duvalin','12 Meses Nave 2':'muestras_12_meses_nave2',
-        '15 Meses':'muestras_15_meses','18 Meses':'muestras_18_meses','24 Meses':'muestras_24_meses'
-    }
-    with _EXCEL_LOCK:
-        wb=load_workbook(EXCEL_PATH) if EXCEL_PATH.exists() else Workbook()
-        if 'Sheet' in wb.sheetnames and len(wb.sheetnames)==1: wb.remove(wb['Sheet'])
-        for nombre,tabla in hojas.items():
-            df=read_df(f'SELECT * FROM {tabla} ORDER BY id ASC')
-            ws=wb[nombre] if nombre in wb.sheetnames else wb.create_sheet(nombre)
-            ws.delete_rows(1,ws.max_row)
-            headers=list(df.columns)
-            if not headers:
-                # Obtiene encabezados aun cuando no existan registros.
-                c=conn(); headers=[r[1] for r in c.execute(f'PRAGMA table_info({tabla})').fetchall()]; c.close()
-            for col,h in enumerate(headers,1):
-                cell=ws.cell(1,col,h); cell.font=Font(bold=True,color='FFFFFF'); cell.fill=PatternFill('solid',fgColor='062C36'); cell.alignment=Alignment(horizontal='center')
-            for r_idx,row in enumerate(df.itertuples(index=False,name=None),2):
-                for c_idx,value in enumerate(row,1): ws.cell(r_idx,c_idx,value)
-            ws.freeze_panes='A2'; ws.auto_filter.ref=f'A1:{get_column_letter(max(1,len(headers)))}{max(1,ws.max_row)}'
-            for i,h in enumerate(headers,1):
-                max_len=max([len(str(h))]+[len(str(ws.cell(r,i).value or '')) for r in range(2,min(ws.max_row,200)+1)])
-                ws.column_dimensions[get_column_letter(i)].width=min(max(max_len+2,12),45)
-        wb.save(EXCEL_PATH)
 
 def reset_autoincrement(table):
     try:
@@ -1374,30 +1336,13 @@ def styles(compact=False):
         font-weight:900 !important;
         text-align:left !important;
     }
-
-    /* Ajuste definitivo de posicion superior en versiones nuevas y anteriores de Streamlit */
-    [data-testid="stAppViewContainer"], [data-testid="stAppViewContainer"] > .main, .main { padding-top:0 !important; margin-top:0 !important; }
-    [data-testid="stMain"], [data-testid="stMainBlockContainer"], .stMainBlockContainer, .main .block-container {
-        padding-top:.25rem !important; margin-top:0 !important;
-    }
-    .topbar { height:60px !important; margin-top:0 !important; margin-bottom:.45rem !important; }
-    .home-hero { min-height:68px !important; padding:.8rem 1.2rem !important; margin:0 0 .45rem 0 !important; display:flex; align-items:center; }
-    .home-hero-title { font-size:1.7rem !important; white-space:normal !important; }
-    .indicator-title { min-height:42px; display:flex; align-items:center; color:#0B3440; font-size:1.02rem; font-weight:950; }
-    .toolbar-marker,.chart-marker { display:none; }
-    div[data-testid="column"]:has(.toolbar-marker) { display:flex !important; align-items:center !important; justify-content:flex-end !important; }
-    div[data-testid="column"]:has(.toolbar-marker) button { border-radius:999px !important; min-height:36px !important; padding:.3rem .72rem !important; font-size:.76rem !important; font-weight:850 !important; border:1px solid #D7E1EC !important; background:#FFF !important; color:#526078 !important; box-shadow:0 5px 14px rgba(15,23,42,.06) !important; }
-    div[data-testid="stPopoverBody"] { min-width:360px !important; }
-    .kpi { min-height:150px !important; height:100% !important; margin-bottom:.85rem !important; }
-    div[data-testid="stHorizontalBlock"]:has(.kpi) { align-items:stretch !important; gap:1rem !important; margin-bottom:.75rem !important; }
-    div[data-testid="stHorizontalBlock"]:has(.kpi) > div[data-testid="column"] { display:flex !important; min-width:0 !important; }
-    div[data-testid="stHorizontalBlock"]:has(.chart-marker) { margin-top:.75rem !important; padding-top:.25rem !important; }
     </style>
     """, unsafe_allow_html=True)
 
 def init_state():
     if 'auth' not in st.session_state: st.session_state.auth=None
     if 'page' not in st.session_state: st.session_state.page='Inicio'
+    if 'inicio_indicador' not in st.session_state: st.session_state.inicio_indicador='PNC'
 
 def login():
     if st.session_state.auth: return st.session_state.auth
@@ -1446,103 +1391,96 @@ def left_menu():
         st.rerun()
 
 
-def _selector_indicador_actual(indicador,key):
-    opciones=['PNC','Materia extraña','Producto segregado por detector de metales y RX','SPAC']
-    with st.popover('Indicador',use_container_width=True):
-        nuevo=st.radio('Seleccionar indicador',opciones,index=opciones.index(indicador),key=key,label_visibility='collapsed')
-        if nuevo!=indicador:
-            st.session_state.inicio_indicador=nuevo
-            st.rerun()
-
-def _grafica_conteo(data,campo,titulo,etiqueta,key):
-    if data.empty or campo not in data.columns:
-        st.info('No hay información disponible para generar esta gráfica.'); return
-    serie=data[campo].fillna('').astype(str).str.strip(); serie=serie[serie.ne('')]
-    if serie.empty: st.info('No hay información disponible para generar esta gráfica.'); return
-    g=serie.value_counts().head(15).rename_axis(etiqueta).reset_index(name='Número de registros'); orden=g[etiqueta].tolist()
-    base=alt.Chart(g).encode(x=alt.X('Número de registros:Q',title='Número de registros',axis=alt.Axis(tickMinStep=1)),y=alt.Y(f'{etiqueta}:N',title=None,sort=orden),tooltip=[f'{etiqueta}:N',alt.Tooltip('Número de registros:Q',format=',d')])
-    st.altair_chart((base.mark_bar(cornerRadiusEnd=5,color='#00A884')+base.mark_text(align='left',dx=5,fontWeight='bold').encode(text=alt.Text('Número de registros:Q',format=',d'))).properties(title=titulo,height=max(260,min(500,40*len(g)))),use_container_width=True,key=key)
-
-def _grafica_mes(data,campo,titulo,key):
-    fechas=pd.to_datetime(data[campo],errors='coerce').dropna() if campo in data.columns else pd.Series(dtype='datetime64[ns]')
-    if fechas.empty: st.info('No hay fechas válidas para generar esta gráfica.'); return
-    g=fechas.dt.to_period('M').astype(str).value_counts().sort_index().rename_axis('Mes').reset_index(name='Número de registros')
-    base=alt.Chart(g).encode(x=alt.X('Mes:N',sort=None,title='Mes',axis=alt.Axis(labelAngle=-35)),y=alt.Y('Número de registros:Q',axis=alt.Axis(tickMinStep=1)),tooltip=['Mes:N',alt.Tooltip('Número de registros:Q',format=',d')])
-    st.altair_chart((base.mark_line(point=True,strokeWidth=3,color='#5850EC')+base.mark_text(dy=-12,fontWeight='bold').encode(text=alt.Text('Número de registros:Q',format=',d'))).properties(title=titulo,height=300),use_container_width=True,key=key)
-
-def panel_indicadores_spac_inicio(indicador='SPAC'):
+def panel_indicadores_spac_inicio():
+    """Indicadores SPAC historicos hasta hoy, sin limitar por calendario."""
     registros=read_df("SELECT m.fecha,m.analista,m.total_carga_datos,m.horas_nave1,m.horas_nave2,m.horas_nave3,COALESCE(e.nave,'') AS nave FROM matriz_entrega m LEFT JOIN entregas_turno e ON e.id=m.entrega_id")
-    h,sel,fil=st.columns([7.1,1.4,1.5],vertical_alignment='center')
-    with h: st.markdown('<div class="indicator-title">Indicadores SPAC</div>',unsafe_allow_html=True)
-    with sel:
-        st.markdown('<span class="toolbar-marker"></span>',unsafe_allow_html=True); _selector_indicador_actual(indicador,'selector_spac')
     if registros.empty:
-        with fil: st.markdown('<span class="toolbar-marker"></span>',unsafe_allow_html=True); st.button('Filtros',disabled=True,key='filtro_spac_vacio')
-        st.info('Aún no hay información SPAC disponible.'); return
-    registros['fecha_dt']=pd.to_datetime(registros['fecha'],errors='coerce').dt.date; registros=registros.dropna(subset=['fecha_dt'])
-    if registros.empty: st.info('La matriz no contiene fechas válidas para su consulta.'); return
-    mn,mx=registros.fecha_dt.min(),registros.fecha_dt.max()
-    with fil:
-        st.markdown('<span class="toolbar-marker"></span>',unsafe_allow_html=True)
-        with st.popover('Filtros',use_container_width=True):
-            tipo=st.radio('Agrupar por',['SEMANA','MES'],horizontal=True,format_func=lambda x:'Semana' if x=='SEMANA' else 'Mes',key='inicio_spac_tipo')
-            a,b=st.columns(2); desde=a.date_input('Fecha inicial',mn,min_value=mn,max_value=mx,key='inicio_spac_desde'); hasta=b.date_input('Fecha final',mx,min_value=mn,max_value=mx,key='inicio_spac_hasta')
-            disponibles=[]
-            for fecha in pd.date_range(desde,hasta,freq='D').date:
-                k=clave_periodo(fecha,tipo)
-                if k not in disponibles: disponibles.append(k)
-            periodos=st.multiselect('Semanas o meses',disponibles,default=disponibles,key='inicio_spac_periodos')
-            ga=datos_grafica_cumplimiento('ANALISTA',tipo); nombres=sorted(ga['Entidad'].dropna().astype(str).unique().tolist()) if not ga.empty else []
-            analistas=st.multiselect('Analistas SPAC',nombres,default=nombres[:5],key='inicio_spac_analistas')
-    if desde>hasta: st.error('La fecha inicial no puede ser posterior a la fecha final.'); return
-    ga=datos_grafica_cumplimiento('ANALISTA',tipo); gc=datos_grafica_cumplimiento('CALIDAD_NAVE',tipo); gp=datos_grafica_cumplimiento('NAVE',tipo)
-    if periodos:
-        ga=ga[ga.Periodo.isin(periodos)] if not ga.empty else ga; gc=gc[gc.Periodo.isin(periodos)] if not gc.empty else gc; gp=gp[gp.Periodo.isin(periodos)] if not gp.empty else gp
-    ga=ga[ga.Entidad.isin(analistas)] if analistas and not ga.empty else ga.iloc[0:0]
-    st.markdown('### Cumplimiento SPAC por analista'); grafica_lineas_con_valores(ga,'Cumplimiento SPAC por analista','inicio_chart_analistas')
-    c1,c2=st.columns(2)
-    with c1: grafica_lineas_con_valores(gc,'Indicador SPAC Calidad','inicio_chart_calidad')
-    with c2: grafica_lineas_con_valores(gp,'Indicador SPAC Producción','inicio_chart_produccion')
+        st.info('Aún no hay información SPAC disponible.')
+        return
+    registros['fecha_dt']=pd.to_datetime(registros['fecha'],errors='coerce')
+    registros=registros.dropna(subset=['fecha_dt'])
+    registros=registros[registros['fecha_dt'].dt.date<=date.today()]
+    if registros.empty:
+        st.info('No hay información SPAC disponible hasta la fecha actual.')
+        return
 
-def _panel_registros_inicio(tipo):
-    cfg={'PNC':('pnc_registros','fecha_apertura','defecto','Producto No Conforme','analista'),'Materia extraña':('me_registros','_fecha','descripcion_hallazgo','Materia extraña','analista_detecta'),'Producto segregado por detector de metales y RX':('ddm_rx_registros','_fecha','descripcion_hallazgo','Producto segregado por detector de metales y RX','analista_detecta')}
-    tabla,fecha,defecto,titulo,c_analista=cfg[tipo]; d=read_df(f'SELECT * FROM {tabla}')
-    if fecha=='_fecha': d[fecha]=pd.to_datetime(dict(year=pd.to_numeric(d.get('anio'),errors='coerce'),month=pd.to_numeric(d.get('mes'),errors='coerce'),day=pd.to_numeric(d.get('dia'),errors='coerce')),errors='coerce') if not d.empty else pd.Series(dtype='datetime64[ns]')
-    else: d[fecha]=pd.to_datetime(d[fecha],errors='coerce') if fecha in d.columns else pd.NaT
-    fechas=d[fecha].dropna(); lineas=sorted(d.get('linea_sector',pd.Series(dtype=str)).dropna().astype(str).unique()); naves=sorted(d.get('nave',pd.Series(dtype=str)).dropna().astype(str).unique()); analistas=sorted(d.get(c_analista,pd.Series(dtype=str)).dropna().astype(str).unique())
-    h,sel,fil=st.columns([7.1,1.4,1.5],vertical_alignment='center')
-    with h: st.markdown(f'<div class="indicator-title">Indicadores de {titulo}</div>',unsafe_allow_html=True)
-    with sel: st.markdown('<span class="toolbar-marker"></span>',unsafe_allow_html=True); _selector_indicador_actual(tipo,f'selector_{tabla}')
-    with fil:
-        st.markdown('<span class="toolbar-marker"></span>',unsafe_allow_html=True)
-        with st.popover('Filtros',use_container_width=True):
-            if not fechas.empty:
-                mn,mx=fechas.min().date(),fechas.max().date(); a,b=st.columns(2); desde=a.date_input('Fecha inicial',mn,min_value=mn,max_value=mx,key=f'desde_{tabla}'); hasta=b.date_input('Fecha final',mx,min_value=mn,max_value=mx,key=f'hasta_{tabla}')
-            else: desde=hasta=None
-            sl=st.multiselect('Línea/Sector',lineas,key=f'lineas_{tabla}'); sn=st.multiselect('Nave',naves,key=f'naves_{tabla}'); sa=st.multiselect('Analista',analistas,key=f'analistas_{tabla}')
-    x=d.copy()
-    if desde and hasta:
-        if desde>hasta: st.error('La fecha inicial no puede ser posterior a la fecha final.'); return
-        x=x[(x[fecha].dt.date>=desde)&(x[fecha].dt.date<=hasta)]
-    if sl:x=x[x.linea_sector.isin(sl)]
-    if sn:x=x[x.nave.isin(sn)]
-    if sa:x=x[x[c_analista].isin(sa)]
-    total=len(x); ln=x.get('linea_sector',pd.Series(dtype=str)).replace('',pd.NA).nunique(); dn=x.get(defecto,pd.Series(dtype=str)).replace('',pd.NA).nunique(); meses=x[fecha].dropna().dt.to_period('M').nunique()
-    if tipo=='PNC':
-        e=x.get('status',pd.Series('',index=x.index)).fillna('').astype(str).str.upper(); ce=int(e.eq('CERRADO').sum()); ab=int(e.eq('ABIERTO').sum()); kg=pd.to_numeric(x.get('cantidad_total_pnc',pd.Series(0,index=x.index)),errors='coerce').fillna(0).sum(); cards=[('Total de PNC',f'{total:,}','Número de registros totales','#00A884'),('% de cierre',f'{(ce/total*100 if total else 0):.1f}%','PNC cerrados respecto al total','#5850EC'),('Kg totales de PNC',f'{kg:,.2f} kg','Cantidad total registrada','#3F7BFF'),('PNC abiertos',f'{ab:,}','Registros pendientes de cierre','#F59E0B')]
-    else: cards=[('Registros',total,'Total filtrado','#00A884'),('Defectos',dn,'Tipos identificados','#5850EC'),('Líneas / sectores',ln,'Con registros','#3F7BFF'),('Meses',meses,'Periodos con actividad','#F59E0B')]
-    cols=st.columns(4,gap='large')
-    for c,(la,va,pi,co) in zip(cols,cards):
-        with c: st.markdown(f'<div class="kpi" style="--c:{co}"><div class="kpi-label">{la}</div><div class="kpi-value">{va}</div><div class="kpi-foot">{pi}</div></div>',unsafe_allow_html=True)
-    a,b=st.columns(2)
-    with a: st.markdown('<span class="chart-marker"></span>',unsafe_allow_html=True); _grafica_conteo(x,defecto,f'Defectos vs Número de registros de {"PNC" if tipo=="PNC" else titulo}','Defecto',f'def_{tabla}')
-    with b: _grafica_conteo(x,'linea_sector',f'Línea/Sector vs Número de registros de {"PNC" if tipo=="PNC" else titulo}','Línea/Sector',f'lin_{tabla}')
-    _grafica_mes(x,fecha,f'Mes vs Número de registros de {"PNC" if tipo=="PNC" else titulo}',f'mes_{tabla}')
+    # Estos controles usan claves exclusivas y no modifican inicio_indicador.
+    with st.popover('Filtros',use_container_width=True):
+        tipo=st.radio(
+            'Modo de visualización',
+            ['SEMANA','MES'],
+            horizontal=True,
+            format_func=lambda x:'Semana' if x=='SEMANA' else 'Mes',
+            key='spac_modo_visualizacion'
+        )
+        grafica_base=datos_grafica_cumplimiento('ANALISTA',tipo)
+        disponibles=sorted(grafica_base['Entidad'].dropna().astype(str).unique().tolist()) if not grafica_base.empty else []
+        todos=st.checkbox('Seleccionar todos los analistas',value=True,key='spac_seleccionar_todos')
+        if todos:
+            analistas=disponibles
+            st.caption(f'{len(disponibles)} analistas seleccionados.')
+        else:
+            analistas=st.multiselect('Analistas',disponibles,key='spac_analistas_seleccionados')
+
+    grafica_analistas=datos_grafica_cumplimiento('ANALISTA',tipo)
+    grafica_calidad=datos_grafica_cumplimiento('CALIDAD_NAVE',tipo)
+    grafica_produccion=datos_grafica_cumplimiento('NAVE',tipo)
+
+    # Excluye periodos posteriores al dia actual, pero conserva todo el historico.
+    clave_actual=clave_periodo(date.today(),tipo)
+    for nombre in ('grafica_analistas','grafica_calidad','grafica_produccion'):
+        df_local=locals()[nombre]
+        if not df_local.empty:
+            locals()[nombre]=df_local[df_local['Periodo'].astype(str)<=clave_actual].copy()
+    if not grafica_analistas.empty:
+        grafica_analistas=grafica_analistas[grafica_analistas['Periodo'].astype(str)<=clave_actual]
+        grafica_analistas=grafica_analistas[grafica_analistas['Entidad'].astype(str).isin(analistas)] if analistas else grafica_analistas.iloc[0:0]
+    if not grafica_calidad.empty:
+        grafica_calidad=grafica_calidad[grafica_calidad['Periodo'].astype(str)<=clave_actual]
+    if not grafica_produccion.empty:
+        grafica_produccion=grafica_produccion[grafica_produccion['Periodo'].astype(str)<=clave_actual]
+
+    st.markdown('### Cumplimiento SPAC por analista')
+    grafica_lineas_con_valores(grafica_analistas,'Cumplimiento SPAC por analista','inicio_chart_analistas')
+    col1,col2=st.columns(2)
+    with col1:
+        grafica_lineas_con_valores(grafica_calidad,'Indicador SPAC Calidad','inicio_chart_calidad')
+    with col2:
+        grafica_lineas_con_valores(grafica_produccion,'Indicador SPAC Producción','inicio_chart_produccion')
 
 def page_inicio():
+    df=read_df('SELECT * FROM pnc_registros')
+    if df.empty: df=pd.DataFrame(columns=['fecha_apertura','status','linea_sector','clasificacion','material_hallado','cantidad_total_pnc'])
+    df['fecha_apertura']=pd.to_datetime(df['fecha_apertura'],errors='coerce')
     st.markdown('<div class="home-hero"><div class="home-hero-title">Panel Calidad Mundo Dulce</div></div>',unsafe_allow_html=True)
-    indicador=st.session_state.get('inicio_indicador','PNC')
-    panel_indicadores_spac_inicio(indicador) if indicador=='SPAC' else _panel_registros_inicio(indicador)
+    with st.expander('Filtros dinámicos de indicadores',expanded=False):
+        a,b,c,d=st.columns(4); fs=a.multiselect('Status',sorted(df['status'].dropna().unique())); fl=b.multiselect('Línea/Sector',sorted(df['linea_sector'].dropna().unique())); fc=c.multiselect('Clasificación',sorted(df['clasificacion'].dropna().unique())); focus=d.radio('Enfoque',['Todos','Abiertos','Cerrados','Con ME'])
+    data=df.copy()
+    if fs: data=data[data['status'].isin(fs)]
+    if fl: data=data[data['linea_sector'].isin(fl)]
+    if fc: data=data[data['clasificacion'].isin(fc)]
+    if focus=='Abiertos': data=data[data['status']=='ABIERTO']
+    if focus=='Cerrados': data=data[data['status']=='CERRADO']
+    if focus=='Con ME': data=data[data['material_hallado'].fillna('').astype(str).str.len()>0]
+    total=len(data); abiertos=int((data['status']=='ABIERTO').sum()) if not data.empty else 0; cerrados=int((data['status']=='CERRADO').sum()) if not data.empty else 0; me=int(data['material_hallado'].fillna('').astype(str).str.len().gt(0).sum()) if not data.empty else 0; kg=float(data['cantidad_total_pnc'].fillna(0).sum()) if not data.empty else 0; avance=int(cerrados/total*100) if total else 0
+    k1,k2,k3,k4=st.columns(4)
+    with k1: st.markdown(f'<div class="kpi" style="--c:#00A884"><div class="kpi-label">PNC abiertos</div><div class="kpi-value">{abiertos}</div><div class="kpi-foot">Registros pendientes</div></div>',unsafe_allow_html=True)
+    with k2: st.markdown(f'<div class="kpi" style="--c:#5850EC"><div class="kpi-label">Avance de cierre</div><div class="kpi-value">{avance}%</div><div class="kpi-foot">Cerrados vs total</div></div>',unsafe_allow_html=True)
+    with k3: st.markdown(f'<div class="kpi" style="--c:#F59E0B"><div class="kpi-label">Registros filtrados</div><div class="kpi-value">{total}</div><div class="kpi-foot">Coincidencias</div></div>',unsafe_allow_html=True)
+    with k4: st.markdown(f'<div class="kpi" style="--c:#E11D48"><div class="kpi-label">Kg PNC / ME</div><div class="kpi-value">{kg:,.1f}</div><div class="kpi-foot">Hallazgos ME: {me}</div></div>',unsafe_allow_html=True)
+    l,r=st.columns([2,1])
+    with l:
+        st.markdown('<div class="panel"><div class="panel-header">Tendencia mensual dinámica</div><div class="panel-body">',unsafe_allow_html=True)
+        if not data.empty:
+            t=data.dropna(subset=['fecha_apertura']).copy(); t['Mes']=t['fecha_apertura'].dt.strftime('%Y-%m'); st.bar_chart(t.groupby(['Mes','status']).size().unstack(fill_value=0),use_container_width=True)
+        else: st.info('No hay información disponible para generar la gráfica.')
+        st.markdown('</div></div>',unsafe_allow_html=True)
+    with r:
+        st.markdown('<div class="panel"><div class="panel-header">Distribución por clasificación</div><div class="panel-body">',unsafe_allow_html=True)
+        if not data.empty: st.dataframe(data['clasificacion'].fillna('Sin clasificación').value_counts().rename_axis('Clasificación').reset_index(name='Registros'),use_container_width=True,hide_index=True)
+        else: st.info('No hay información disponible.')
+        st.markdown('</div></div>',unsafe_allow_html=True)
+    panel_indicadores_spac_inicio()
 
 def page_registro():
     if 'registro_tipo' not in st.session_state:
@@ -1726,7 +1664,6 @@ def page_consulta():
         'MATRIZ':'Matriz de entrega de turno'
     }
     st.markdown(f'''<div class="registro-full-panel"><div class="registro-pill">Consulta y descarga</div><div class="registro-full-title">{titulos.get(tipo_consulta,'Consulta')}</div></div>''',unsafe_allow_html=True)
-    if st.session_state.pop('excel_sync_error',None): st.warning('No fue posible actualizar el libro Excel. Verifica que el archivo no esté abierto en otro programa.')
     def prep(df):
         v=df.copy()
         if all(c in v.columns for c in ['dia','mes','anio']):
@@ -2530,8 +2467,6 @@ def page_auditoria(): st.title('Auditoría'); st.dataframe(read_df('SELECT * FRO
 
 def main():
     init_state(); init_db()
-    try: sync_excel_desde_db()
-    except Exception as e: st.session_state['excel_sync_error']=str(e)
     if FORCE_RESET_ADMIN: reset_admin()
     user=login()
     styles(False)
