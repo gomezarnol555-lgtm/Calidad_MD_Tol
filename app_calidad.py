@@ -128,7 +128,7 @@ def excel_matriz(df):
             for cell in ws[1]:cell.font=Font(bold=True,color='FFFFFF');cell.fill=PatternFill('solid',fgColor='062C36')
     return b.getvalue()
 
-def pdf_pnc(rid):
+def pdf_pnc_original(rid):
     """Genera el formato corporativo de Producto No Conforme del registro seleccionado."""
     try:
         from reportlab.lib.pagesizes import A4
@@ -330,7 +330,7 @@ def _pdf_hallazgo_base(tabla,rid,tipo_formato):
         t(c,'e) El producto con metal debe ser llevado al Laboratorio y disuelto para la separación del metal. El metal se guarda e',28,489,6.8)
         t(c,'identifica para la posterior investigación de su origen.',28,477,6.8)
         line_value(c,'PRODUCTO:',f'{v("item")} - {v("producto")}'.strip(' -'),442,label_x=28,value_x=119,right=x3,bold=True)
-        line_value(c,'LOTE:',v('lote'),400,label_x=28,value_x=119,right=609,bold=True)
+        line_value(c,'LOTE:',v('lote'),400,label_x=28,value_x=119,right=x3,bold=True)
         t(c,'DESCRIPCIÓN DEL MATERIAL HALLADO:',28,361,8,True); c.line(320,359,x3,359); c.line(x0,334,x3,334)
         wrap(c,v('descripcion_hallazgo'),323,362,x3-326,7.6,12,2)
         t(c,'UBICACIÓN:',28,308,8,True)
@@ -348,11 +348,221 @@ def _pdf_hallazgo_base(tabla,rid,tipo_formato):
             c.line(cx-78,44,cx+78,44); c.setFont('Helvetica',6.7); c.drawCentredString(cx,31,l1); c.drawCentredString(cx,20,l2)
     c.showPage(); c.save(); return b.getvalue()
 
-def pdf_materia_extrana(rid):
+def pdf_materia_extrana_original(rid):
     return _pdf_hallazgo_base('me_registros',rid,'ME')
 
-def pdf_detector_metales_rx(rid):
+def pdf_detector_metales_rx_original(rid):
     return _pdf_hallazgo_base('ddm_rx_registros',rid,'DDM')
+
+# ===== PLANTILLAS PDF/IMAGEN V3: esquema aislado y compatible =====
+PDFV3_META={
+ 'PNC':('Informe de Producto No Conforme','pnc_registros',pdf_pnc_original),
+ 'ME':('Reporte de Hallazgos de Materia Extrana','me_registros',pdf_materia_extrana_original),
+ 'DDM_RX':('Detector de Metales y RX','ddm_rx_registros',pdf_detector_metales_rx_original)}
+PDFV3_FORMULAS={
+ 'PNC':['__numero_anio__','__etapa_codigo__','__item_producto__','__responsables__','__observaciones_pnc__'],
+ 'ME':['__numero_anio__','__fecha_dmy__','__item_producto__','__acciones_hallazgo__','__linea_equipo__'],
+ 'DDM_RX':['__numero_anio__','__fecha_dmy__','__item_producto__','__acciones_hallazgo__','__linea_equipo__']}
+PDFV3_SEED={
+ 'PNC':[('PNC No.','__numero_anio__',482,670,54,8,1),('Fecha','fecha_apertura',211,633,320,8,0),('Sector','linea_sector',211,614,320,8,0),('Codigo NC','__etapa_codigo__',211,595,320,8,0),('Producto','__item_producto__',211,576,320,8,0),('Lote','lote',211,557,320,8,0),('Cantidad','cantidad_observada',211,538,320,8,0),('Responsables','__responsables__',211,519,320,8,0),('Acciones','acciones_inmediatas',64,458,466,8,0),('Observaciones','__observaciones_pnc__',64,299,466,8,0)],
+ 'ME':[('N Hallazgo','__numero_anio__',108,733,140,7.5,1),('Fecha','__fecha_dmy__',108,718,140,7.5,0),('Linea','linea_sector',108,688,445,7.7,0),('Sector','familia',108,673,445,7.7,0),('Equipo','equipo_hallazgo',108,658,445,7.7,0),('Producto','__item_producto__',108,643,445,7.7,0),('Lote','lote',108,628,445,7.7,0),('Material','descripcion_hallazgo',225,596,329,7.5,0),('Accion','__acciones_hallazgo__',48,299,506,7.5,0),('Investigacion','investigacion_origen',48,241,506,7.5,0),('Analista','analista_detecta',108,146,114,7,0),('Supervisor','supervisor_responsable',249,146,114,7,0)],
+ 'DDM_RX':[('Rechazo No.','__numero_anio__',119,643,180,8,1),('Fecha','__fecha_dmy__',119,602,180,8,0),('Linea / Equipo','__linea_equipo__',273,547,292,7.8,0),('Producto','__item_producto__',119,442,445,7.7,0),('Lote','lote',119,400,445,7.7,0),('Material','descripcion_hallazgo',323,362,242,7.6,0),('Accion','__acciones_hallazgo__',190,112,375,7.5,0),('Investigacion','investigacion_origen',190,85,375,7.5,0),('Analista','analista_detecta',34,48,156,6.7,0),('Supervisor','supervisor_responsable',220,48,156,6.7,0)]}
+def init_pdfv3(cur):
+ # Nombres v3 evitan conflictos con tablas de versiones anteriores.
+ cur.execute("CREATE TABLE IF NOT EXISTS pdfv3_formatos(id INTEGER PRIMARY KEY AUTOINCREMENT,codigo TEXT UNIQUE,nombre TEXT,tabla_origen TEXT,activo INTEGER DEFAULT 1)")
+ cur.execute("CREATE TABLE IF NOT EXISTS pdfv3_plantillas(id INTEGER PRIMARY KEY AUTOINCREMENT,formato_id INTEGER,version INTEGER,nombre TEXT,mime TEXT,contenido BLOB,ancho REAL,alto REAL,activa INTEGER DEFAULT 0,descripcion TEXT,usuario TEXT,fecha TEXT,UNIQUE(formato_id,version))")
+ cur.execute("CREATE TABLE IF NOT EXISTS pdfv3_campos(id INTEGER PRIMARY KEY AUTOINCREMENT,formato_id INTEGER,etiqueta TEXT,origen TEXT,pagina INTEGER DEFAULT 1,x REAL,y REAL,ancho REAL,tamano REAL,negrita INTEGER DEFAULT 0,alineacion TEXT DEFAULT 'IZQUIERDA',lineas INTEGER DEFAULT 1,orden INTEGER DEFAULT 0,activo INTEGER DEFAULT 1,UNIQUE(formato_id,etiqueta))")
+ for codigo,(nombre,tabla,_) in PDFV3_META.items():
+  cur.execute('INSERT OR IGNORE INTO pdfv3_formatos(codigo,nombre,tabla_origen,activo) VALUES(?,?,?,1)',(codigo,nombre,tabla)); fid=cur.execute('SELECT id FROM pdfv3_formatos WHERE codigo=?',(codigo,)).fetchone()[0]
+  if cur.execute('SELECT COUNT(*) FROM pdfv3_campos WHERE formato_id=?',(fid,)).fetchone()[0]==0:
+   for i,(et,origen,x,y,a,tam,bold) in enumerate(PDFV3_SEED[codigo]): cur.execute('INSERT INTO pdfv3_campos(formato_id,etiqueta,origen,pagina,x,y,ancho,tamano,negrita,alineacion,lineas,orden,activo) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,1)',(fid,et,origen,1,x,y,a,tam,bold,'IZQUIERDA',6 if et in ('Acciones','Observaciones','Material','Investigacion') else 1,i))
+def _pdfv3_rw():
+ try:
+  from pypdf import PdfReader,PdfWriter; return PdfReader,PdfWriter
+ except Exception:
+  try:
+   from PyPDF2 import PdfReader,PdfWriter; return PdfReader,PdfWriter
+  except Exception:return None,None
+def _pdfv3_value(o,r,rid,formato=''):
+ def v(k):
+  z=r.get(k,'');return '' if z is None or pd.isna(z) else str(z)
+ if o=='__numero_anio__':
+  an=v('anio')
+  if not an:
+   try:an=str(pd.to_datetime(v('fecha_apertura')).year)
+   except Exception:an=str(datetime.now().year)
+  return f'{rid}/{an}'
+ if o=='__fecha_dmy__':
+  try:return date(int(float(v('anio'))),int(float(v('mes'))),int(float(v('dia')))).strftime('%d/%m/%Y')
+  except Exception:return ''
+ if o=='__etapa_codigo__':return '_'.join(z for z in [v('etapa'),v('codigo_defecto')] if z)
+ if o=='__item_producto__':return ' - '.join(z for z in [v('item'),v('descripcion_producto') or v('producto')] if z)
+ if o=='__responsables__':return ' / '.join(z for z in [v('supervisor'),v('analista')] if z)
+ if o=='__observaciones_pnc__':return ('Descripcion: '+v('descripcion_defecto')+'\n'+v('observaciones')).strip()
+ if o=='__acciones_hallazgo__':return v('acciones_inmediatas') or v('accion_contingente')
+ if o=='__linea_equipo__':return ' / '.join(z for z in [v('linea_sector'),v('equipo_hallazgo')] if z)
+ if str(o).startswith('__extra__:'):
+  campo=str(o).split(':',1)[1]
+  d=read_df('SELECT valor FROM registro_campos_valores WHERE formato=? AND registro_id=? AND campo=?',(formato,rid,campo))
+  return '' if d.empty else str(d.iloc[0].valor or '')
+ return v(o)
+def _pdfv3_draw(c,text,x,y,w,size,bold,align,maxlines):
+ from reportlab.pdfbase.pdfmetrics import stringWidth
+ font='Helvetica-Bold' if bold else 'Helvetica'; lines=[]
+ for block in str(text or '').splitlines() or ['']:
+  cur=''
+  for word in block.split():
+   q=(cur+' '+word).strip()
+   if not cur or stringWidth(q,font,size)<=w:cur=q
+   else:lines.append(cur);cur=word
+  if cur:lines.append(cur)
+ c.setFont(font,size)
+ for i,z in enumerate(lines[:max(1,int(maxlines))]):
+  yy=y-i*(size+2)
+  if align=='CENTRO':c.drawCentredString(x+w/2,yy,z)
+  elif align=='DERECHA':c.drawRightString(x+w,yy,z)
+  else:c.drawString(x,yy,z)
+def _pdfv3_base_pdf(raw,mime,w,h):
+ Reader,Writer=_pdfv3_rw()
+ if mime=='application/pdf':return raw
+ from reportlab.pdfgen import canvas
+ from reportlab.lib.utils import ImageReader
+ b=BytesIO();c=canvas.Canvas(b,pagesize=(w,h));c.drawImage(ImageReader(BytesIO(raw)),0,0,width=w,height=h,mask='auto');c.showPage();c.save();return b.getvalue()
+def pdfv3_generate(codigo,rid):
+ f=read_df('SELECT * FROM pdfv3_formatos WHERE codigo=? AND activo=1',(codigo,))
+ if f.empty:return None
+ f=f.iloc[0];d=read_df(f'SELECT * FROM {f.tabla_origen} WHERE id=?',(rid,));p=read_df('SELECT * FROM pdfv3_plantillas WHERE formato_id=? AND activa=1 ORDER BY version DESC LIMIT 1',(int(f.id),))
+ if d.empty or p.empty:return None
+ Reader,Writer=_pdfv3_rw()
+ if not Reader:return None
+ p=p.iloc[0];base=Reader(BytesIO(_pdfv3_base_pdf(bytes(p.contenido),str(p.mime),float(p.ancho),float(p.alto))));fields=read_df('SELECT * FROM pdfv3_campos WHERE formato_id=? AND activo=1 ORDER BY pagina,orden,id',(int(f.id),));r=d.iloc[0].to_dict();writer=Writer();from reportlab.pdfgen import canvas
+ for n,page in enumerate(base.pages,1):
+  box=page.mediabox;b=BytesIO();c=canvas.Canvas(b,pagesize=(float(box.width),float(box.height)))
+  for _,q in fields[fields.pagina==n].iterrows():_pdfv3_draw(c,_pdfv3_value(str(q.origen),r,rid,codigo),float(q.x),float(q.y),float(q.ancho),float(q.tamano),bool(q.negrita),str(q.alineacion),int(q.lineas))
+  c.save();page.merge_page(Reader(BytesIO(b.getvalue())).pages[0]);writer.add_page(page)
+ z=BytesIO();writer.write(z);return z.getvalue()
+def pdf_pnc(rid):
+ try:return pdfv3_generate('PNC',rid) or pdf_pnc_original(rid)
+ except Exception:return pdf_pnc_original(rid)
+def pdf_materia_extrana(rid):
+ try:return pdfv3_generate('ME',rid) or pdf_materia_extrana_original(rid)
+ except Exception:return pdf_materia_extrana_original(rid)
+def pdf_detector_metales_rx(rid):
+ try:return pdfv3_generate('DDM_RX',rid) or pdf_detector_metales_rx_original(rid)
+ except Exception:return pdf_detector_metales_rx_original(rid)
+def _pdfv3_fuentes_registro(codigo, tabla_origen):
+ """Devuelve únicamente campos reales del registro, fórmulas válidas y campos personalizados activos."""
+ db=conn()
+ try:
+  columnas=[r[1] for r in db.execute(f'PRAGMA table_info({tabla_origen})').fetchall()]
+ finally:db.close()
+ cfg=campos_registro(codigo,True)
+ etiquetas={str(r.campo):str(r.etiqueta or r.campo) for _,r in cfg.iterrows()} if not cfg.empty else {}
+ fuentes=[]
+ for campo in columnas:
+  if campo in CAMPOS_SISTEMA_NO_EDITABLES:continue
+  fuentes.append({'origen':campo,'etiqueta':etiquetas.get(campo,campo.replace('_',' ').title()),'tipo':'CAMPO REAL'})
+ if not cfg.empty:
+  personalizados=cfg[cfg.es_personalizado.fillna(0).astype(int)==1]
+  for _,r in personalizados.iterrows():
+   fuentes.append({'origen':'__extra__:'+str(r.campo),'etiqueta':str(r.etiqueta),'tipo':'CAMPO PERSONALIZADO'})
+ for formula in PDFV3_FORMULAS.get(codigo,[]):
+  fuentes.append({'origen':formula,'etiqueta':formula.replace('__','').replace('_',' ').title(),'tipo':'FÓRMULA'})
+ return pd.DataFrame(fuentes).drop_duplicates(subset=['origen'],keep='first')
+
+def _pdfv3_sincronizar_campos(cur, formato_id, codigo, tabla_origen, ancho, alto):
+ """Agrega a la relación los campos del registro que aún no existen, sin alterar relaciones configuradas."""
+ fuentes=_pdfv3_fuentes_registro(codigo,tabla_origen)
+ existentes={str(r[0]) for r in cur.execute('SELECT origen FROM pdfv3_campos WHERE formato_id=?',(formato_id,)).fetchall()}
+ orden=cur.execute('SELECT COALESCE(MAX(orden),-1)+1 FROM pdfv3_campos WHERE formato_id=?',(formato_id,)).fetchone()[0]
+ agregados=0
+ for _,r in fuentes.iterrows():
+  origen=str(r.origen)
+  if origen in existentes:continue
+  base=str(r.etiqueta or origen).strip() or origen;etiqueta=base;consecutivo=2
+  while cur.execute('SELECT 1 FROM pdfv3_campos WHERE formato_id=? AND etiqueta=?',(formato_id,etiqueta)).fetchone():
+   etiqueta=f'{base} ({consecutivo})';consecutivo+=1
+  y=max(24.0,float(alto)-60.0-(agregados*18.0))
+  cur.execute('INSERT INTO pdfv3_campos(formato_id,etiqueta,origen,pagina,x,y,ancho,tamano,negrita,alineacion,lineas,orden,activo) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,0)',(formato_id,etiqueta,origen,1,36.0,y,max(80.0,float(ancho)-72.0),8.0,0,'IZQUIERDA',1,int(orden)+agregados))
+  existentes.add(origen);agregados+=1
+ return agregados
+
+def _pdfv3_reajustar_coordenadas(cur, formato_id, ancho_anterior, alto_anterior, ancho_nuevo, alto_nuevo):
+ """Escala coordenadas existentes cuando cambia el tamaño de la plantilla."""
+ if not ancho_anterior or not alto_anterior:return 0
+ ax=float(ancho_nuevo)/float(ancho_anterior);ay=float(alto_nuevo)/float(alto_anterior)
+ if ax<=0 or ay<=0:return 0
+ factor_fuente=max(0.65,min(1.60,(ax+ay)/2.0))
+ cur.execute('UPDATE pdfv3_campos SET x=x*?,y=y*?,ancho=ancho*?,tamano=MAX(5.0,tamano*?) WHERE formato_id=?',(ax,ay,ax,factor_fuente,formato_id))
+ return cur.rowcount
+
+def page_pdfv3():
+ if not is_dev():
+  st.warning('Esta sección está disponible únicamente para administradores.')
+  return
+ st.subheader('Formatos PDF e imagen de referencia');st.caption('La plantilla conserva el diseño original. Los valores se leen directamente de la tabla del registro.')
+ fs=read_df('SELECT * FROM pdfv3_formatos WHERE activo=1 ORDER BY id');codigo=st.selectbox('Formato',fs.codigo.tolist(),format_func=lambda z:str(fs[fs.codigo==z].iloc[0].nombre),key='pdfv3_codigo');f=fs[fs.codigo==codigo].iloc[0];fid=int(f.id)
+ t1,t2,t3=st.tabs(['Relacion de campos','Plantilla de referencia','Prueba'])
+ with t1:
+  fuentes=_pdfv3_fuentes_registro(codigo,str(f.tabla_origen));valid=['']+fuentes.origen.astype(str).tolist()
+  st.caption('La lista se obtiene directamente de los campos reales del registro. Activa únicamente los campos que deseas imprimir y define su posición.')
+  with st.expander('Campos disponibles del registro',expanded=False):
+   st.dataframe(fuentes.rename(columns={'origen':'Origen exacto','etiqueta':'Etiqueta del registro','tipo':'Tipo'}),use_container_width=True,hide_index=True)
+  if st.button('Sincronizar campos del registro',key='pdfv3_sync_fields_'+codigo):
+   db=conn();cur=db.cursor()
+   try:
+    plantilla=cur.execute('SELECT ancho,alto FROM pdfv3_plantillas WHERE formato_id=? AND activa=1 ORDER BY version DESC LIMIT 1',(fid,)).fetchone()
+    ancho,alto=(plantilla if plantilla else (595.28,841.89))
+    agregados=_pdfv3_sincronizar_campos(cur,fid,codigo,str(f.tabla_origen),ancho,alto);db.commit()
+   except Exception:
+    db.rollback();raise
+   finally:db.close()
+   audit(st.session_state.auth['usuario'],'SINCRONIZAR_CAMPOS_PDF',f'{codigo} | {agregados} campos');st.success(f'Sincronización terminada. Se agregaron {agregados} campos pendientes.');st.rerun()
+  df=read_df('SELECT id,etiqueta,origen,pagina,x,y,ancho,tamano,negrita,alineacion,lineas,orden,activo FROM pdfv3_campos WHERE formato_id=? ORDER BY orden',(fid,))
+  ed=st.data_editor(df,use_container_width=True,hide_index=True,num_rows='dynamic',disabled=['id'],key='pdfv3_editor_'+codigo,column_config={'origen':st.column_config.SelectboxColumn('Campo real o formula',options=valid),'alineacion':st.column_config.SelectboxColumn(options=['IZQUIERDA','CENTRO','DERECHA']),'negrita':st.column_config.CheckboxColumn(),'activo':st.column_config.CheckboxColumn()})
+  if st.button('Guardar relacion de campos',type='primary',key='pdfv3_save_fields'):
+   bad=[str(z) for z in ed.origen if str(z) not in valid]
+   activos_sin_origen=[str(r.etiqueta) for _,r in ed.iterrows() if bool(r.activo) and not str(r.origen or '').strip()]
+   if bad:st.error('Existen campos no relacionados exactamente con el registro: '+', '.join(dict.fromkeys(bad)))
+   elif activos_sin_origen:st.error('Relaciona un campo real o fórmula para: '+', '.join(activos_sin_origen)+'.')
+   else:
+    db=conn();cur=db.cursor();cur.execute('DELETE FROM pdfv3_campos WHERE formato_id=?',(fid,))
+    for _,q in ed.iterrows():cur.execute('INSERT INTO pdfv3_campos(formato_id,etiqueta,origen,pagina,x,y,ancho,tamano,negrita,alineacion,lineas,orden,activo) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)',(fid,str(q.etiqueta),str(q.origen),int(q.pagina),float(q.x),float(q.y),float(q.ancho),float(q.tamano),int(bool(q.negrita)),str(q.alineacion),int(q.lineas),int(q.orden),int(bool(q.activo))))
+    db.commit();db.close();audit(st.session_state.auth['usuario'],'ACTUALIZAR_CAMPOS_PDF',codigo);st.success('Relacion guardada correctamente.');st.rerun()
+ with t2:
+  st.info('Puedes usar PDF, PNG, JPG o JPEG. Si el cargador presenta status code 403, abre la app directamente fuera de un iframe. Mientras tanto, el generador interno actual sigue funcionando.')
+  up=st.file_uploader('Cargar plantilla vacia',type=['pdf','png','jpg','jpeg'],key='pdfv3_upload_'+codigo);desc=st.text_input('Descripcion del cambio',key='pdfv3_desc_'+codigo)
+  if st.button('Guardar y activar plantilla',type='primary',key='pdfv3_save_template'):
+   if up is None:st.error('Selecciona un archivo de referencia.')
+   else:
+    try:
+     raw=bytes(up.getvalue());name=up.name.lower();Reader,_=_pdfv3_rw()
+     if name.endswith('.pdf'):
+      reader=Reader(BytesIO(raw));box=reader.pages[0].mediabox;mime='application/pdf';w=float(box.width);h=float(box.height)
+     else:
+      from PIL import Image
+      im=Image.open(BytesIO(raw));im.verify();im=Image.open(BytesIO(raw));w=float(im.width);h=float(im.height);mime='image/png' if name.endswith('.png') else 'image/jpeg'
+     db=conn();cur=db.cursor()
+     try:
+      anterior=cur.execute('SELECT ancho,alto FROM pdfv3_plantillas WHERE formato_id=? AND activa=1 ORDER BY version DESC LIMIT 1',(fid,)).fetchone()
+      ver=cur.execute('SELECT COALESCE(MAX(version),0)+1 FROM pdfv3_plantillas WHERE formato_id=?',(fid,)).fetchone()[0]
+      if anterior:_pdfv3_reajustar_coordenadas(cur,fid,anterior[0],anterior[1],w,h)
+      agregados=_pdfv3_sincronizar_campos(cur,fid,codigo,str(f.tabla_origen),w,h)
+      cur.execute('UPDATE pdfv3_plantillas SET activa=0 WHERE formato_id=?',(fid,))
+      cur.execute('INSERT INTO pdfv3_plantillas(formato_id,version,nombre,mime,contenido,ancho,alto,activa,descripcion,usuario,fecha) VALUES(?,?,?,?,?,?,?,1,?,?,?)',(fid,ver,up.name,mime,raw,w,h,desc,st.session_state.auth['usuario'],now_iso()))
+      db.commit()
+     except Exception:
+      db.rollback();raise
+     finally:db.close()
+     audit(st.session_state.auth['usuario'],'CARGAR_PLANTILLA_PDF',f'{codigo} v{ver} | {agregados} campos nuevos');st.success('Plantilla guardada y activada. Las coordenadas se reajustaron y los campos del registro quedaron disponibles para relacionarse.');st.rerun()
+    except Exception as e:st.error('No fue posible leer la plantilla: '+str(e))
+  st.dataframe(read_df("SELECT version,nombre,mime,descripcion,CASE WHEN activa=1 THEN 'Activa' ELSE 'Historica' END estado,usuario,fecha FROM pdfv3_plantillas WHERE formato_id=? ORDER BY version DESC",(fid,)),use_container_width=True,hide_index=True)
+ with t3:
+  ids=read_df(f'SELECT id FROM {f.tabla_origen} ORDER BY id DESC LIMIT 100')
+  if ids.empty:st.info('No existen registros para la prueba.')
+  else:
+   rid=st.selectbox('Registro de prueba',ids.id.astype(int).tolist(),key='pdfv3_test_id');contenido={'PNC':pdf_pnc,'ME':pdf_materia_extrana,'DDM_RX':pdf_detector_metales_rx}[codigo](rid)
+   if contenido:st.download_button('Descargar prueba',contenido,f'prueba_{codigo}_{rid}.pdf','application/pdf',key='pdfv3_test_down')
 
 def pdf_entrega(eid):
     try:
@@ -857,10 +1067,31 @@ def init_db():
     cur.execute("CREATE TABLE IF NOT EXISTS catalogo_formatos_entrega(id INTEGER PRIMARY KEY AUTOINCREMENT,formato_nave TEXT NOT NULL,tipo TEXT NOT NULL,linea TEXT NOT NULL,sector TEXT NOT NULL,tipo_analisis TEXT DEFAULT '',orden_linea INTEGER DEFAULT 0,orden_sector INTEGER DEFAULT 0,activo INTEGER DEFAULT 1,UNIQUE(formato_nave,tipo,linea,sector,tipo_analisis))")
     migrar_catalogo_formatos_entrega(cur)
     cur.execute("CREATE TABLE IF NOT EXISTS catalogos(id INTEGER PRIMARY KEY AUTOINCREMENT, categoria TEXT, valor TEXT, activo INTEGER DEFAULT 1, UNIQUE(categoria,valor))")
+    cur.execute("""CREATE TABLE IF NOT EXISTS catalogo_campos_registro(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        formato TEXT NOT NULL,
+        campo TEXT NOT NULL,
+        etiqueta TEXT NOT NULL,
+        tipo_control TEXT DEFAULT 'texto',
+        catalogo_origen TEXT DEFAULT '',
+        obligatorio INTEGER DEFAULT 0,
+        solo_lectura INTEGER DEFAULT 0,
+        orden INTEGER DEFAULT 0,
+        activo INTEGER DEFAULT 1,
+        UNIQUE(formato,campo)
+    )""")
+    # Extension administrable de campos, valores y opciones permitidas. No altera las tablas operativas existentes.
+    for col,sql_type in [('es_personalizado','INTEGER DEFAULT 0'),('mostrar_formulario','INTEGER DEFAULT 1'),('mostrar_consulta','INTEGER DEFAULT 1'),('mostrar_pdf','INTEGER DEFAULT 0')]:
+        try: cur.execute(f'ALTER TABLE catalogo_campos_registro ADD COLUMN {col} {sql_type}')
+        except sqlite3.OperationalError: pass
+    cur.execute("CREATE TABLE IF NOT EXISTS registro_campos_valores(id INTEGER PRIMARY KEY AUTOINCREMENT,formato TEXT NOT NULL,registro_id INTEGER NOT NULL,campo TEXT NOT NULL,valor TEXT,UNIQUE(formato,registro_id,campo))")
+    cur.execute("CREATE TABLE IF NOT EXISTS catalogo_campos_opciones(id INTEGER PRIMARY KEY AUTOINCREMENT,campo_id INTEGER NOT NULL,valor TEXT NOT NULL,activo INTEGER DEFAULT 1,orden INTEGER DEFAULT 0,UNIQUE(campo_id,valor))")
+
     cur.execute("CREATE TABLE IF NOT EXISTS productos(id INTEGER PRIMARY KEY AUTOINCREMENT, item TEXT UNIQUE, descripcion TEXT, cliente TEXT, familia TEXT, activo INTEGER DEFAULT 1)")
     cur.execute("CREATE TABLE IF NOT EXISTS defectos(id INTEGER PRIMARY KEY AUTOINCREMENT, codigo TEXT UNIQUE, defecto TEXT, tipo_defecto TEXT, clasificacion TEXT, activo INTEGER DEFAULT 1)")
     cur.execute("CREATE TABLE IF NOT EXISTS catalogo_naves_lineas(id INTEGER PRIMARY KEY AUTOINCREMENT,nave TEXT,linea TEXT,sector TEXT,linea_norm TEXT,sector_norm TEXT,orden INTEGER DEFAULT 0,activo INTEGER DEFAULT 1,UNIQUE(nave,linea,sector))")
     asegurar_columnas_catalogos(cur)
+    init_pdfv3(cur)
     cur.execute("""CREATE TABLE IF NOT EXISTS pnc_registros(id INTEGER PRIMARY KEY AUTOINCREMENT, folio TEXT UNIQUE, fecha_apertura TEXT, linea_sector TEXT, nave TEXT, item TEXT, descripcion_producto TEXT, cliente TEXT, familia TEXT, lote TEXT, etapa TEXT, codigo_defecto TEXT, defecto TEXT, tipo_defecto TEXT, clasificacion TEXT, turno TEXT, supervisor TEXT, analista TEXT, responsable_detecta TEXT, descripcion_defecto TEXT, acciones_inmediatas TEXT, disposicion TEXT, cantidad_observada REAL DEFAULT 0, cantidad_reproceso REAL DEFAULT 0, cantidad_decomiso REAL DEFAULT 0, cantidad_aprobado_segunda REAL DEFAULT 0, cantidad_total_pnc REAL DEFAULT 0, status TEXT DEFAULT 'ABIERTO', fecha_final_tratamiento TEXT, observaciones TEXT, material_hallado TEXT, creado_por TEXT, creado_en TEXT)""")
     cur.execute("CREATE TABLE IF NOT EXISTS me_registros(id INTEGER PRIMARY KEY AUTOINCREMENT, dia INTEGER, mes INTEGER, anio INTEGER, nave TEXT, linea_sector TEXT, familia TEXT, equipo_hallazgo TEXT, item TEXT, producto TEXT, lote TEXT, descripcion_hallazgo TEXT, tipo TEXT, particulas_halladas INTEGER DEFAULT 0, accion_contingente TEXT, investigacion_origen TEXT, analista_detecta TEXT, supervisor_responsable TEXT, acciones_evitar_incidencia TEXT, creado_por TEXT, creado_en TEXT)")
     cur.execute("CREATE TABLE IF NOT EXISTS ddm_rx_registros(id INTEGER PRIMARY KEY AUTOINCREMENT, dia INTEGER, mes INTEGER, anio INTEGER, nave TEXT, linea_sector TEXT, familia TEXT, equipo_hallazgo TEXT, item TEXT, producto TEXT, lote TEXT, descripcion_hallazgo TEXT, tipo TEXT, particulas_halladas INTEGER DEFAULT 0, accion_contingente TEXT, investigacion_origen TEXT, analista_detecta TEXT, supervisor_responsable TEXT, acciones_evitar_incidencia TEXT, creado_por TEXT, creado_en TEXT)")
@@ -875,6 +1106,53 @@ def init_db():
         for col, tipo_sql in columnas_nuevas.items():
             try: cur.execute(f'ALTER TABLE {tbl} ADD COLUMN {col} {tipo_sql}')
             except sqlite3.OperationalError: pass
+    # Catálogo de estructura de los tres registros. Se inicializa una sola vez y después respeta todos los cambios administrativos.
+    if not cur.execute("SELECT 1 FROM app_config WHERE clave='campos_registro_inicializados_v1'").fetchone():
+        etiquetas = {
+            'fecha_apertura':'Fecha','dia':'Día','mes':'Mes','anio':'Año','semana':'Semana','nave':'Nave',
+            'linea_sector':'Línea/Sector','item':'ITEM','descripcion_producto':'Descripción','producto':'Descripción',
+            'cliente':'Cliente','familia':'Familia','lote':'Lote','etapa':'Etapa','codigo_defecto':'Código / Defecto',
+            'defecto':'Defecto','tipo_defecto':'Tipo de defecto','clasificacion':'Clasificación','turno':'Turno',
+            'supervisor':'Supervisor (Responsable)','supervisor_responsable':'Supervisor (Responsable)',
+            'analista':'Analista (Persona que detecta)','analista_detecta':'Analista (Persona que detecta)',
+            'responsable_detecta':'Responsable de detectar el PNC','descripcion_defecto':'Descripción del defecto',
+            'descripcion_hallazgo':'Descripción del defecto','acciones_inmediatas':'Acciones inmediatas',
+            'accion_contingente':'Acciones inmediatas','disposicion':'Disposición','cantidad_observada':'Cantidad observada (kg)',
+            'status':'Status','categoria_inicial':'Clasificación','categoria_inicial_pnc':'Categoría inicial',
+            'categoria_final_pnc':'Categoría final','equipo_hallazgo':'Equipo en donde se tiene el hallazgo',
+            'tipo':'Tipo','#particulas_halladas':'# de partículas halladas','particulas_halladas':'# de partículas halladas',
+            'investigacion_origen':'Investigación del origen','acciones_evitar_incidencia':'Acciones para evitar la incidencia',
+            'cantidad_reproceso':'Reproceso kg','cantidad_decomiso':'Decomiso kg',
+            'cantidad_aprobado_segunda':'Aprobado 2da kg','fecha_final_tratamiento':'Fecha final',
+            'observaciones':'Observaciones','material_hallado':'Material hallado / ME'
+        }
+        catalogos_campo = {
+            'nave':'nave','linea_sector':'linea_sector','etapa':'etapa','turno':'turno','status':'status',
+            'supervisor':'supervisor','supervisor_responsable':'supervisor','analista':'analista',
+            'analista_detecta':'analista','responsable_detecta':'responsable_detecta','disposicion':'disposicion',
+            'item':'productos','codigo_defecto':'defectos'
+        }
+        obligatorios_pnc = {'fecha_apertura','semana','nave','linea_sector','item','lote','etapa','codigo_defecto','turno','status','supervisor','analista','responsable_detecta','descripcion_defecto','acciones_inmediatas','disposicion','cantidad_observada','categoria_inicial_pnc'}
+        obligatorios_h = {'dia','mes','anio','semana','nave','linea_sector','item','lote','etapa','codigo_defecto','turno','supervisor_responsable','analista_detecta','descripcion_hallazgo','acciones_inmediatas','disposicion','status'}
+        for formato, tabla in [('PNC','pnc_registros'),('ME','me_registros'),('DDM_RX','ddm_rx_registros')]:
+            columnas = [r[1] for r in cur.execute(f'PRAGMA table_info({tabla})').fetchall()]
+            orden = 0
+            for campo in columnas:
+                if campo in CAMPOS_SISTEMA_NO_EDITABLES:
+                    continue
+                if formato in ('ME','DDM_RX') and campo in CAMPOS_OCULTOS_HALLAZGOS:
+                    continue
+                requerido = campo in (obligatorios_pnc if formato=='PNC' else obligatorios_h)
+                solo_lectura = campo in {'descripcion_producto','producto','cliente','familia','defecto','tipo_defecto','clasificacion','categoria_inicial'}
+                tipo_control = 'numero' if campo in {'dia','mes','anio','semana','particulas_halladas','cantidad_observada','cantidad_reproceso','cantidad_decomiso','cantidad_aprobado_segunda'} else 'texto'
+                if campo in catalogos_campo: tipo_control='catalogo'
+                if campo in {'descripcion_defecto','descripcion_hallazgo','acciones_inmediatas','accion_contingente','investigacion_origen','acciones_evitar_incidencia','observaciones','material_hallado','lote'}: tipo_control='area'
+                cur.execute('''INSERT OR IGNORE INTO catalogo_campos_registro
+                    (formato,campo,etiqueta,tipo_control,catalogo_origen,obligatorio,solo_lectura,orden,activo)
+                    VALUES(?,?,?,?,?,?,?,?,1)''',
+                    (formato,campo,etiquetas.get(campo,campo.replace('_',' ').title()),tipo_control,catalogos_campo.get(campo,''),int(requerido),int(solo_lectura),orden))
+                orden += 1
+        cur.execute("INSERT OR REPLACE INTO app_config(clave,valor,actualizado_en) VALUES('campos_registro_inicializados_v1','1',?)",(now_iso(),))
     try: cur.execute('ALTER TABLE pnc_registros ADD COLUMN semana INTEGER')
     except sqlite3.OperationalError: pass
     for col in ['categoria_inicial_pnc','categoria_final_pnc']:
@@ -1518,6 +1796,114 @@ def page_inicio():
         st.markdown('</div></div>',unsafe_allow_html=True)
     panel_indicadores_spac_inicio()
 
+REGISTRO_FORMATOS = {
+    'PNC': 'pnc_registros',
+    'ME': 'me_registros',
+    'DDM_RX': 'ddm_rx_registros',
+}
+
+CAMPOS_SISTEMA_NO_EDITABLES = {
+    'id', 'folio', 'creado_por', 'creado_en', 'cantidad_total_pnc'
+}
+
+CAMPOS_OCULTOS_HALLAZGOS = {'responsable_detecta', 'cantidad_observada'}
+
+def campos_registro(formato, solo_activos=True):
+    where=' AND activo=1' if solo_activos else ''
+    return read_df("SELECT * FROM catalogo_campos_registro WHERE formato=?"+where+" ORDER BY orden,id",(formato,))
+def nombres_campos_activos(formato):
+    d=campos_registro(formato,True);return d.campo.astype(str).tolist() if not d.empty else []
+def config_campo(formato,campo):
+    d=read_df('SELECT * FROM catalogo_campos_registro WHERE formato=? AND campo=? AND activo=1',(formato,campo));return None if d.empty else d.iloc[0]
+def etiqueta_campo(formato,campo,predeterminada=None):
+    r=config_campo(formato,campo); nombre=str(r.etiqueta).strip() if r is not None else (predeterminada or campo.replace('_',' ').title())
+    return nombre+(' *' if r is not None and bool(r.obligatorio) else '')
+def campo_obligatorio(formato,campo,predeterminado=False):
+    r=config_campo(formato,campo)
+    return bool(r.obligatorio) if r is not None else bool(predeterminado)
+def campo_visible(formato,campo):
+    r=read_df('SELECT activo,mostrar_formulario FROM catalogo_campos_registro WHERE formato=? AND campo=?',(formato,campo))
+    return True if r.empty else bool(r.iloc[0].activo) and bool(r.iloc[0].mostrar_formulario)
+def opciones_config_campo(formato,campo,predeterminadas=None):
+    """Aplica a campos existentes el catalogo y las opciones definidos por el administrador."""
+    r=config_campo(formato,campo)
+    if r is None or str(r.tipo_control or '')!='catalogo':
+        return list(predeterminadas or [])
+    valores=opciones_campo(int(r.id),str(r.catalogo_origen or ''))
+    return valores if valores else list(predeterminadas or [])
+def valor_catalogo_simple(valor):
+    """Obtiene la clave izquierda de opciones compuestas como ITEM | Descripcion."""
+    return str(valor or '').split('|',1)[0].strip()
+def ocultar_campos_inactivos(formato, prefijos):
+    """Oculta controles fijos desactivados sin cambiar la logica de captura ni los datos historicos."""
+    cfg=campos_registro(formato,False)
+    if cfg.empty:return
+    ocultos=[]
+    for _,r in cfg.iterrows():
+        if not bool(r.activo) or not bool(r.mostrar_formulario):
+            prefijo=prefijos.get(str(r.campo))
+            if prefijo: ocultos.append(f'div[class*="st-key-{prefijo}"]')
+    if ocultos:
+        st.markdown('<style>'+','.join(ocultos)+'{display:none!important;}</style>',unsafe_allow_html=True)
+def formato_por_tabla(tabla):return {'pnc_registros':'PNC','me_registros':'ME','ddm_rx_registros':'DDM_RX'}.get(tabla,'')
+def opciones_campo(campo_id,catalogo_origen=''):
+    propias=read_df('SELECT valor FROM catalogo_campos_opciones WHERE campo_id=? AND activo=1 ORDER BY orden,id',(campo_id,))
+    if not propias.empty:return propias.valor.astype(str).tolist()
+    if catalogo_origen in ('productos','defectos'):
+        if catalogo_origen=='productos':return read_df("SELECT item || ' | ' || descripcion AS valor FROM productos WHERE activo=1 ORDER BY descripcion").valor.astype(str).tolist()
+        return read_df("SELECT codigo || ' | ' || defecto AS valor FROM defectos WHERE activo=1 ORDER BY CAST(codigo AS INTEGER)").valor.astype(str).tolist()
+    return catalog(catalogo_origen) if catalogo_origen else []
+def render_campos_personalizados(formato,nonce,prefijo):
+    valores={}; d=campos_registro(formato,True)
+    if d.empty:return valores
+    d=d[(d.es_personalizado.fillna(0).astype(int)==1)&(d.mostrar_formulario.fillna(1).astype(int)==1)]
+    if d.empty:return valores
+    st.markdown('#### Información adicional')
+    for _,r in d.iterrows():
+        campo=str(r.campo); label=etiqueta_campo(formato,campo,str(r.etiqueta)); key=f'{prefijo}_extra_{campo}_{nonce}'; tipo=str(r.tipo_control or 'texto')
+        if tipo=='numero': valores[campo]=st.number_input(label,min_value=0.0,step=1.0,key=key)
+        elif tipo=='area': valores[campo]=st.text_area(label,key=key)
+        elif tipo=='fecha': valores[campo]=st.date_input(label,value=date.today(),key=key).isoformat()
+        elif tipo=='catalogo': valores[campo]=st.selectbox(label,opt_blank(opciones_campo(int(r.id),str(r.catalogo_origen or ''))),key=key)
+        else: valores[campo]=st.text_input(label,key=key)
+    return valores
+def validar_extras(formato,valores):
+    faltan=[]; d=campos_registro(formato,True)
+    if d.empty:return faltan
+    for _,r in d[d.es_personalizado.fillna(0).astype(int)==1].iterrows():
+        v=valores.get(str(r.campo));
+        if bool(r.obligatorio) and (v is None or (isinstance(v,str) and not v.strip())):faltan.append(str(r.etiqueta))
+    return faltan
+def guardar_extras(formato,rid,valores):
+    for campo,valor in valores.items():exec_sql('INSERT INTO registro_campos_valores(formato,registro_id,campo,valor) VALUES(?,?,?,?) ON CONFLICT(formato,registro_id,campo) DO UPDATE SET valor=excluded.valor',(formato,rid,campo,'' if valor is None else str(valor)))
+def anexar_extras_consulta(df,formato):
+    if df.empty:return df
+    cfg=campos_registro(formato,True)
+    if cfg.empty:return df
+    cfg=cfg[(cfg.es_personalizado.fillna(0).astype(int)==1)&(cfg.mostrar_consulta.fillna(1).astype(int)==1)]
+    if cfg.empty:return df
+    vals=read_df('SELECT registro_id,campo,valor FROM registro_campos_valores WHERE formato=?',(formato,))
+    for _,r in cfg.iterrows():
+        mapa=vals[vals.campo==str(r.campo)].set_index('registro_id').valor.to_dict() if not vals.empty else {}
+        df[str(r.etiqueta)]=df.id.map(mapa)
+    return df
+def crear_hallazgo_desde_pnc(tabla, datos, usuario):
+    # Crea el registro relacionado usando los datos ya validados del PNC.
+    fecha = datos['fecha']
+    return exec_sql(f'''INSERT INTO {tabla}(
+        dia,mes,anio,nave,linea_sector,familia,equipo_hallazgo,item,producto,lote,
+        descripcion_hallazgo,tipo,particulas_halladas,accion_contingente,
+        investigacion_origen,analista_detecta,supervisor_responsable,
+        acciones_evitar_incidencia,creado_por,creado_en,etapa,codigo_defecto,
+        semana,turno,responsable_detecta,acciones_inmediatas,disposicion,
+        cantidad_observada,status,categoria_inicial)
+        VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)''', (
+        fecha.day, fecha.month, fecha.year, datos['nave'], datos['linea'], datos['familia'], '',
+        datos['item'], datos['producto'], datos['lote'], datos['descripcion'], '', 0,
+        datos['acciones'], '', datos['analista'], datos['supervisor'], '', usuario, now_iso(),
+        datos['etapa'], datos['codigo'], int(datos['semana']), datos['turno'], None,
+        datos['acciones'], datos['disposicion'], 0, datos['status'], datos['clasificacion']))
+
 def page_registro():
     if 'registro_tipo' not in st.session_state:
         st.session_state.registro_tipo=None
@@ -1556,27 +1942,34 @@ def page_registro():
         defs=read_df('SELECT * FROM defectos WHERE activo=1 ORDER BY CAST(codigo AS INTEGER)')
         opt_prod=['']+[f'{r.item} | {r.descripcion}' for r in prod.itertuples()]
         opt_defs=['']+[f'{r.codigo} | {r.defecto}' for r in defs.itertuples()]
+        formato_actual=formato_por_tabla(tabla)
+        ocultar_campos_inactivos(formato_actual,{
+            'dia':f'fecha_{tabla}_','mes':f'fecha_{tabla}_','anio':f'fecha_{tabla}_','semana':f'semana_{tabla}_','nave':f'nave_{tabla}_',
+            'item':f'item_{tabla}_','lote':f'lote_{tabla}_','etapa':f'etapa_{tabla}_','linea_sector':f'linea_{tabla}_','codigo_defecto':f'codigo_{tabla}_',
+            'turno':f'turno_{tabla}_','supervisor_responsable':f'sup_{tabla}_','analista_detecta':f'ana_{tabla}_','descripcion_hallazgo':f'desc_{tabla}_',
+            'acciones_inmediatas':f'accion_{tabla}_','disposicion':f'disp_{tabla}_','status':f'status_{tabla}_','equipo_hallazgo':f'equipo_{tabla}_',
+            'tipo':f'tipo_{tabla}_','particulas_halladas':f'part_{tabla}_','investigacion_origen':f'inv_{tabla}_','acciones_evitar_incidencia':f'evitar_{tabla}_'})
         with st.container():
             a,b,c=st.columns(3)
-            fecha=a.date_input('Fecha *',value=date.today(),key=f'fecha_{tabla}_{nonce}')
-            semana=b.number_input('Semana *',min_value=1,max_value=53,value=int(date.today().isocalendar().week),step=1,key=f'semana_{tabla}_{nonce}')
-            nave=c.selectbox('Nave *',opt_blank(catalog('nave')),key=f'nave_{tabla}_{nonce}')
+            fecha=a.date_input(etiqueta_campo(formato_actual,'fecha_apertura','Fecha'),value=date.today(),key=f'fecha_{tabla}_{nonce}')
+            semana=b.number_input(etiqueta_campo(formato_actual,'semana','Semana'),min_value=1,max_value=53,value=int(date.today().isocalendar().week),step=1,key=f'semana_{tabla}_{nonce}')
+            nave=c.selectbox(etiqueta_campo(formato_actual,'nave','Nave'),opt_blank(opciones_config_campo(formato_actual,'nave',catalog('nave'))),key=f'nave_{tabla}_{nonce}')
             a,b,c=st.columns(3)
-            opt=a.selectbox('ITEM *',opt_prod,key=f'item_{tabla}_{nonce}')
+            opt=a.selectbox(etiqueta_campo(formato_actual,'item','ITEM'),opt_blank(opciones_config_campo(formato_actual,'item',opt_prod[1:])),key=f'item_{tabla}_{nonce}')
             item=opt.split('|')[0].strip() if opt else ''
             row=prod[prod['item']==item].iloc[0] if item and item in prod['item'].values else None
             producto=str(row['descripcion']) if row is not None else ''
             cliente=str(row['cliente']) if row is not None else ''
             familia=str(row['familia']) if row is not None else ''
-            lote=b.text_input('Lote *',key=f'lote_{tabla}_{nonce}')
-            etapa=c.selectbox('Etapa *',opt_blank(catalog('etapa')),key=f'etapa_{tabla}_{nonce}')
+            lote=b.text_input(etiqueta_campo(formato_actual,'lote','Lote'),key=f'lote_{tabla}_{nonce}')
+            etapa=c.selectbox(etiqueta_campo(formato_actual,'etapa','Etapa'),opt_blank(opciones_config_campo(formato_actual,'etapa',catalog('etapa'))),key=f'etapa_{tabla}_{nonce}')
             a,b,c=st.columns(3)
             a.text_input('Descripción',value=producto,disabled=True)
-            b.text_input('Cliente',value=cliente,disabled=True)
-            c.text_input('Familia',value=familia,disabled=True)
-            linea_sector=st.selectbox('Línea/Sector *',opt_blank(catalog('linea_sector')),key=f'linea_{tabla}_{nonce}')
+            b.text_input(etiqueta_campo('PNC','cliente','Cliente'),value=cliente,disabled=True)
+            c.text_input(etiqueta_campo('PNC','familia','Familia'),value=familia,disabled=True)
+            linea_sector=st.selectbox(etiqueta_campo(formato_actual,'linea_sector','Línea/Sector'),opt_blank(opciones_config_campo(formato_actual,'linea_sector',catalog('linea_sector'))),key=f'linea_{tabla}_{nonce}')
             a,b,c=st.columns(3)
-            optd=a.selectbox('Código / Defecto *',opt_defs,key=f'codigo_{tabla}_{nonce}')
+            optd=a.selectbox(etiqueta_campo(formato_actual,'codigo_defecto','Código / Defecto'),opt_blank(opciones_config_campo(formato_actual,'codigo_defecto',opt_defs[1:])),key=f'codigo_{tabla}_{nonce}')
             codigo=optd.split('|')[0].strip() if optd else ''
             dr=defs[defs['codigo']==codigo].iloc[0] if codigo and codigo in defs['codigo'].values else None
             defecto=str(dr['defecto']) if dr is not None else ''
@@ -1586,37 +1979,52 @@ def page_registro():
             c.text_input('Tipo de defecto',value=tipo_defecto,disabled=True)
             x1,x2=st.columns(2)
             x1.text_input('Clasificación *',value=categoria,disabled=True)
-            turno=x2.selectbox('Turno *',opt_blank(catalog('turno')),key=f'turno_{tabla}_{nonce}')
-            a,b,c=st.columns(3)
-            supervisor=a.selectbox('Supervisor (Responsable) *',opt_blank(catalog('supervisor')),key=f'sup_{tabla}_{nonce}')
-            analista=b.selectbox('Analista (Persona que detecta) *',opt_blank(catalog('analista')),key=f'ana_{tabla}_{nonce}')
-            responsable=c.selectbox('Responsable de detectar el PNC *',opt_blank(catalog('responsable_detecta')),key=f'resp_{tabla}_{nonce}')
-            descripcion=st.text_area('Descripción del defecto *',key=f'desc_{tabla}_{nonce}')
-            acciones=st.text_area('Acciones inmediatas *',key=f'accion_{tabla}_{nonce}')
-            a,b,c=st.columns(3)
-            disposicion=a.selectbox('Disposición *',opt_blank(catalog('disposicion')),key=f'disp_{tabla}_{nonce}')
-            cantidad=b.number_input('Cantidad observada (kg) *',min_value=0.0,step=1.0,format='%.2f',key=f'cantidad_{tabla}_{nonce}')
-            status=c.selectbox('Status *',opt_blank(catalog('status')),key=f'status_{tabla}_{nonce}')
+            turno=x2.selectbox(etiqueta_campo(formato_actual,'turno','Turno'),opt_blank(opciones_config_campo(formato_actual,'turno',catalog('turno'))),key=f'turno_{tabla}_{nonce}')
+            a,b=st.columns(2)
+            supervisor=a.selectbox(etiqueta_campo(formato_actual,'supervisor_responsable','Supervisor (Responsable)'),opt_blank(opciones_config_campo(formato_actual,'supervisor_responsable',catalog('supervisor'))),key=f'sup_{tabla}_{nonce}')
+            analista=b.selectbox(etiqueta_campo(formato_actual,'analista_detecta','Analista (Persona que detecta)'),opt_blank(opciones_config_campo(formato_actual,'analista_detecta',catalog('analista'))),key=f'ana_{tabla}_{nonce}')
+            responsable=None
+            descripcion=st.text_area(etiqueta_campo(formato_actual,'descripcion_hallazgo','Descripción del defecto'),key=f'desc_{tabla}_{nonce}')
+            acciones=st.text_area(etiqueta_campo(formato_actual,'acciones_inmediatas','Acciones inmediatas'),key=f'accion_{tabla}_{nonce}')
+            a,b=st.columns(2)
+            disposicion=a.selectbox(etiqueta_campo(formato_actual,'disposicion','Disposición'),opt_blank(opciones_config_campo(formato_actual,'disposicion',catalog('disposicion'))),key=f'disp_{tabla}_{nonce}')
+            status=b.selectbox(etiqueta_campo(formato_actual,'status','Status'),opt_blank(opciones_config_campo(formato_actual,'status',catalog('status'))),key=f'status_{tabla}_{nonce}')
+            cantidad=0.0
             a,b,c=st.columns(3)
             equipo=a.text_input('Equipo en donde se tiene el hallazgo',key=f'equipo_{tabla}_{nonce}')
             tipo=b.selectbox('Tipo',opt_blank(['Metal','Plástico duro','Plástico blando','Vidrio','Madera','Papel/Cartón','Cabello','Insecto','Otro']),key=f'tipo_{tabla}_{nonce}')
             particulas=c.number_input('# de partículas halladas',min_value=0,step=1,key=f'part_{tabla}_{nonce}')
             investigacion=st.text_area('Investigación del origen',key=f'inv_{tabla}_{nonce}')
             evitar=st.text_area('Acciones a realizar para evitar la incidencia',key=f'evitar_{tabla}_{nonce}')
+            formato_actual=formato_por_tabla(tabla)
+            extras=render_campos_personalizados(formato_actual,nonce,tabla)
             ok=st.button('Guardar registro',key=f'guardar_{tabla}_{nonce}',type='primary')
         if ok:
-            obligatorios={'Línea/Sector':linea_sector,'Nave':nave,'ITEM':item,'Descripción':producto,'Cliente':cliente,'Familia':familia,'Lote':lote,'Etapa':etapa,'Código':codigo,'Defecto':defecto,'Tipo de defecto':tipo_defecto,'Semana':semana,'Turno':turno,'Fecha':fecha,'Supervisor':supervisor,'Analista':analista,'Responsable de detectar el PNC':responsable,'Descripción del defecto':descripcion,'Acciones inmediatas':acciones,'Disposición':disposicion,'Cantidad observada':cantidad,'Status':status,'Categoría inicial':categoria}
-            faltantes=[k for k,v in obligatorios.items() if v is None or (isinstance(v,str) and not v.strip()) or (k=='Cantidad observada' and float(v)<=0)]
+            obligatorios={'Línea/Sector':linea_sector,'Nave':nave,'ITEM':item,'Descripción':producto,'Cliente':cliente,'Familia':familia,'Lote':lote,'Etapa':etapa,'Código':codigo,'Defecto':defecto,'Tipo de defecto':tipo_defecto,'Semana':semana,'Turno':turno,'Fecha':fecha,'Supervisor':supervisor,'Analista':analista,'Descripción del defecto':descripcion,'Acciones inmediatas':acciones,'Disposición':disposicion,'Status':status,'Categoría inicial':categoria}
+            # La obligatoriedad se obtiene del catálogo del formato correspondiente.
+            mapa_req={'linea_sector':linea_sector,'nave':nave,'item':item,'producto':producto,'familia':familia,'lote':lote,'etapa':etapa,'codigo_defecto':codigo,'semana':semana,'turno':turno,'dia':fecha,'supervisor_responsable':supervisor,'analista_detecta':analista,'descripcion_hallazgo':descripcion,'acciones_inmediatas':acciones,'disposicion':disposicion,'status':status,'categoria_inicial':categoria}
+            obligatorios={etiqueta_campo(formato_actual,k,k.replace('_',' ').title()).replace(' *',''):v for k,v in mapa_req.items() if campo_obligatorio(formato_actual,k)}
+            faltantes=[k for k,v in obligatorios.items() if v is None or (isinstance(v,str) and not v.strip())]+validar_extras(formato_actual,extras)
             if faltantes:
                 st.error('Completa los siguientes campos obligatorios: '+', '.join(faltantes)+'.')
             else:
                 rid=exec_sql(f'INSERT INTO {tabla}(dia,mes,anio,nave,linea_sector,familia,equipo_hallazgo,item,producto,lote,descripcion_hallazgo,tipo,particulas_halladas,accion_contingente,investigacion_origen,analista_detecta,supervisor_responsable,acciones_evitar_incidencia,creado_por,creado_en,etapa,codigo_defecto,semana,turno,responsable_detecta,acciones_inmediatas,disposicion,cantidad_observada,status,categoria_inicial) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',(fecha.day,fecha.month,fecha.year,nave,linea_sector,familia,equipo,item,producto,lote,descripcion,tipo,int(particulas),acciones,investigacion,analista,supervisor,evitar,st.session_state.auth['usuario'],now_iso(),etapa,codigo,int(semana),turno,responsable,acciones,disposicion,float(cantidad),status,categoria))
+                guardar_extras(formato_actual,rid,extras)
                 audit(st.session_state.auth['usuario'],audit_action,f'ID {rid}')
                 limpiar_form(); st.session_state.flash_registro_guardado=f'Registro guardado correctamente: Número {rid}'
                 st.rerun()
         st.markdown('</div></div>',unsafe_allow_html=True)
     def form_pnc():
         nonce=st.session_state.form_nonce
+        formato_actual='PNC'
+        ocultar_campos_inactivos('PNC',{
+            'fecha_apertura':'pnc_fecha_','semana':'pnc_semana_','nave':'pnc_nave_','item':'pnc_item_','lote':'pnc_lote_','etapa':'pnc_etapa_',
+            'linea_sector':'pnc_linea_','turno':'pnc_turno_','status':'pnc_status_','codigo_defecto':'pnc_def_',
+            'categoria_inicial_pnc':'pnc_cat_inicial_','categoria_final_pnc':'pnc_cat_final_','descripcion_defecto':'pnc_desc_',
+            'acciones_inmediatas':'pnc_accion_','supervisor':'pnc_sup_','analista':'pnc_ana_','responsable_detecta':'pnc_resp_',
+            'disposicion':'pnc_disp_','cantidad_observada':'pnc_obs_','fecha_final_tratamiento':'pnc_final_',
+            'cantidad_reproceso':'pnc_rep_','cantidad_decomiso':'pnc_dec_','cantidad_aprobado_segunda':'pnc_apr_',
+            'material_hallado':'pnc_mat_','observaciones':'pnc_notas_'})
         st.markdown("""<div class="registro-full-panel"><div class="registro-pill">Nuevo registro</div><div class="registro-full-title">📝 PNC´s</div><div class="registro-full-subtitle">Los campos marcados con * son obligatorios.</div>""",unsafe_allow_html=True)
         if st.button('← Cambiar tipo de registro',key='volver_pnc'): volver_selector()
         st.markdown('<div class="registro-form-shell">',unsafe_allow_html=True)
@@ -1624,46 +2032,68 @@ def page_registro():
         opt_prod=['']+[f'{r.item} | {r.descripcion}' for r in prod.itertuples()]; opt_defs=['']+[f'{r.codigo} | {r.defecto}' for r in defs.itertuples()]
         with st.container():
             a,b,c=st.columns(3)
-            fecha=a.date_input('Fecha *',value=date.today(),key=f'pnc_fecha_{nonce}')
-            semana=b.number_input('Semana *',min_value=1,max_value=53,value=int(date.today().isocalendar().week),step=1,key=f'pnc_semana_{nonce}')
-            nave=c.selectbox('Nave *',opt_blank(catalog('nave')),key=f'pnc_nave_{nonce}')
+            fecha=a.date_input(etiqueta_campo(formato_actual,'fecha_apertura','Fecha'),value=date.today(),key=f'pnc_fecha_{nonce}')
+            semana=b.number_input(etiqueta_campo(formato_actual,'semana','Semana'),min_value=1,max_value=53,value=int(date.today().isocalendar().week),step=1,key=f'pnc_semana_{nonce}')
+            nave=c.selectbox(etiqueta_campo(formato_actual,'nave','Nave'),opt_blank(opciones_config_campo(formato_actual,'nave',catalog('nave'))),key=f'pnc_nave_{nonce}')
             a,b,c=st.columns(3)
-            opt=a.selectbox('ITEM / Producto *',opt_prod,key=f'pnc_item_{nonce}')
+            opt=a.selectbox(etiqueta_campo('PNC','item','ITEM / Producto'),opt_blank(opciones_config_campo('PNC','item',opt_prod[1:])),key=f'pnc_item_{nonce}')
             item=opt.split('|')[0].strip() if opt else ''
             row=prod[prod['item']==item].iloc[0] if item and item in prod['item'].values else None
             descp=str(row['descripcion']) if row is not None else ''; cliente=str(row['cliente']) if row is not None else ''; familia=str(row['familia']) if row is not None else ''
-            lote=b.text_area('Lote *',key=f'pnc_lote_{nonce}'); etapa=c.selectbox('Etapa *',opt_blank(catalog('etapa')),key=f'pnc_etapa_{nonce}')
+            lote=b.text_area(etiqueta_campo('PNC','lote','Lote'),key=f'pnc_lote_{nonce}'); etapa=c.selectbox(etiqueta_campo(formato_actual,'etapa','Etapa'),opt_blank(opciones_config_campo(formato_actual,'etapa',catalog('etapa'))),key=f'pnc_etapa_{nonce}')
             a,b,c=st.columns(3)
-            a.text_input('Descripción',value=descp,disabled=True); b.text_input('Cliente',value=cliente,disabled=True); c.text_input('Familia',value=familia,disabled=True)
-            linea=st.selectbox('Línea/Sector *',opt_blank(catalog('linea_sector')),key=f'pnc_linea_{nonce}')
+            a.text_input(etiqueta_campo('PNC','descripcion_producto','Descripción'),value=descp,disabled=True); b.text_input(etiqueta_campo('PNC','cliente','Cliente'),value=cliente,disabled=True); c.text_input(etiqueta_campo('PNC','familia','Familia'),value=familia,disabled=True)
+            linea=st.selectbox(etiqueta_campo(formato_actual,'linea_sector','Línea/Sector'),opt_blank(opciones_config_campo(formato_actual,'linea_sector',catalog('linea_sector'))),key=f'pnc_linea_{nonce}')
             a,b,c=st.columns(3)
-            turno=a.selectbox('Turno *',opt_blank(catalog('turno')),key=f'pnc_turno_{nonce}'); status=b.selectbox('Status *',opt_blank(catalog('status')),key=f'pnc_status_{nonce}'); optd=c.selectbox('Código / Defecto *',opt_defs,key=f'pnc_def_{nonce}')
+            turno=a.selectbox(etiqueta_campo('PNC','turno','Turno'),opt_blank(opciones_config_campo('PNC','turno',catalog('turno'))),key=f'pnc_turno_{nonce}'); status=b.selectbox(etiqueta_campo(formato_actual,'status','Status'),opt_blank(opciones_config_campo(formato_actual,'status',catalog('status'))),key=f'pnc_status_{nonce}'); optd=c.selectbox(etiqueta_campo('PNC','codigo_defecto','Código / Defecto'),opt_blank(opciones_config_campo('PNC','codigo_defecto',opt_defs[1:])),key=f'pnc_def_{nonce}')
             cod=optd.split('|')[0].strip() if optd else ''; dr=defs[defs['codigo']==cod].iloc[0] if cod and cod in defs['codigo'].values else None
             defecto=str(dr['defecto']) if dr is not None else ''; tipo=str(dr['tipo_defecto']) if dr is not None else ''; clas=str(dr['clasificacion']) if dr is not None else ''
             d1,d2,d3=st.columns(3)
-            d1.text_input('Defecto',value=defecto,disabled=True)
-            d2.text_input('Tipo de defecto',value=tipo,disabled=True)
-            d3.text_input('Clasificación *',value=clas,disabled=True)
+            d1.text_input(etiqueta_campo('PNC','defecto','Defecto'),value=defecto,disabled=True)
+            d2.text_input(etiqueta_campo('PNC','tipo_defecto','Tipo de defecto'),value=tipo,disabled=True)
+            d3.text_input(etiqueta_campo('PNC','clasificacion','Clasificación'),value=clas,disabled=True)
             cat1,cat2=st.columns(2)
-            categoria_inicial_pnc=cat1.selectbox('Categoría inicial *',['','1','2','3'],key=f'pnc_cat_inicial_{nonce}')
-            categoria_final_pnc=cat2.selectbox('Categoría final',['','1','2','3'],key=f'pnc_cat_final_{nonce}')
-            descripcion=st.text_area('Descripción del defecto *',key=f'pnc_desc_{nonce}'); acciones=st.text_area('Acciones inmediatas *',key=f'pnc_accion_{nonce}')
+            categoria_inicial_pnc=cat1.selectbox(etiqueta_campo('PNC','categoria_inicial_pnc','Categoría inicial'),['','1','2','3'],key=f'pnc_cat_inicial_{nonce}')
+            categoria_final_pnc=cat2.selectbox(etiqueta_campo('PNC','categoria_final_pnc','Categoría final'),['','1','2','3'],key=f'pnc_cat_final_{nonce}')
+            registro_relacionado='SOLO_PNC'
+            if clas in ('Inocuidad','Salubridad'):
+                st.info('La clasificación seleccionada puede requerir un registro complementario. Indica si deseas generarlo automáticamente con la información de este PNC.')
+                registro_relacionado=st.radio('¿Deseas registrar también este evento?',
+                    ['SOLO_PNC','ME','DDM_RX'],horizontal=True,
+                    format_func=lambda x:{'SOLO_PNC':'No, continuar solo con PNC','ME':'Sí, Materia Extraña','DDM_RX':'Sí, Detector de metales y RX'}[x],
+                    key=f'pnc_registro_relacionado_{nonce}')
+            descripcion=st.text_area(etiqueta_campo(formato_actual,'descripcion_defecto','Descripción del defecto'),key=f'pnc_desc_{nonce}'); acciones=st.text_area(etiqueta_campo(formato_actual,'acciones_inmediatas','Acciones inmediatas'),key=f'pnc_accion_{nonce}')
             a,b,c=st.columns(3)
-            sup=a.selectbox('Supervisor (Responsable) *',opt_blank(catalog('supervisor')),key=f'pnc_sup_{nonce}'); ana=b.selectbox('Analista (Persona que detecta) *',opt_blank(catalog('analista')),key=f'pnc_ana_{nonce}'); resp=c.selectbox('Responsable de detectar el PNC *',opt_blank(catalog('responsable_detecta')),key=f'pnc_resp_{nonce}')
+            sup=a.selectbox(etiqueta_campo(formato_actual,'supervisor','Supervisor (Responsable)'),opt_blank(opciones_config_campo(formato_actual,'supervisor',catalog('supervisor'))),key=f'pnc_sup_{nonce}'); ana=b.selectbox(etiqueta_campo(formato_actual,'analista','Analista (Persona que detecta)'),opt_blank(opciones_config_campo(formato_actual,'analista',catalog('analista'))),key=f'pnc_ana_{nonce}'); resp=c.selectbox(etiqueta_campo('PNC','responsable_detecta','Responsable de detectar el PNC'),opt_blank(opciones_config_campo('PNC','responsable_detecta',catalog('responsable_detecta'))),key=f'pnc_resp_{nonce}')
             a,b,c=st.columns(3)
-            disp=a.selectbox('Disposición *',opt_blank(catalog('disposicion')),key=f'pnc_disp_{nonce}'); obs=b.number_input('Cantidad observada (kg) *',min_value=0.0,step=1.0,format='%.2f',key=f'pnc_obs_{nonce}'); fecha_final=c.date_input('Fecha final',value=date.today(),key=f'pnc_final_{nonce}') if status=='CERRADO' else None
-            q1,q2,q3=st.columns(3); rep=q1.number_input('Reproceso kg',min_value=0.0,step=1.0,format='%.2f',key=f'pnc_rep_{nonce}'); dec=q2.number_input('Decomiso kg',min_value=0.0,step=1.0,format='%.2f',key=f'pnc_dec_{nonce}'); apr=q3.number_input('Aprobado 2da kg',min_value=0.0,step=1.0,format='%.2f',key=f'pnc_apr_{nonce}'); total=rep+dec+apr
-            mat=st.text_area('Material hallado / ME',key=f'pnc_mat_{nonce}'); notas=st.text_area('Observaciones',key=f'pnc_notas_{nonce}'); files=st.file_uploader('Adjuntar evidencia',accept_multiple_files=True,type=['pdf','png','jpg','jpeg','xlsx','csv','txt','docx'],key=f'pnc_files_{nonce}')
+            disp=a.selectbox(etiqueta_campo(formato_actual,'disposicion','Disposición'),opt_blank(opciones_config_campo(formato_actual,'disposicion',catalog('disposicion'))),key=f'pnc_disp_{nonce}'); obs=b.number_input(etiqueta_campo('PNC','cantidad_observada','Cantidad observada (kg)'),min_value=0.0,step=1.0,format='%.2f',key=f'pnc_obs_{nonce}'); fecha_final=c.date_input(etiqueta_campo('PNC','fecha_final_tratamiento','Fecha final'),value=date.today(),key=f'pnc_final_{nonce}') if status=='CERRADO' else None
+            q1,q2,q3=st.columns(3); rep=q1.number_input(etiqueta_campo('PNC','cantidad_reproceso','Reproceso kg'),min_value=0.0,step=1.0,format='%.2f',key=f'pnc_rep_{nonce}'); dec=q2.number_input(etiqueta_campo('PNC','cantidad_decomiso','Decomiso kg'),min_value=0.0,step=1.0,format='%.2f',key=f'pnc_dec_{nonce}'); apr=q3.number_input(etiqueta_campo('PNC','cantidad_aprobado_segunda','Aprobado 2da kg'),min_value=0.0,step=1.0,format='%.2f',key=f'pnc_apr_{nonce}'); total=rep+dec+apr
+            mat=st.text_area(etiqueta_campo('PNC','material_hallado','Material hallado / ME'),key=f'pnc_mat_{nonce}'); notas=st.text_area(etiqueta_campo('PNC','observaciones','Observaciones'),key=f'pnc_notas_{nonce}'); extras_pnc=render_campos_personalizados('PNC',nonce,'pnc'); files=st.file_uploader('Adjuntar evidencia',accept_multiple_files=True,type=['pdf','png','jpg','jpeg','xlsx','csv','txt','docx'],key=f'pnc_files_{nonce}')
             ok=st.button('Guardar registro',key=f'guardar_pnc_{nonce}',type='primary')
         if ok:
             obligatorios={'Línea/Sector':linea,'Nave':nave,'ITEM':item,'Descripción':descp,'Cliente':cliente,'Familia':familia,'Lote':lote,'Etapa':etapa,'Código':cod,'Defecto':defecto,'Tipo de defecto':tipo,'Semana':semana,'Turno':turno,'Fecha':fecha,'Supervisor':sup,'Analista':ana,'Responsable de detectar el PNC':resp,'Descripción del defecto':descripcion,'Acciones inmediatas':acciones,'Disposición':disp,'Cantidad observada':obs,'Status':status,'Clasificación':clas,'Categoría inicial':categoria_inicial_pnc}
-            faltantes=[k for k,v in obligatorios.items() if v is None or (isinstance(v,str) and not v.strip()) or (k=='Cantidad observada' and float(v)<=0)]
+            mapa_req={'linea_sector':linea,'nave':nave,'item':item,'descripcion_producto':descp,'cliente':cliente,'familia':familia,'lote':lote,'etapa':etapa,'codigo_defecto':cod,'defecto':defecto,'tipo_defecto':tipo,'semana':semana,'turno':turno,'fecha_apertura':fecha,'supervisor':sup,'analista':ana,'responsable_detecta':resp,'descripcion_defecto':descripcion,'acciones_inmediatas':acciones,'disposicion':disp,'cantidad_observada':obs,'status':status,'clasificacion':clas,'categoria_inicial_pnc':categoria_inicial_pnc}
+            obligatorios={etiqueta_campo('PNC',k,k.replace('_',' ').title()).replace(' *',''):v for k,v in mapa_req.items() if campo_obligatorio('PNC',k)}
+            faltantes=[k for k,v in obligatorios.items() if v is None or (isinstance(v,str) and not v.strip()) or ('Cantidad observada' in k and float(v)<=0)]+validar_extras('PNC',extras_pnc)
             if faltantes:
                 st.error('Completa los siguientes campos obligatorios: '+', '.join(faltantes)+'.')
             else:
                 folio=new_folio(); rid=exec_sql('INSERT INTO pnc_registros(folio,fecha_apertura,linea_sector,nave,item,descripcion_producto,cliente,familia,lote,etapa,codigo_defecto,defecto,tipo_defecto,clasificacion,turno,supervisor,analista,responsable_detecta,descripcion_defecto,acciones_inmediatas,disposicion,cantidad_observada,cantidad_reproceso,cantidad_decomiso,cantidad_aprobado_segunda,cantidad_total_pnc,status,fecha_final_tratamiento,observaciones,material_hallado,creado_por,creado_en,semana,categoria_inicial_pnc,categoria_final_pnc) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',(folio,fecha.isoformat(),linea,nave,item,descp,cliente,familia,lote,etapa,cod,defecto,tipo,clas,turno,sup,ana,resp,descripcion,acciones,disp,float(obs),rep,dec,apr,total,status,fecha_final.isoformat() if fecha_final else None,notas,mat,st.session_state.auth['usuario'],now_iso(),int(semana),categoria_inicial_pnc,categoria_final_pnc))
+                guardar_extras('PNC',rid,extras_pnc)
+                relacionado_id=None
+                if clas in ('Inocuidad','Salubridad') and registro_relacionado in ('ME','DDM_RX'):
+                    tabla_relacionada='me_registros' if registro_relacionado=='ME' else 'ddm_rx_registros'
+                    relacionado_id=crear_hallazgo_desde_pnc(tabla_relacionada,{
+                        'fecha':fecha,'semana':semana,'nave':nave,'linea':linea,'item':item,'producto':descp,
+                        'cliente':cliente,'familia':familia,'lote':lote,'etapa':etapa,'codigo':cod,
+                        'clasificacion':clas,'turno':turno,'supervisor':sup,'analista':ana,
+                        'descripcion':descripcion,'acciones':acciones,'disposicion':disp,'status':status
+                    },st.session_state.auth['usuario'])
+                    audit(st.session_state.auth['usuario'],'CREAR_REGISTRO_RELACIONADO',f'PNC {rid} | {registro_relacionado} {relacionado_id}')
                 save_files(files,rid,folio,st.session_state.auth['usuario']); audit(st.session_state.auth['usuario'],'CREAR_PNC',f'ID {rid}')
-                limpiar_form(); st.session_state.flash_registro_guardado=f'Registro guardado correctamente: Número {rid}'
+                limpiar_form()
+                extra=f' y registro relacionado {registro_relacionado} Número {relacionado_id}' if relacionado_id else ''
+                st.session_state.flash_registro_guardado=f'Registro PNC guardado correctamente: Número {rid}{extra}'
                 st.rerun()
         st.markdown('</div></div>',unsafe_allow_html=True)
     if st.session_state.registro_tipo is None: selector()
@@ -1701,8 +2131,14 @@ def page_consulta():
     }
     st.markdown(f'''<div class="registro-full-panel"><div class="registro-pill">Consulta y descarga</div><div class="registro-full-title">{titulos.get(tipo_consulta,'Consulta')}</div></div>''',unsafe_allow_html=True)
     if st.session_state.pop('excel_sync_error',None): st.warning('No fue posible actualizar el libro Excel. Verifica que el archivo no esté abierto en otro programa.')
-    def prep(df):
-        v=df.copy()
+    def prep(df, formato=''):
+        v=anexar_extras_consulta(df.copy(),formato) if formato else df.copy()
+        if formato:
+            activos=set(nombres_campos_activos(formato)) | {'id','folio','numero','dia','mes','anio','fecha_apertura'}
+            extras_visibles=set(campos_registro(formato,True).query('es_personalizado==1 and mostrar_consulta==1').etiqueta.astype(str).tolist()) if not campos_registro(formato,True).empty else set()
+            v=v[[c for c in v.columns if c in activos or c in extras_visibles]]
+        if formato in ('ME','DDM_RX'):
+            v=v.drop(columns=[c for c in CAMPOS_OCULTOS_HALLAZGOS if c in v.columns],errors='ignore')
         if all(c in v.columns for c in ['dia','mes','anio']):
             v['Fecha']=pd.to_datetime(dict(year=v['anio'].fillna(1900).astype(int),month=v['mes'].fillna(1).astype(int),day=v['dia'].fillna(1).astype(int)),errors='coerce').dt.date
             v=v.drop(columns=['dia','mes','anio'])
@@ -1722,7 +2158,7 @@ def page_consulta():
         df=filtered(df,key)
         if df.empty:
             st.info('No se encontraron registros para mostrar.'); return None,df
-        v=prep(df)
+        v=prep(df, {'pnc':'PNC','me':'ME','ddm':'DDM_RX'}.get(key,''))
         try:
             nonce_key=f'table_nonce_{key}'
             nonce=st.session_state.get(nonce_key,0)
@@ -1786,15 +2222,19 @@ def page_consulta():
             tipo_defecto=str(dr['tipo_defecto']) if dr is not None else ''
             clasificacion=str(dr['clasificacion']) if dr is not None else ''
             p1,p2,p3=st.columns(3)
-            p1.text_input('Descripción',value=descripcion,disabled=True,key=f'edit_auto_descripcion_{key}_{selected}')
-            p2.text_input('Cliente',value=cliente,disabled=True,key=f'edit_auto_cliente_{key}_{selected}')
-            p3.text_input('Familia',value=familia,disabled=True,key=f'edit_auto_familia_{key}_{selected}')
+            p1.text_input('Descripción',value=descripcion,disabled=True)
+            p2.text_input('Cliente',value=cliente,disabled=True)
+            p3.text_input('Familia',value=familia,disabled=True)
             d1,d2,d3=st.columns(3)
-            d1.text_input('Defecto',value=defecto,disabled=True,key=f'edit_auto_defecto_{key}_{selected}')
-            d2.text_input('Tipo de defecto',value=tipo_defecto,disabled=True,key=f'edit_auto_tipo_defecto_{key}_{selected}')
-            d3.text_input('Clasificación',value=clasificacion,disabled=True,key=f'edit_auto_clasificacion_{key}_{selected}')
+            d1.text_input(etiqueta_campo('PNC','defecto','Defecto'),value=defecto,disabled=True)
+            d2.text_input('Tipo de defecto',value=tipo_defecto,disabled=True)
+            d3.text_input('Clasificación',value=clasificacion,disabled=True)
             values={}
-            columns=[c for c in row_df.columns if c!='id' and c not in protected]
+            formato_actual=formato_por_tabla(table_name)
+            activos=set(nombres_campos_activos(formato_actual))
+            columns=[c for c in row_df.columns if c!='id' and c not in protected and (not activos or c in activos)]
+            if table_name in ('me_registros','ddm_rx_registros'):
+                columns=[c for c in columns if c not in CAMPOS_OCULTOS_HALLAZGOS]
             with st.form(f'editar_form_{key}_{selected}'):
                 for pos in range(0,len(columns),3):
                     cols_ui=st.columns(3)
@@ -1816,14 +2256,18 @@ def page_consulta():
                 auto={'item':item,'cliente':cliente,'familia':familia,'codigo_defecto':codigo,'defecto':defecto,'tipo_defecto':tipo_defecto}
                 if table_name=='pnc_registros': auto.update({'descripcion_producto':descripcion,'clasificacion':clasificacion})
                 else: auto.update({'producto':descripcion,'categoria_inicial':clasificacion})
-                required=['linea_sector','nave','lote','etapa','semana','turno','responsable_detecta','acciones_inmediatas','disposicion','cantidad_observada','status']
-                required += ['supervisor','analista','descripcion_defecto','categoria_inicial_pnc'] if table_name=='pnc_registros' else ['supervisor_responsable','analista_detecta','descripcion_hallazgo']
+                required=['linea_sector','nave','lote','etapa','semana','turno','acciones_inmediatas','disposicion','status']
+                if table_name=='pnc_registros':
+                    required += ['responsable_detecta','cantidad_observada','supervisor','analista','descripcion_defecto','categoria_inicial_pnc']
+                else:
+                    required += ['supervisor_responsable','analista_detecta','descripcion_hallazgo']
+                required=[c for c in required if campo_obligatorio(formato_actual,c,True)]
                 missing=[]
                 for name,val in {'ITEM':item,'Descripción':descripcion,'Cliente':cliente,'Familia':familia,'Código':codigo,'Defecto':defecto,'Tipo de defecto':tipo_defecto,'Clasificación':clasificacion}.items():
                     if not str(val).strip(): missing.append(name)
                 for col in required:
                     val=values.get(col)
-                    if val is None or (isinstance(val,str) and not val.strip()) or (col=='cantidad_observada' and float(val)<=0): missing.append(labels.get(col,col))
+                    if val is None or (isinstance(val,str) and not val.strip()) or (col=='cantidad_observada' and table_name=='pnc_registros' and float(val)<=0): missing.append(labels.get(col,col))
                 if missing: st.error('Completa los siguientes campos obligatorios: '+', '.join(dict.fromkeys(missing))+'.')
                 else:
                     updates={**values,**auto}; update_cols=list(updates.keys())
@@ -2152,7 +2596,7 @@ def general_catalog_dataframe():
 
 def page_catalogos():
     st.title('Catálogos'); st.caption('Datos precargados desde el Excel adjunto. El administrador puede agregar o eliminar elementos.')
-    tab1,tab2,tab3,tab4,tab5=st.tabs(['Productos','Defectos','Datos generales','Naves, líneas y sectores','Formatos entrega de turno'])
+    tab1,tab2,tab3,tab4,tab5,tab6,tab7=st.tabs(['Productos','Defectos','Datos generales','Naves, líneas y sectores','Formatos entrega de turno','Formatos PDF','Campos de registros'])
     def catalogo_seleccionable(tabla, consulta, columnas_vista, clave, titulo_singular, campos, insertar_sql, actualizar_sql, duplicado_sql, valores_opciones=None):
         df=read_df(consulta)
         vista=df.rename(columns=columnas_vista)
@@ -2402,6 +2846,140 @@ def page_catalogos():
                         if x.button('Sí, eliminar',key=f'fmt_ok_{rid}'):exec_sql('UPDATE catalogo_formatos_entrega SET activo=0 WHERE id=?',(rid,));audit(st.session_state.auth['usuario'],'ELIMINAR_FORMATO_ENTREGA',f'ID {rid}');st.session_state.pop('fmt_confirm',None);st.session_state.fmt_nonce=nonce+1;st.rerun()
                         if y.button('Cancelar',key=f'fmt_cancel_{rid}'):st.session_state.pop('fmt_confirm',None);st.session_state.fmt_nonce=nonce+1;st.rerun()
 
+    with tab6:
+        page_pdfv3()
+    with tab7:
+        st.subheader('Campos de los registros')
+        st.caption('Edita directamente la tabla. Los cambios se aplican al formulario, validación, consulta y disponibilidad para PDF del formato seleccionado.')
+        formato=st.radio('Formato correspondiente',['PNC','ME','DDM_RX'],horizontal=True,format_func=lambda x:{'PNC':'PNC','ME':'Materia Extraña','DDM_RX':'Detector de metales y RX'}[x],key='campos_formato')
+        categorias=read_df('SELECT DISTINCT categoria FROM catalogos ORDER BY categoria').categoria.astype(str).tolist()
+        fuentes=['','productos','defectos']+categorias
+        tipos=['texto','area','numero','fecha','catalogo']
+        df=campos_registro(formato,False)
+        columnas_cfg=['id','campo','etiqueta','tipo_control','catalogo_origen','obligatorio','solo_lectura','orden','activo','es_personalizado','mostrar_formulario','mostrar_consulta','mostrar_pdf']
+        for col in columnas_cfg:
+            if col not in df.columns: df[col]=0 if col in ('obligatorio','solo_lectura','orden','activo','es_personalizado','mostrar_formulario','mostrar_consulta','mostrar_pdf') else ''
+        editor=df[columnas_cfg].rename(columns={
+            'id':'ID','campo':'Campo','etiqueta':'Etiqueta','tipo_control':'Tipo','catalogo_origen':'Catálogo',
+            'obligatorio':'Obligatorio','solo_lectura':'Solo lectura','orden':'Orden','activo':'Activo',
+            'es_personalizado':'Personalizado','mostrar_formulario':'Formulario','mostrar_consulta':'Consulta','mostrar_pdf':'PDF'
+        })
+        editor['Eliminar']=False
+        for col in ['Obligatorio','Solo lectura','Activo','Personalizado','Formulario','Consulta','PDF','Eliminar']:
+            editor[col]=editor[col].fillna(0).astype(bool)
+        editor['Orden']=pd.to_numeric(editor['Orden'],errors='coerce').fillna(0).astype(int)
+        st.info('Para eliminar un campo, marca la casilla Eliminar y guarda. Los valores históricos se conservan para auditoría.')
+        editado=st.data_editor(
+            editor,use_container_width=True,hide_index=True,num_rows='fixed',
+            key=f'editor_campos_directo_{formato}_{st.session_state.get("campos_nonce",0)}',
+            disabled=['ID','Campo','Personalizado'],
+            column_config={
+                'ID':st.column_config.NumberColumn('ID',disabled=True),
+                'Campo':st.column_config.TextColumn('Campo',disabled=True),
+                'Etiqueta':st.column_config.TextColumn('Etiqueta',required=True),
+                'Tipo':st.column_config.SelectboxColumn('Tipo',options=tipos,required=True),
+                'Catálogo':st.column_config.SelectboxColumn('Catálogo',options=fuentes),
+                'Obligatorio':st.column_config.CheckboxColumn('Obligatorio'),
+                'Solo lectura':st.column_config.CheckboxColumn('Solo lectura'),
+                'Orden':st.column_config.NumberColumn('Orden',min_value=0,step=1),
+                'Activo':st.column_config.CheckboxColumn('Activo'),
+                'Personalizado':st.column_config.CheckboxColumn('Personalizado',disabled=True),
+                'Formulario':st.column_config.CheckboxColumn('Formulario'),
+                'Consulta':st.column_config.CheckboxColumn('Consulta'),
+                'PDF':st.column_config.CheckboxColumn('PDF'),
+                'Eliminar':st.column_config.CheckboxColumn('Eliminar',help='Desactiva el campo y lo oculta del formulario, consulta y PDF.')
+            }
+        )
+        if st.button('Guardar cambios de la tabla',type='primary',key=f'guardar_tabla_campos_{formato}'):
+            errores=[]
+            ids_vistos=set()
+            for pos,r in editado.iterrows():
+                try: rid=int(r['ID'])
+                except Exception:
+                    errores.append(f'Fila {pos+1}: ID no válido.'); continue
+                ids_vistos.add(rid)
+                etiqueta=str(r['Etiqueta'] or '').strip(); tipo=str(r['Tipo'] or '').strip(); fuente=str(r['Catálogo'] or '').strip()
+                if not etiqueta: errores.append(f'Campo {r["Campo"]}: la etiqueta no puede quedar vacía.')
+                if tipo not in tipos: errores.append(f'Campo {r["Campo"]}: tipo de control no válido.')
+                if tipo=='catalogo' and not fuente: errores.append(f'Campo {r["Campo"]}: selecciona un catálogo de origen.')
+                if fuente and fuente not in fuentes: errores.append(f'Campo {r["Campo"]}: catálogo de origen no válido.')
+            if errores:
+                st.error('No se guardaron los cambios. '+' '.join(errores))
+            else:
+                db=conn();cur=db.cursor()
+                try:
+                    for _,r in editado.iterrows():
+                        rid=int(r['ID']); eliminar=bool(r['Eliminar']); tipo=str(r['Tipo']); fuente=str(r['Catálogo'] or '') if tipo=='catalogo' else ''
+                        activo=0 if eliminar else int(bool(r['Activo']))
+                        formulario=0 if eliminar or not activo else int(bool(r['Formulario']))
+                        consulta=0 if eliminar or not activo else int(bool(r['Consulta']))
+                        pdf=0 if eliminar or not activo else int(bool(r['PDF']))
+                        anterior=cur.execute('SELECT tipo_control,catalogo_origen,activo,mostrar_formulario FROM catalogo_campos_registro WHERE id=? AND formato=?',(rid,formato)).fetchone()
+                        # Si un campo estaba desactivado y el administrador vuelve a marcar Activo,
+                        # se restaura automaticamente en el formulario. Al eliminarlo se habian
+                        # apagado ambas banderas, por eso antes no reaparecia al reactivarlo.
+                        if anterior and not bool(anterior[2]) and activo and not bool(r['Formulario']):
+                            formulario=1
+                        cur.execute('UPDATE catalogo_campos_registro SET etiqueta=?,tipo_control=?,catalogo_origen=?,obligatorio=?,solo_lectura=?,orden=?,activo=?,mostrar_formulario=?,mostrar_consulta=?,mostrar_pdf=? WHERE id=? AND formato=?',
+                            (str(r['Etiqueta']).strip(),tipo,fuente,int(bool(r['Obligatorio'])),int(bool(r['Solo lectura'])),
+                             int(r['Orden']),activo,formulario,consulta,pdf,rid,formato))
+                        if anterior and (str(anterior[0] or '')!=tipo or str(anterior[1] or '')!=fuente):
+                            cur.execute('UPDATE catalogo_campos_opciones SET activo=0 WHERE campo_id=?',(rid,))
+                    db.commit()
+                except Exception:
+                    db.rollback();raise
+                finally: db.close()
+                audit(st.session_state.auth['usuario'],'EDITAR_TABLA_CAMPOS_REGISTRO',f'{formato} | {len(editado)} campos')
+                st.session_state.campos_nonce=st.session_state.get('campos_nonce',0)+1
+                st.success('Configuración actualizada. Los campos reactivados volverán a mostrarse automáticamente en el formulario correspondiente.')
+                st.rerun()
+        campos_reactivar={f"{int(r.id)} | {r.etiqueta} ({r.campo})":int(r.id) for _,r in df.iterrows() if not bool(r.activo)}
+        with st.expander('Reactivar un campo eliminado o desactivado',expanded=False):
+            if not campos_reactivar:
+                st.info('No existen campos desactivados para reactivar.')
+            else:
+                seleccion_reactivar=st.selectbox('Campo que deseas reactivar',list(campos_reactivar),key=f'seleccion_reactivar_campo_{formato}')
+                if st.button('Reactivar campo seleccionado',key=f'boton_reactivar_campo_{formato}',type='primary'):
+                    rid_reactivar=campos_reactivar[seleccion_reactivar]
+                    exec_sql('UPDATE catalogo_campos_registro SET activo=1,mostrar_formulario=1 WHERE id=? AND formato=?',(rid_reactivar,formato))
+                    audit(st.session_state.auth['usuario'],'REACTIVAR_CAMPO_REGISTRO',f'{formato} | ID {rid_reactivar}')
+                    st.session_state.campos_nonce=st.session_state.get('campos_nonce',0)+1
+                    st.success('Campo reactivado correctamente. Ya volverá a aparecer en el formulario correspondiente.')
+                    st.rerun()
+        campos_eliminar={f"{int(r.id)} | {r.etiqueta} ({r.campo})":int(r.id) for _,r in df.iterrows() if bool(r.activo)}
+        with st.expander('Eliminar o desactivar un campo',expanded=False):
+            if not campos_eliminar:
+                st.info('No existen campos activos para eliminar.')
+            else:
+                seleccion_eliminar=st.selectbox('Campo que deseas eliminar',list(campos_eliminar),key=f'seleccion_eliminar_campo_{formato}')
+                st.warning('El campo dejará de aparecer en nuevos registros, consultas y PDF. Los datos históricos se conservarán.')
+                if st.button('Eliminar campo seleccionado',key=f'boton_eliminar_campo_{formato}',type='secondary'):
+                    st.session_state[f'confirmar_eliminar_campo_{formato}']=campos_eliminar[seleccion_eliminar]
+                rid_eliminar=st.session_state.get(f'confirmar_eliminar_campo_{formato}')
+                if rid_eliminar:
+                    x,y=st.columns(2)
+                    if x.button('Confirmar eliminación',key=f'confirmar_baja_campo_{formato}_{rid_eliminar}',type='primary'):
+                        exec_sql('UPDATE catalogo_campos_registro SET activo=0,mostrar_formulario=0,mostrar_consulta=0,mostrar_pdf=0 WHERE id=? AND formato=?',(rid_eliminar,formato))
+                        audit(st.session_state.auth['usuario'],'ELIMINAR_CAMPO_REGISTRO',f'{formato} | ID {rid_eliminar}')
+                        st.session_state.pop(f'confirmar_eliminar_campo_{formato}',None);st.session_state.campos_nonce=st.session_state.get('campos_nonce',0)+1;st.rerun()
+                    if y.button('Cancelar',key=f'cancelar_baja_campo_{formato}_{rid_eliminar}'):
+                        st.session_state.pop(f'confirmar_eliminar_campo_{formato}',None);st.rerun()
+        with st.expander('Agregar nuevo campo',expanded=False):
+            modo=st.radio('Origen del llenado',['LIBRE','CATALOGO'],horizontal=True,format_func=lambda x:'Llenado libre' if x=='LIBRE' else 'Relacionado con catálogo',key=f'modo_nuevo_{formato}')
+            fuente=st.selectbox('Catálogo de origen',fuentes[1:],key=f'fuente_nuevo_{formato}') if modo=='CATALOGO' else ''
+            with st.form(f'nuevo_campo_{formato}',clear_on_submit=True):
+                a,b=st.columns(2); nombre=a.text_input('Nombre interno *',placeholder='Ejemplo: proveedor_material'); etiqueta=b.text_input('Etiqueta visible *',placeholder='Ejemplo: Proveedor del material')
+                c,d,e=st.columns(3); tipo=c.selectbox('Tipo de control',['texto','area','numero','fecha'] if modo=='LIBRE' else ['catalogo']); obligatorio=d.checkbox('Obligatorio'); mostrar_pdf=e.checkbox('Disponible para PDF',value=True); guardar=st.form_submit_button('Agregar campo',type='primary')
+            if guardar:
+                import re,unicodedata
+                limpio=''.join(ch for ch in unicodedata.normalize('NFKD',nombre.lower()) if not unicodedata.combining(ch));campo=re.sub(r'[^a-z0-9_]+','_',limpio).strip('_')
+                if not campo or not etiqueta.strip(): st.error('Completa el nombre interno y la etiqueta visible.')
+                elif not read_df('SELECT id FROM catalogo_campos_registro WHERE formato=? AND campo=?',(formato,campo)).empty: st.error('Ese nombre interno ya existe en el formato seleccionado.')
+                else:
+                    orden=int(read_df('SELECT COALESCE(MAX(orden),-1)+1 n FROM catalogo_campos_registro WHERE formato=?',(formato,)).iloc[0].n)
+                    exec_sql('INSERT INTO catalogo_campos_registro(formato,campo,etiqueta,tipo_control,catalogo_origen,obligatorio,solo_lectura,orden,activo,es_personalizado,mostrar_formulario,mostrar_consulta,mostrar_pdf) VALUES(?,?,?,?,?,?,0,?,1,1,1,1,?)',(formato,campo,etiqueta.strip(),tipo,fuente,int(obligatorio),orden,int(mostrar_pdf)))
+                    audit(st.session_state.auth['usuario'],'AGREGAR_CAMPO_REGISTRO',f'{formato} | {campo}');st.session_state.campos_nonce=st.session_state.get('campos_nonce',0)+1;st.rerun()
+        st.caption('Nota: si cambias un campo a tipo Catálogo, la lista se toma automáticamente del catálogo seleccionado. Si lo desactivas o eliminas, deja de aparecer en nuevos registros, pero la información histórica no se borra.')
 def page_usuarios():
     if not is_dev():
         st.warning('Esta sección está disponible únicamente para administradores.')
