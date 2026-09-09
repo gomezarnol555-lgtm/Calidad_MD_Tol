@@ -1821,7 +1821,7 @@ def page_registro():
             cliente=str(row['cliente']) if row is not None else ''
             familia=str(row['familia']) if row is not None else ''
             lote=b.text_input('Lote *',key=f'lote_{tabla}_{nonce}')
-            etapa=c.selectbox('Etapa *',opt_blank(catalog('etapa')),key=f'etapa_{tabla}_{nonce}')
+            c.empty()
             a,b,c=st.columns(3)
             a.text_input('Descripción',value=producto,disabled=True)
             b.text_input('Cliente',value=cliente,disabled=True)
@@ -1842,13 +1842,11 @@ def page_registro():
             a,b,c=st.columns(3)
             supervisor=a.selectbox('Supervisor (Responsable) *',opt_blank(catalog('supervisor')),key=f'sup_{tabla}_{nonce}')
             analista=b.selectbox('Analista (Persona que detecta) *',opt_blank(catalog('analista')),key=f'ana_{tabla}_{nonce}')
-            responsable=c.selectbox('Responsable de detectar el PNC *',opt_blank(catalog('responsable_detecta')),key=f'resp_{tabla}_{nonce}')
+            c.empty()
             descripcion=st.text_area('Descripción del defecto *',key=f'desc_{tabla}_{nonce}')
             acciones=st.text_area('Acciones inmediatas *',key=f'accion_{tabla}_{nonce}')
             a,b,c=st.columns(3)
-            disposicion=a.selectbox('Disposición *',opt_blank(catalog('disposicion')),key=f'disp_{tabla}_{nonce}')
-            cantidad=b.number_input('Cantidad observada (kg) *',min_value=0.0,step=1.0,format='%.2f',key=f'cantidad_{tabla}_{nonce}')
-            status=c.selectbox('Status *',opt_blank(catalog('status')),key=f'status_{tabla}_{nonce}')
+            a.empty(); b.empty(); c.empty()
             a,b,c=st.columns(3)
             equipo=a.text_input('Equipo en donde se tiene el hallazgo',key=f'equipo_{tabla}_{nonce}')
             tipo=b.selectbox('Tipo',opt_blank(['Metal','Plástico duro','Plástico blando','Vidrio','Madera','Papel/Cartón','Cabello','Insecto','Otro']),key=f'tipo_{tabla}_{nonce}')
@@ -1857,12 +1855,12 @@ def page_registro():
             evitar=st.text_area('Acciones a realizar para evitar la incidencia',key=f'evitar_{tabla}_{nonce}')
             ok=st.button('Guardar registro',key=f'guardar_{tabla}_{nonce}',type='primary')
         if ok:
-            obligatorios={'Línea/Sector':linea_sector,'Nave':nave,'ITEM':item,'Descripción':producto,'Cliente':cliente,'Familia':familia,'Lote':lote,'Etapa':etapa,'Código':codigo,'Defecto':defecto,'Tipo de defecto':tipo_defecto,'Semana':semana,'Turno':turno,'Fecha':fecha,'Supervisor':supervisor,'Analista':analista,'Responsable de detectar el PNC':responsable,'Descripción del defecto':descripcion,'Acciones inmediatas':acciones,'Disposición':disposicion,'Cantidad observada':cantidad,'Status':status,'Categoría inicial':categoria}
-            faltantes=[k for k,v in obligatorios.items() if v is None or (isinstance(v,str) and not v.strip()) or (k=='Cantidad observada' and float(v)<=0)]
+            obligatorios={'Línea/Sector':linea_sector,'Nave':nave,'ITEM':item,'Descripción':producto,'Cliente':cliente,'Familia':familia,'Lote':lote,'Código':codigo,'Defecto':defecto,'Tipo de defecto':tipo_defecto,'Semana':semana,'Turno':turno,'Fecha':fecha,'Supervisor':supervisor,'Analista':analista,'Descripción del defecto':descripcion,'Acciones inmediatas':acciones,'Categoría inicial':categoria}
+            faltantes=[k for k,v in obligatorios.items() if v is None or (isinstance(v,str) and not v.strip())]
             if faltantes:
                 st.error('Completa los siguientes campos obligatorios: '+', '.join(faltantes)+'.')
             else:
-                rid=exec_sql(f'INSERT INTO {tabla}(dia,mes,anio,nave,linea_sector,familia,equipo_hallazgo,item,producto,lote,descripcion_hallazgo,tipo,particulas_halladas,accion_contingente,investigacion_origen,analista_detecta,supervisor_responsable,acciones_evitar_incidencia,creado_por,creado_en,etapa,codigo_defecto,semana,turno,responsable_detecta,acciones_inmediatas,disposicion,cantidad_observada,status,categoria_inicial) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',(fecha.day,fecha.month,fecha.year,nave,linea_sector,familia,equipo,item,producto,lote,descripcion,tipo,int(particulas),acciones,investigacion,analista,supervisor,evitar,st.session_state.auth['usuario'],now_iso(),etapa,codigo,int(semana),turno,responsable,acciones,disposicion,float(cantidad),status,categoria))
+                rid=exec_sql(f'INSERT INTO {tabla}(dia,mes,anio,nave,linea_sector,familia,equipo_hallazgo,item,producto,lote,descripcion_hallazgo,tipo,particulas_halladas,accion_contingente,investigacion_origen,analista_detecta,supervisor_responsable,acciones_evitar_incidencia,creado_por,creado_en,etapa,codigo_defecto,semana,turno,responsable_detecta,acciones_inmediatas,disposicion,cantidad_observada,status,categoria_inicial) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',(fecha.day,fecha.month,fecha.year,nave,linea_sector,familia,equipo,item,producto,lote,descripcion,tipo,int(particulas),acciones,investigacion,analista,supervisor,evitar,st.session_state.auth['usuario'],now_iso(),'',codigo,int(semana),turno,'',acciones,'',0.0,'',categoria))
                 audit(st.session_state.auth['usuario'],audit_action,f'ID {rid}')
                 limpiar_form(); st.session_state.flash_registro_guardado=f'Registro guardado correctamente: Número {rid}'
                 st.rerun()
@@ -2094,6 +2092,9 @@ def page_consulta():
             d3.text_input('Clasificación',value=clasificacion,disabled=True,key=f'edit_auto_clasificacion_{key}_{selected}')
             values={}
             columns=[c for c in row_df.columns if c!='id' and c not in protected]
+            if table_name in {'me_registros','ddm_rx_registros'}:
+                campos_retirados={'etapa','responsable_detecta','disposicion','status','cantidad_observada'}
+                columns=[c for c in columns if c not in campos_retirados]
             with st.form(f'editar_form_{key}_{selected}'):
                 for pos in range(0,len(columns),3):
                     cols_ui=st.columns(3)
@@ -2181,6 +2182,7 @@ def page_consulta():
         if not shown.empty: st.download_button('Descargar Reclamos CSV',prep(shown).to_csv(index=False).encode('utf-8-sig'),f"reclamos_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",'text/csv')
         if selected:
             st.markdown(f'### Reclamo seleccionado: Número {selected}')
+            st.caption('Edita los campos del registro seleccionado y presiona Guardar cambios del reclamo.')
             original=read_df('SELECT * FROM reclamos_registros WHERE id=?',(selected,))
             if not original.empty:
                 cols=[c for c in original.columns if c not in ['id','creado_por','creado_en','actualizado_por','actualizado_en']]
