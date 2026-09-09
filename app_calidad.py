@@ -1079,6 +1079,11 @@ def init_db():
         for col, tipo_sql in columnas_nuevas.items():
             try: cur.execute(f'ALTER TABLE {tbl} ADD COLUMN {col} {tipo_sql}')
             except sqlite3.OperationalError: pass
+    # Campos de auditoría homogéneos para PNC, Materia Extraña y DDM/RX.
+    for tbl in ['pnc_registros','me_registros','ddm_rx_registros']:
+        for col in ['actualizado_por','actualizado_en']:
+            try: cur.execute(f'ALTER TABLE {tbl} ADD COLUMN {col} TEXT')
+            except sqlite3.OperationalError: pass
     try: cur.execute('ALTER TABLE pnc_registros ADD COLUMN semana INTEGER')
     except sqlite3.OperationalError: pass
     for col in ['categoria_inicial_pnc','categoria_final_pnc']:
@@ -2158,7 +2163,7 @@ def page_consulta():
         producto_actual=next((x for x in opt_prod if x.split('|')[0].strip()==original_item),'')
         defecto_actual=next((x for x in opt_defs if x.split('|')[0].strip()==original_codigo),'')
         labels={'fecha_apertura':'Fecha','dia':'Día','mes':'Mes','anio':'Año','linea_sector':'Línea/Sector *','nave':'Nave *','lote':'Lote *','etapa':'Etapa *','semana':'Semana *','turno':'Turno *','supervisor':'Supervisor *','supervisor_responsable':'Supervisor *','analista':'Analista *','analista_detecta':'Analista *','responsable_detecta':'Responsable de detectar el PNC *','descripcion_defecto':'Descripción del defecto *','descripcion_hallazgo':'Descripción del defecto *','acciones_inmediatas':'Acciones inmediatas *','accion_contingente':'Acciones inmediatas','disposicion':'Disposición *','cantidad_observada':'Cantidad observada (kg) *','status':'Status *','equipo_hallazgo':'Equipo del hallazgo','tipo':'Tipo de hallazgo','particulas_halladas':'Partículas halladas','investigacion_origen':'Investigación del origen','acciones_evitar_incidencia':'Acciones para evitar incidencia','observaciones':'Observaciones','material_hallado':'Material hallado / ME','fecha_final_tratamiento':'Fecha final','cantidad_reproceso':'Reproceso kg','cantidad_decomiso':'Decomiso kg','cantidad_aprobado_segunda':'Aprobado segunda instancia kg','categoria_inicial_pnc':'Categoría inicial *','categoria_final_pnc':'Categoría final'}
-        protected={'folio','creado_por','creado_en','cantidad_total_pnc','item','descripcion_producto','producto','cliente','familia','codigo_defecto','defecto','tipo_defecto','clasificacion','categoria_inicial'}
+        protected={'folio','creado_por','creado_en','actualizado_por','actualizado_en','cantidad_total_pnc','item','descripcion_producto','producto','cliente','familia','codigo_defecto','defecto','tipo_defecto','clasificacion','categoria_inicial'}
         numeric={'dia','mes','anio','semana','particulas_halladas','cantidad_observada','cantidad_reproceso','cantidad_decomiso','cantidad_aprobado_segunda'}
         select_catalog={'linea_sector':'linea_sector','nave':'nave','etapa':'etapa','turno':'turno','supervisor':'supervisor','supervisor_responsable':'supervisor','analista':'analista','analista_detecta':'analista','responsable_detecta':'responsable_detecta','disposicion':'disposicion','status':'status','categoria_inicial_pnc':'categoria_pnc','categoria_final_pnc':'categoria_pnc'}
         with st.expander('✏️ Editar o completar registro',expanded=True):
@@ -2222,7 +2227,12 @@ def page_consulta():
                     if val is None or (isinstance(val,str) and not val.strip()) or (col=='cantidad_observada' and float(val)<=0): missing.append(labels.get(col,col))
                 if missing: st.error('Completa los siguientes campos obligatorios: '+', '.join(dict.fromkeys(missing))+'.')
                 else:
-                    updates={**values,**auto}; update_cols=list(updates.keys())
+                    updates={**values,**auto}
+                    columnas_tabla={r[1] for r in conn().execute(f'PRAGMA table_info({table_name})').fetchall()}
+                    if {'actualizado_por','actualizado_en'}.issubset(columnas_tabla):
+                        updates['actualizado_por']=st.session_state.auth['usuario']
+                        updates['actualizado_en']=now_iso()
+                    update_cols=list(updates.keys())
                     assignments=', '.join([f'"{c}"=?' for c in update_cols])
                     exec_sql(f'UPDATE {table_name} SET {assignments} WHERE id=?',tuple(updates[c] for c in update_cols)+(selected,))
                     audit(st.session_state.auth['usuario'],'EDITAR_REGISTRO',f'Tabla {table_name} | ID {selected}')
@@ -2237,7 +2247,11 @@ def page_consulta():
 
     t1,t2,t3,t4,t5=st.tabs(['PNC´s','Materia Extraña','Detector de metales y RX','Reclamos','Devoluciones'])
     with t1:
-        df=read_df('SELECT * FROM pnc_registros ORDER BY id ASC'); selected,shown=table(df,'pnc')
+        df=read_df('SELECT * FROM pnc_registros ORDER BY id ASC')
+        auditoria=['creado_por','creado_en','actualizado_por','actualizado_en']
+        base=[c for c in df.columns if c not in auditoria]
+        df_tabla=df[base+[c for c in auditoria if c in df.columns]]
+        selected,shown=table(df_tabla,'pnc')
         if not shown.empty: st.download_button('Descargar PNC CSV',prep(shown).to_csv(index=False).encode('utf-8-sig'),f"pnc_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",'text/csv')
         if selected:
             st.markdown(f'### Registro seleccionado: Número {selected}')
@@ -2250,7 +2264,7 @@ def page_consulta():
             if is_dev(): delete_confirm('pnc_registros','pnc','ELIMINAR_PNC',selected)
     with t2:
         df=read_df('SELECT * FROM me_registros ORDER BY id ASC')
-        campos_actuales=['id','dia','mes','anio','semana','nave','item','producto','familia','lote','linea_sector','codigo_defecto','turno','supervisor_responsable','analista_detecta','descripcion_hallazgo','acciones_inmediatas','categoria_inicial','equipo_hallazgo','tipo','particulas_halladas','investigacion_origen','acciones_evitar_incidencia']
+        campos_actuales=['id','dia','mes','anio','semana','nave','item','producto','familia','lote','linea_sector','codigo_defecto','turno','supervisor_responsable','analista_detecta','descripcion_hallazgo','acciones_inmediatas','equipo_hallazgo','tipo','particulas_halladas','investigacion_origen','acciones_evitar_incidencia','creado_por','creado_en','actualizado_por','actualizado_en']
         disponibles=[c for c in campos_actuales if c in df.columns]
         df_tabla=df[disponibles].copy()
         if all(c in df_tabla.columns for c in ['dia','mes','anio']):
@@ -2268,7 +2282,7 @@ def page_consulta():
             if is_dev(): delete_confirm('me_registros','me','ELIMINAR_ME',selected)
     with t3:
         df=read_df('SELECT * FROM ddm_rx_registros ORDER BY id ASC')
-        campos_actuales=['id','dia','mes','anio','semana','nave','item','producto','familia','lote','linea_sector','codigo_defecto','turno','supervisor_responsable','analista_detecta','descripcion_hallazgo','acciones_inmediatas','categoria_inicial','equipo_hallazgo','tipo','particulas_halladas','investigacion_origen','acciones_evitar_incidencia']
+        campos_actuales=['id','dia','mes','anio','semana','nave','item','producto','familia','lote','linea_sector','codigo_defecto','turno','supervisor_responsable','analista_detecta','descripcion_hallazgo','acciones_inmediatas','equipo_hallazgo','tipo','particulas_halladas','investigacion_origen','acciones_evitar_incidencia','creado_por','creado_en','actualizado_por','actualizado_en']
         disponibles=[c for c in campos_actuales if c in df.columns]
         df_tabla=df[disponibles].copy()
         if all(c in df_tabla.columns for c in ['dia','mes','anio']):
