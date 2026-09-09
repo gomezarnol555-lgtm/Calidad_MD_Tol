@@ -2153,7 +2153,10 @@ def page_consulta():
             edit_record('pnc_registros','pnc',selected)
             if is_dev(): delete_confirm('pnc_registros','pnc','ELIMINAR_PNC',selected)
     with t2:
-        df=read_df('SELECT * FROM me_registros ORDER BY id ASC'); selected,shown=table(df,'me')
+        df=read_df('SELECT * FROM me_registros ORDER BY id ASC')
+        columnas_retiradas=['etapa','responsable_detecta','disposicion','status','cantidad_observada']
+        df_tabla=df.drop(columns=[c for c in columnas_retiradas if c in df.columns])
+        selected,shown=table(df_tabla,'me')
         if not shown.empty: st.download_button('Descargar Materia Extraña CSV',prep(shown).to_csv(index=False).encode('utf-8-sig'),f"materia_extrana_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",'text/csv')
         if selected:
             st.markdown(f'### Registro seleccionado: Número {selected}')
@@ -2165,7 +2168,10 @@ def page_consulta():
             edit_record('me_registros','me',selected)
             if is_dev(): delete_confirm('me_registros','me','ELIMINAR_ME',selected)
     with t3:
-        df=read_df('SELECT * FROM ddm_rx_registros ORDER BY id ASC'); selected,shown=table(df,'ddm')
+        df=read_df('SELECT * FROM ddm_rx_registros ORDER BY id ASC')
+        columnas_retiradas=['etapa','responsable_detecta','disposicion','status','cantidad_observada']
+        df_tabla=df.drop(columns=[c for c in columnas_retiradas if c in df.columns])
+        selected,shown=table(df_tabla,'ddm')
         if not shown.empty: st.download_button('Descargar Detector de metales y RX CSV',prep(shown).to_csv(index=False).encode('utf-8-sig'),f"ddm_rx_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",'text/csv')
         if selected:
             st.markdown(f'### Registro seleccionado: Número {selected}')
@@ -2178,28 +2184,103 @@ def page_consulta():
             if is_dev(): delete_confirm('ddm_rx_registros','ddm','ELIMINAR_DDM_RX',selected)
 
     with t4:
-        df=read_df('SELECT * FROM reclamos_registros ORDER BY id ASC'); selected,shown=table(df,'reclamos')
-        if not shown.empty: st.download_button('Descargar Reclamos CSV',prep(shown).to_csv(index=False).encode('utf-8-sig'),f"reclamos_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",'text/csv')
+        df=read_df('SELECT * FROM reclamos_registros ORDER BY id ASC')
+        selected,shown=table(df,'reclamos')
+        if not shown.empty:
+            st.download_button('Descargar Reclamos CSV',prep(shown).to_csv(index=False).encode('utf-8-sig'),f"reclamos_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",'text/csv')
         if selected:
             st.markdown(f'### Reclamo seleccionado: Número {selected}')
-            st.caption('Edita los campos del registro seleccionado y presiona Guardar cambios del reclamo.')
-            original=read_df('SELECT * FROM reclamos_registros WHERE id=?',(selected,))
-            if not original.empty:
-                cols=[c for c in original.columns if c not in ['id','creado_por','creado_en','actualizado_por','actualizado_en']]
-                editado=st.data_editor(original[cols],use_container_width=True,hide_index=True,num_rows='fixed',key=f'editor_reclamos_{selected}',column_config={'comprobado':st.column_config.SelectboxColumn('Comprobado',options=['Sí','No']),'unidad':st.column_config.SelectboxColumn('Unidad',options=['Bulto','Bolsa','Pieza','Lámina']),'estado_reclamo':st.column_config.SelectboxColumn('Estado del reclamo',options=['Abierto','Cerrado']),'pmd':st.column_config.SelectboxColumn('P / M / D',options=['1 - Manipulación','2 - Producción','3 - Diseño']),'red_social':st.column_config.SelectboxColumn('Red social',options=['Mail','Web','Instagram','No indica','Facebook'])})
-                st.caption('Fuente y Caducidad son de llenado libre. Familia conserva el valor autocompletado desde el catálogo de productos.')
-                if st.button('Guardar cambios del reclamo',type='primary',key=f'guardar_editor_reclamos_{selected}'):
-                    r=editado.iloc[0].to_dict(); oblig=['fecha','codigo_defecto','descripcion_defecto','fuente','mercado','pais_estado','numero_caso','item','producto','cliente','familia','descripcion_reclamo','causa_raiz','acciones_correctivas_contingentes','comprobado','cantidad_afectada','unidad','sector','estado_reclamo','lote','nave','pmd','tipo_defecto','clasificacion_defecto','red_social']
-                    faltan=[c for c in oblig if r.get(c) is None or str(r.get(c)).strip()=='' or (c=='cantidad_afectada' and float(r.get(c) or 0)<=0)]
-                    duplicado=not read_df('SELECT id FROM reclamos_registros WHERE UPPER(TRIM(numero_caso))=UPPER(TRIM(?)) AND id<>?',(str(r.get('numero_caso') or ''),selected)).empty
-                    if duplicado: st.error('Ya existe otro reclamo con el mismo No. Caso Right Now / MDLZ.')
-                    elif faltan: st.error('Completa los campos obligatorios: '+', '.join(faltan)+'.')
-                    elif str(r.get('estado_reclamo'))=='Cerrado' and not str(r.get('fecha_cierre') or '').strip(): st.error('Captura la fecha de cierre para el reclamo cerrado.')
-                    elif str(r.get('fecha_cierre') or '').strip() and pd.to_datetime(r['fecha_cierre']).date()<pd.to_datetime(r['fecha']).date(): st.error('La fecha de cierre no puede ser anterior a la fecha del reclamo.')
-                    else:
-                        asign=', '.join([f'"{c}"=?' for c in cols]+['actualizado_por=?','actualizado_en=?']); vals=tuple(None if pd.isna(r[c]) else r[c] for c in cols)+(st.session_state.auth['usuario'],now_iso(),selected)
-                        exec_sql(f'UPDATE reclamos_registros SET {asign} WHERE id=?',vals); audit(st.session_state.auth['usuario'],'EDITAR_RECLAMO',f'ID {selected}'); st.success(f'Reclamo actualizado correctamente: Número {selected}'); st.rerun()
-            if is_dev(): delete_confirm('reclamos_registros','reclamos','ELIMINAR_RECLAMO',selected)
+            row_df=read_df('SELECT * FROM reclamos_registros WHERE id=?',(selected,))
+            if row_df.empty:
+                st.warning('El registro seleccionado ya no está disponible.')
+            else:
+                row=row_df.iloc[0].to_dict()
+                prod=read_df('SELECT * FROM productos WHERE activo=1 ORDER BY descripcion')
+                defs=read_df('SELECT * FROM defectos WHERE activo=1 ORDER BY CAST(codigo AS INTEGER)')
+                opt_prod=['']+[f'{r.item} | {r.descripcion}' for r in prod.itertuples()]
+                opt_defs=['']+[f'{r.codigo} | {r.defecto}' for r in defs.itertuples()]
+                item_actual=str(row.get('item') or '')
+                codigo_actual=str(row.get('codigo_defecto') or '')
+                producto_actual=next((x for x in opt_prod if x.split('|')[0].strip()==item_actual),'')
+                defecto_actual=next((x for x in opt_defs if x.split('|')[0].strip()==codigo_actual),'')
+                fecha_actual=pd.to_datetime(row.get('fecha'),errors='coerce')
+                cierre_actual=pd.to_datetime(row.get('fecha_cierre'),errors='coerce')
+                with st.expander('✏️ Editar registro de Reclamo',expanded=True):
+                    with st.form(f'editar_reclamo_{selected}'):
+                        a,b,c=st.columns(3)
+                        fecha=a.date_input('Fecha *',value=fecha_actual.date() if pd.notna(fecha_actual) else date.today())
+                        od=b.selectbox('Código / Defecto *',opt_defs,index=idx_or_zero(opt_defs,defecto_actual))
+                        fuente=c.text_input('Fuente *',value=str(row.get('fuente') or ''))
+                        codigo=od.split('|')[0].strip() if od else ''
+                        dr=defs[defs['codigo'].astype(str)==codigo].iloc[0] if codigo and codigo in defs['codigo'].astype(str).values else None
+                        defecto=str(dr['defecto']) if dr is not None else ''
+                        tipo_defecto=str(dr['tipo_defecto']) if dr is not None else ''
+                        clasificacion=str(dr['clasificacion']) if dr is not None else ''
+                        a,b,c=st.columns(3)
+                        a.text_input('Descripción del defecto',value=defecto,disabled=True)
+                        b.text_input('Tipo de defecto',value=tipo_defecto,disabled=True)
+                        c.text_input('Clasificación del defecto',value=clasificacion,disabled=True)
+                        a,b,c=st.columns(3)
+                        mercado_ops=['','Interno','Externo']; mercado_actual=str(row.get('mercado') or '')
+                        if mercado_actual and mercado_actual not in mercado_ops: mercado_ops.append(mercado_actual)
+                        mercado=a.selectbox('Mercado *',mercado_ops,index=idx_or_zero(mercado_ops,mercado_actual))
+                        pais_estado=b.text_input('País / Estado *',value=str(row.get('pais_estado') or ''))
+                        numero_caso=c.text_input('No. Caso Right Now / MDLZ *',value=str(row.get('numero_caso') or ''))
+                        a,b,c=st.columns(3)
+                        op=a.selectbox('ITEM *',opt_prod,index=idx_or_zero(opt_prod,producto_actual))
+                        item=op.split('|')[0].strip() if op else ''
+                        pr=prod[prod['item'].astype(str)==item].iloc[0] if item and item in prod['item'].astype(str).values else None
+                        producto='' if pr is None or pd.isna(pr['descripcion']) else str(pr['descripcion']).strip()
+                        cliente='' if pr is None or pd.isna(pr['cliente']) else str(pr['cliente']).strip()
+                        familia='' if pr is None or pd.isna(pr['familia']) else str(pr['familia']).strip()
+                        b.text_input('Producto',value=producto,disabled=True)
+                        c.text_input('Cliente',value=cliente,disabled=True)
+                        st.text_input('Familia',value=familia,disabled=True)
+                        descripcion_reclamo=st.text_area('Descripción del reclamo *',value=str(row.get('descripcion_reclamo') or ''))
+                        causa_raiz=st.text_area('Causa raíz del defecto *',value=str(row.get('causa_raiz') or ''))
+                        acciones=st.text_area('Acciones correctivas y contingentes *',value=str(row.get('acciones_correctivas_contingentes') or ''))
+                        a,b,c=st.columns(3)
+                        comp_ops=['','Sí','No']; comprobado=a.selectbox('Comprobado *',comp_ops,index=idx_or_zero(comp_ops,str(row.get('comprobado') or '')))
+                        cantidad=b.number_input('Cantidad afectada *',min_value=0.0,step=1.0,format='%.2f',value=float(row.get('cantidad_afectada') or 0))
+                        unidad_ops=['','Bulto','Bolsa','Pieza','Lámina']; unidad_actual=str(row.get('unidad') or '')
+                        if unidad_actual and unidad_actual not in unidad_ops: unidad_ops.append(unidad_actual)
+                        unidad=c.selectbox('Unidad *',unidad_ops,index=idx_or_zero(unidad_ops,unidad_actual))
+                        a,b,c=st.columns(3)
+                        sector=a.text_input('Sector *',value=str(row.get('sector') or ''))
+                        estado_ops=['','Abierto','Cerrado']; estado_actual=str(row.get('estado_reclamo') or '')
+                        estado=b.selectbox('Estado del reclamo *',estado_ops,index=idx_or_zero(estado_ops,estado_actual))
+                        fecha_cierre=c.date_input('Fecha de cierre',value=cierre_actual.date() if pd.notna(cierre_actual) else None)
+                        a,b,c=st.columns(3)
+                        tsp=a.text_input('TSP N°',value=str(row.get('tsp_numero') or ''))
+                        caducidad=b.text_input('Caducidad',value=str(row.get('caducidad') or ''))
+                        lote=c.text_input('Lote *',value=str(row.get('lote') or ''))
+                        a,b,c=st.columns(3)
+                        nave_ops=opt_blank(catalog('nave')); nave_actual=str(row.get('nave') or '')
+                        if nave_actual and nave_actual not in nave_ops: nave_ops.append(nave_actual)
+                        nave=a.selectbox('Nave *',nave_ops,index=idx_or_zero(nave_ops,nave_actual))
+                        pmd_ops=['','1 - Manipulación','2 - Producción','3 - Diseño']; pmd_actual=str(row.get('pmd') or '')
+                        if pmd_actual and pmd_actual not in pmd_ops: pmd_ops.append(pmd_actual)
+                        pmd=b.selectbox('P / M / D *',pmd_ops,index=idx_or_zero(pmd_ops,pmd_actual))
+                        red_ops=['','Mail','Web','Instagram','No indica','Facebook']; red_actual=str(row.get('red_social') or '')
+                        if red_actual and red_actual not in red_ops: red_ops.append(red_actual)
+                        red_social=c.selectbox('Red social *',red_ops,index=idx_or_zero(red_ops,red_actual))
+                        guardar=st.form_submit_button('Guardar cambios',type='primary')
+                    if guardar:
+                        req={'Código / Defecto':codigo,'Descripción del defecto':defecto,'Fuente':fuente,'Mercado':mercado,'País / Estado':pais_estado,'No. Caso':numero_caso,'ITEM':item,'Producto':producto,'Cliente':cliente,'Familia':familia,'Descripción del reclamo':descripcion_reclamo,'Causa raíz':causa_raiz,'Acciones':acciones,'Comprobado':comprobado,'Cantidad afectada':cantidad,'Unidad':unidad,'Sector':sector,'Estado':estado,'Lote':lote,'Nave':nave,'P / M / D':pmd,'Tipo de defecto':tipo_defecto,'Clasificación':clasificacion,'Red social':red_social}
+                        faltan=[k for k,v in req.items() if v is None or (isinstance(v,str) and not v.strip()) or (k=='Cantidad afectada' and float(v)<=0)]
+                        duplicado=not read_df('SELECT id FROM reclamos_registros WHERE UPPER(TRIM(numero_caso))=UPPER(TRIM(?)) AND id<>?',(numero_caso,selected)).empty if numero_caso.strip() else False
+                        if duplicado: st.error('Ya existe otro reclamo con el mismo No. Caso Right Now / MDLZ.')
+                        elif faltan: st.error('Completa los siguientes campos obligatorios: '+', '.join(faltan)+'.')
+                        elif estado=='Cerrado' and not fecha_cierre: st.error('Captura la fecha de cierre para el reclamo cerrado.')
+                        elif fecha_cierre and fecha_cierre<fecha: st.error('La fecha de cierre no puede ser anterior a la fecha del reclamo.')
+                        else:
+                            exec_sql('UPDATE reclamos_registros SET fecha=?,codigo_defecto=?,descripcion_defecto=?,fuente=?,mercado=?,pais_estado=?,numero_caso=?,item=?,producto=?,cliente=?,familia=?,descripcion_reclamo=?,causa_raiz=?,acciones_correctivas_contingentes=?,comprobado=?,cantidad_afectada=?,unidad=?,sector=?,estado_reclamo=?,fecha_cierre=?,tsp_numero=?,caducidad=?,lote=?,nave=?,pmd=?,tipo_defecto=?,clasificacion_defecto=?,red_social=?,actualizado_por=?,actualizado_en=? WHERE id=?',(fecha.isoformat(),codigo,defecto,fuente.strip(),mercado,pais_estado.strip(),numero_caso.strip(),item,producto,cliente,familia,descripcion_reclamo.strip(),causa_raiz.strip(),acciones.strip(),comprobado,float(cantidad),unidad,sector.strip(),estado,fecha_cierre.isoformat() if fecha_cierre else None,tsp.strip(),caducidad.strip(),lote.strip(),nave,pmd,tipo_defecto,clasificacion,red_social,st.session_state.auth['usuario'],now_iso(),selected))
+                            audit(st.session_state.auth['usuario'],'EDITAR_RECLAMO',f'ID {selected} | Caso {numero_caso.strip()}')
+                            st.success(f'Reclamo actualizado correctamente: Número {selected}')
+                            st.rerun()
+            if is_dev():
+                delete_confirm('reclamos_registros','reclamos','ELIMINAR_RECLAMO',selected)
+
 def page_muestras_retencion():
     periodos=[
         ('muestras_10_meses','10 Meses','🗓️'),
