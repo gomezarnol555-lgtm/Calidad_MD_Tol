@@ -1041,7 +1041,7 @@ def init_db():
         id INTEGER PRIMARY KEY AUTOINCREMENT, fecha TEXT NOT NULL,
         codigo_defecto TEXT NOT NULL, defecto TEXT NOT NULL, cedis TEXT NOT NULL,
         pais_estado TEXT NOT NULL, item TEXT NOT NULL, producto TEXT NOT NULL,
-        cliente TEXT NOT NULL, linea TEXT NOT NULL, lote TEXT NOT NULL,
+        cliente TEXT NOT NULL, linea TEXT, familia TEXT, lote TEXT NOT NULL,
         caducidad TEXT NOT NULL, descripcion_defecto TEXT NOT NULL,
         comprobado TEXT NOT NULL, cantidad_afectada REAL NOT NULL DEFAULT 0,
         unidad TEXT NOT NULL, sector TEXT NOT NULL, disposicion TEXT NOT NULL,
@@ -1051,7 +1051,7 @@ def init_db():
     columnas_devoluciones={
         'fecha':'TEXT','codigo_defecto':'TEXT','defecto':'TEXT','cedis':'TEXT',
         'pais_estado':'TEXT','item':'TEXT','producto':'TEXT','cliente':'TEXT',
-        'linea':'TEXT','lote':'TEXT','caducidad':'TEXT','descripcion_defecto':'TEXT',
+        'linea':'TEXT','familia':'TEXT','lote':'TEXT','caducidad':'TEXT','descripcion_defecto':'TEXT',
         'comprobado':'TEXT','cantidad_afectada':'REAL DEFAULT 0','unidad':'TEXT',
         'sector':'TEXT','disposicion':'TEXT','tsp_numero':'TEXT','status':'TEXT',
         'nave':'TEXT','creado_por':'TEXT','creado_en':'TEXT',
@@ -1062,6 +1062,12 @@ def init_db():
         if col not in actuales_devoluciones:
             try: cur.execute(f'ALTER TABLE devoluciones_registros ADD COLUMN "{col}" {tipo_sql}')
             except sqlite3.OperationalError: pass
+    actuales_devoluciones={r[1] for r in cur.execute('PRAGMA table_info(devoluciones_registros)').fetchall()}
+    if {'linea','familia'}.issubset(actuales_devoluciones):
+        try:
+            cur.execute("UPDATE devoluciones_registros SET familia=COALESCE(NULLIF(TRIM(familia),''),linea) WHERE familia IS NULL OR TRIM(familia)='' " )
+        except sqlite3.OperationalError:
+            pass
     for tbl in ['me_registros','ddm_rx_registros']:
         columnas_nuevas = {
             'linea_sector': 'TEXT', 'familia': 'TEXT', 'etapa': 'TEXT',
@@ -1893,7 +1899,7 @@ def page_registro():
             evitar=st.text_area('Acciones a realizar para evitar la incidencia',key=f'evitar_{tabla}_{nonce}')
             ok=st.button('Guardar registro',key=f'guardar_{tabla}_{nonce}',type='primary')
         if ok:
-            obligatorios={'Línea/Sector':linea_sector,'Nave':nave,'ITEM':item,'Descripción':producto,'Cliente':cliente,'Familia':familia,'Lote':lote,'Código':codigo,'Defecto':defecto,'Tipo de defecto':tipo_defecto,'Semana':semana,'Turno':turno,'Fecha':fecha,'Supervisor':supervisor,'Analista':analista,'Descripción del defecto':descripcion,'Acciones inmediatas':acciones,'Categoría inicial':categoria}
+            obligatorios={'Línea/Sector':linea_sector,'Nave':nave,'ITEM':item,'Descripción':producto,'Cliente':cliente,'Familia':familia,'Lote':lote,'Código':codigo,'Defecto':defecto,'Tipo de defecto':tipo_defecto,'Semana':semana,'Turno':turno,'Fecha':fecha,'Supervisor':supervisor,'Analista':analista,'Descripción de la devolución':descripcion,'Acciones inmediatas':acciones,'Categoría inicial':categoria}
             faltantes=[k for k,v in obligatorios.items() if v is None or (isinstance(v,str) and not v.strip())]
             if faltantes:
                 st.error('Completa los siguientes campos obligatorios: '+', '.join(faltantes)+'.')
@@ -1926,16 +1932,17 @@ def page_registro():
         pr=prod[prod.item.astype(str)==item].iloc[0] if item and item in prod.item.astype(str).values else None
         producto='' if pr is None or pd.isna(pr.descripcion) else str(pr.descripcion).strip()
         cliente='' if pr is None or pd.isna(pr.cliente) else str(pr.cliente).strip()
+        familia='' if pr is None or pd.isna(pr.familia) else str(pr.familia).strip()
         c.text_input('Producto',producto,disabled=True,key=f'dev_producto_{nonce}_{item or "sin_item"}')
         a,b,c=st.columns(3)
         a.text_input('Cliente',cliente,disabled=True,key=f'dev_cliente_{nonce}_{item or "sin_item"}')
-        linea=b.selectbox('Línea *',opt_blank(catalog('linea_sector')),key=f'dev_linea_{nonce}')
+        b.text_input('Familia',value=familia,disabled=True,key=f'dev_familia_{nonce}_{item or "sin_item"}')
         lote=c.text_input('Lote *',key=f'dev_lote_{nonce}')
         a,b,c=st.columns(3)
         caducidad=a.text_input('Caducidad *',key=f'dev_cad_{nonce}')
         comprobado=b.selectbox('Comprobado *',['','Sí','No'],key=f'dev_comp_{nonce}')
         cantidad=c.number_input('Cant. afectada *',min_value=0.0,step=1.0,format='%.2f',key=f'dev_cant_{nonce}')
-        descripcion=st.text_area('Descripción del defecto *',value=defecto,key=f'dev_desc_{nonce}_{codigo or "sin_codigo"}')
+        descripcion=st.text_area('Descripción de la devolución *',key=f'dev_desc_{nonce}')
         a,b,c=st.columns(3)
         unidad=a.selectbox('Unidad *',['','Bulto','Bolsa','Pieza','Tarima'],key=f'dev_unidad_{nonce}')
         sector=b.text_input('Sector *',key=f'dev_sector_{nonce}')
@@ -1945,11 +1952,11 @@ def page_registro():
         status=b.selectbox('Status *',['','Cerrado','Abierto'],key=f'dev_status_{nonce}')
         nave=c.selectbox('Nave *',opt_blank(catalog('nave')),key=f'dev_nave_{nonce}')
         if st.button('Guardar registro',key=f'guardar_dev_{nonce}',type='primary'):
-            req={'Fecha':fecha,'Código / Defecto':codigo,'Cedis':cedis,'País / Estado':pais_estado,'ITEM':item,'Producto':producto,'Cliente':cliente,'Línea':linea,'Lote':lote,'Caducidad':caducidad,'Descripción del defecto':descripcion,'Comprobado':comprobado,'Cant. afectada':cantidad,'Unidad':unidad,'Sector':sector,'Disposición':disposicion,'Status':status,'Nave':nave}
+            req={'Fecha':fecha,'Código / Defecto':codigo,'Cedis':cedis,'País / Estado':pais_estado,'ITEM':item,'Producto':producto,'Cliente':cliente,'Familia':familia,'Lote':lote,'Caducidad':caducidad,'Descripción del defecto':descripcion,'Comprobado':comprobado,'Cant. afectada':cantidad,'Unidad':unidad,'Sector':sector,'Disposición':disposicion,'Status':status,'Nave':nave}
             faltan=[k for k,v in req.items() if v is None or (isinstance(v,str) and not v.strip()) or (k=='Cant. afectada' and float(v)<=0)]
             if faltan: st.error('Completa los siguientes campos obligatorios: '+', '.join(faltan)+'.')
             else:
-                rid=exec_sql('INSERT INTO devoluciones_registros(fecha,codigo_defecto,defecto,cedis,pais_estado,item,producto,cliente,linea,lote,caducidad,descripcion_defecto,comprobado,cantidad_afectada,unidad,sector,disposicion,tsp_numero,status,nave,creado_por,creado_en) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',(fecha.isoformat(),codigo,defecto,cedis.strip(),pais_estado.strip(),item,producto,cliente,linea,lote.strip(),caducidad.strip(),descripcion.strip(),comprobado,float(cantidad),unidad,sector.strip(),disposicion,tsp.strip(),status,nave,st.session_state.auth['usuario'],now_iso()))
+                rid=exec_sql('INSERT INTO devoluciones_registros(fecha,codigo_defecto,defecto,cedis,pais_estado,item,producto,cliente,linea,familia,lote,caducidad,descripcion_defecto,comprobado,cantidad_afectada,unidad,sector,disposicion,tsp_numero,status,nave,creado_por,creado_en) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',(fecha.isoformat(),codigo,defecto,cedis.strip(),pais_estado.strip(),item,producto,cliente,'',familia,lote.strip(),caducidad.strip(),descripcion.strip(),comprobado,float(cantidad),unidad,sector.strip(),disposicion,tsp.strip(),status,nave,st.session_state.auth['usuario'],now_iso()))
                 audit(st.session_state.auth['usuario'],'CREAR_DEVOLUCION',f'ID {rid}'); limpiar_form(); st.session_state.flash_registro_guardado=f'Devolución guardada correctamente: Número {rid}'; st.rerun()
         st.markdown('</div></div>',unsafe_allow_html=True)
 
@@ -2371,17 +2378,19 @@ def page_consulta():
                 delete_confirm('reclamos_registros','reclamos','ELIMINAR_RECLAMO',selected)
 
     with t5:
-        df=read_df('SELECT * FROM devoluciones_registros ORDER BY id ASC'); selected,shown=table(df,'devoluciones')
+        df=read_df('SELECT * FROM devoluciones_registros ORDER BY id ASC')
+        df_tabla=df.drop(columns=['linea'],errors='ignore')
+        selected,shown=table(df_tabla,'devoluciones')
         if not shown.empty: st.download_button('Descargar Devoluciones CSV',prep(shown).to_csv(index=False).encode('utf-8-sig'),f"devoluciones_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",'text/csv')
         if selected:
             st.markdown(f'### Devolución seleccionada: Número {selected}')
             row_df=read_df('SELECT * FROM devoluciones_registros WHERE id=?',(selected,))
             if not row_df.empty:
-                r=row_df.iloc[0].to_dict(); cols=[c for c in row_df.columns if c not in ['id','creado_por','creado_en','actualizado_por','actualizado_en']]
+                r=row_df.iloc[0].to_dict(); cols=[c for c in row_df.columns if c not in ['id','linea','creado_por','creado_en','actualizado_por','actualizado_en']]
                 with st.expander('✏️ Editar registro de Devolución',expanded=True):
-                    editado=st.data_editor(row_df[cols],use_container_width=True,hide_index=True,num_rows='fixed',key=f'editor_dev_{selected}',column_config={'comprobado':st.column_config.SelectboxColumn('Comprobado',options=['Sí','No']),'unidad':st.column_config.SelectboxColumn('Unidad',options=['Bulto','Bolsa','Pieza','Tarima']),'status':st.column_config.SelectboxColumn('Status',options=['Cerrado','Abierto'])})
+                    editado=st.data_editor(row_df[cols],use_container_width=True,hide_index=True,num_rows='fixed',key=f'editor_dev_{selected}',column_config={'descripcion_defecto':st.column_config.TextColumn('Descripción de la devolución'),'familia':st.column_config.TextColumn('Familia',disabled=True),'comprobado':st.column_config.SelectboxColumn('Comprobado',options=['Sí','No']),'unidad':st.column_config.SelectboxColumn('Unidad',options=['Bulto','Bolsa','Pieza','Tarima']),'status':st.column_config.SelectboxColumn('Status',options=['Cerrado','Abierto'])})
                     if st.button('Guardar cambios',type='primary',key=f'guardar_dev_edit_{selected}'):
-                        d=editado.iloc[0].to_dict(); oblig=['fecha','codigo_defecto','defecto','cedis','pais_estado','item','producto','cliente','linea','lote','caducidad','descripcion_defecto','comprobado','cantidad_afectada','unidad','sector','disposicion','status','nave']
+                        d=editado.iloc[0].to_dict(); oblig=['fecha','codigo_defecto','defecto','cedis','pais_estado','item','producto','cliente','familia','lote','caducidad','descripcion_defecto','comprobado','cantidad_afectada','unidad','sector','disposicion','status','nave']
                         faltan=[c for c in oblig if d.get(c) is None or str(d.get(c)).strip()=='' or (c=='cantidad_afectada' and float(d.get(c) or 0)<=0)]
                         if faltan: st.error('Completa los campos obligatorios: '+', '.join(faltan)+'.')
                         else:
