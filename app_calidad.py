@@ -1037,6 +1037,31 @@ def init_db():
     # que datos históricos repetidos bloqueen init_db y mantiene búsquedas rápidas.
     cur.execute('DROP INDEX IF EXISTS ux_reclamos_numero_caso')
     cur.execute("CREATE INDEX IF NOT EXISTS ix_reclamos_numero_caso ON reclamos_registros(UPPER(TRIM(numero_caso)))")
+    cur.execute("""CREATE TABLE IF NOT EXISTS devoluciones_registros(
+        id INTEGER PRIMARY KEY AUTOINCREMENT, fecha TEXT NOT NULL,
+        codigo_defecto TEXT NOT NULL, defecto TEXT NOT NULL, cedis TEXT NOT NULL,
+        pais_estado TEXT NOT NULL, item TEXT NOT NULL, producto TEXT NOT NULL,
+        cliente TEXT NOT NULL, linea TEXT NOT NULL, lote TEXT NOT NULL,
+        caducidad TEXT NOT NULL, descripcion_defecto TEXT NOT NULL,
+        comprobado TEXT NOT NULL, cantidad_afectada REAL NOT NULL DEFAULT 0,
+        unidad TEXT NOT NULL, sector TEXT NOT NULL, disposicion TEXT NOT NULL,
+        tsp_numero TEXT, status TEXT NOT NULL, nave TEXT NOT NULL,
+        creado_por TEXT, creado_en TEXT, actualizado_por TEXT, actualizado_en TEXT
+    )""")
+    columnas_devoluciones={
+        'fecha':'TEXT','codigo_defecto':'TEXT','defecto':'TEXT','cedis':'TEXT',
+        'pais_estado':'TEXT','item':'TEXT','producto':'TEXT','cliente':'TEXT',
+        'linea':'TEXT','lote':'TEXT','caducidad':'TEXT','descripcion_defecto':'TEXT',
+        'comprobado':'TEXT','cantidad_afectada':'REAL DEFAULT 0','unidad':'TEXT',
+        'sector':'TEXT','disposicion':'TEXT','tsp_numero':'TEXT','status':'TEXT',
+        'nave':'TEXT','creado_por':'TEXT','creado_en':'TEXT',
+        'actualizado_por':'TEXT','actualizado_en':'TEXT'
+    }
+    actuales_devoluciones={r[1] for r in cur.execute('PRAGMA table_info(devoluciones_registros)').fetchall()}
+    for col,tipo_sql in columnas_devoluciones.items():
+        if col not in actuales_devoluciones:
+            try: cur.execute(f'ALTER TABLE devoluciones_registros ADD COLUMN "{col}" {tipo_sql}')
+            except sqlite3.OperationalError: pass
     for tbl in ['me_registros','ddm_rx_registros']:
         columnas_nuevas = {
             'linea_sector': 'TEXT', 'familia': 'TEXT', 'etapa': 'TEXT',
@@ -1326,6 +1351,7 @@ def styles(compact=False):
     div[class*="st-key-card_me"] button,
     div[class*="st-key-card_ddm"] button,
     div[class*="st-key-card_reclamos"] button,
+    div[class*="st-key-card_devoluciones"] button,
     div[class*="st-key-consulta_tarjeta_"] button,
     div[class*="st-key-card_muestras_"] button,
     div[class*="st-key-card_muestras"] button,
@@ -1355,6 +1381,7 @@ def styles(compact=False):
     div[class*="st-key-card_me"] button p,
     div[class*="st-key-card_ddm"] button p,
     div[class*="st-key-card_reclamos"] button p,
+    div[class*="st-key-card_devoluciones"] button p,
     div[class*="st-key-consulta_tarjeta_"] button p,
     div[class*="st-key-card_muestras_"] button p,
     div[class*="st-key-card_muestras"] button p,
@@ -1371,6 +1398,7 @@ def styles(compact=False):
     div[class*="st-key-card_me"] button:hover,
     div[class*="st-key-card_ddm"] button:hover,
     div[class*="st-key-card_reclamos"] button:hover,
+    div[class*="st-key-card_devoluciones"] button:hover,
     div[class*="st-key-consulta_tarjeta_"] button:hover,
     div[class*="st-key-card_muestras_"] button:hover,
     div[class*="st-key-card_muestras"] button:hover,
@@ -1401,6 +1429,7 @@ def styles(compact=False):
         div[class*="st-key-card_me"] button,
         div[class*="st-key-card_ddm"] button,
     div[class*="st-key-card_reclamos"] button,
+    div[class*="st-key-card_devoluciones"] button,
         div[class*="st-key-consulta_tarjeta_"] button,
         div[class*="st-key-card_muestras_"] button,
         div[class*="st-key-card_muestras"] button,
@@ -1421,6 +1450,7 @@ def styles(compact=False):
         div[class*="st-key-card_me"] button,
         div[class*="st-key-card_ddm"] button,
     div[class*="st-key-card_reclamos"] button,
+    div[class*="st-key-card_devoluciones"] button,
         div[class*="st-key-consulta_tarjeta_"] button,
         div[class*="st-key-card_muestras_"] button,
         div[class*="st-key-card_muestras"] button,
@@ -1486,6 +1516,7 @@ def styles(compact=False):
     div[class*="st-key-card_me"] button p,
     div[class*="st-key-card_ddm"] button p,
     div[class*="st-key-card_reclamos"] button p,
+    div[class*="st-key-card_devoluciones"] button p,
     div[class*="st-key-consulta_tarjeta_"] button p,
     div[class*="st-key-card_muestras_"] button p,
     div[class*="st-key-entrega_Nave"] button p {
@@ -1515,6 +1546,7 @@ def styles(compact=False):
     div[class*="st-key-card_me"] button p,
     div[class*="st-key-card_ddm"] button p,
     div[class*="st-key-card_reclamos"] button p,
+    div[class*="st-key-card_devoluciones"] button p,
     div[class*="st-key-consulta_tarjeta_"] button p,
     div[class*="st-key-card_muestras_"] button p,
     div[class*="st-key-entrega_Nave"] button p {
@@ -1534,6 +1566,7 @@ def styles(compact=False):
     div[class*="st-key-card_me"] button strong,
     div[class*="st-key-card_ddm"] button strong,
     div[class*="st-key-card_reclamos"] button strong,
+    div[class*="st-key-card_devoluciones"] button strong,
     div[class*="st-key-consulta_tarjeta_"] button strong,
     div[class*="st-key-card_muestras_"] button strong,
     div[class*="st-key-entrega_Nave"] button strong {
@@ -1546,6 +1579,7 @@ def styles(compact=False):
     div[class*="st-key-card_me"] button em,
     div[class*="st-key-card_ddm"] button em,
     div[class*="st-key-card_reclamos"] button em,
+    div[class*="st-key-card_devoluciones"] button em,
     div[class*="st-key-consulta_tarjeta_"] button em,
     div[class*="st-key-card_muestras_"] button em,
     div[class*="st-key-entrega_Nave"] button em {
@@ -1781,7 +1815,7 @@ def page_registro():
         st.rerun()
     def selector():
         st.markdown("""<div class="registro-landing-hero"><div class="registro-landing-title">Nuevo registro</div><div class="registro-landing-subtitle">Selecciona el tipo de registro que deseas capturar.</div></div>""",unsafe_allow_html=True)
-        a,b,c,d=st.columns(4,gap='large')
+        a,b,c,d,e=st.columns(5,gap='large')
         with a:
             st.markdown('<span class="registro-card-slot"></span>',unsafe_allow_html=True)
             if st.button("📝  **PNC´s**\n\nCaptura y seguimiento de producto no conforme.\n\n*Abrir registro*",key='card_pnc'):
@@ -1798,6 +1832,10 @@ def page_registro():
             st.markdown('<span class="registro-card-slot"></span>',unsafe_allow_html=True)
             if st.button("📣  **Reclamos**\n\nRegistro, investigación y seguimiento de reclamos.\n\n*Abrir registro*",key='card_reclamos'):
                 st.session_state.registro_tipo='RECLAMOS'; st.rerun()
+        with e:
+            st.markdown('<span class="registro-card-slot"></span>',unsafe_allow_html=True)
+            if st.button("↩️  **Devoluciones**\n\nRegistro y seguimiento de producto devuelto.\n\n*Abrir registro*",key='card_devoluciones'):
+                st.session_state.registro_tipo='DEVOLUCIONES'; st.rerun()
     def form_hallazgo(tabla,titulo,audit_action):
         nonce=st.session_state.form_nonce
         st.markdown(f"""<div class="registro-full-panel"><div class="registro-pill">Nuevo registro</div><div class="registro-full-title">{titulo}</div><div class="registro-full-subtitle">Los campos marcados con * son obligatorios.</div>""",unsafe_allow_html=True)
@@ -1865,6 +1903,56 @@ def page_registro():
                 limpiar_form(); st.session_state.flash_registro_guardado=f'Registro guardado correctamente: Número {rid}'
                 st.rerun()
         st.markdown('</div></div>',unsafe_allow_html=True)
+    def form_devoluciones():
+        nonce=st.session_state.form_nonce
+        st.markdown('<div class="registro-full-panel"><div class="registro-pill">Nuevo registro</div><div class="registro-full-title">↩️ Devoluciones</div><div class="registro-full-subtitle">Los campos marcados con * son obligatorios. Producto y cliente se completan desde el catálogo vigente.</div>',unsafe_allow_html=True)
+        if st.button('← Cambiar tipo de registro',key='volver_devoluciones'): volver_selector()
+        st.markdown('<div class="registro-form-shell">',unsafe_allow_html=True)
+        prod=read_df('SELECT * FROM productos WHERE activo=1 ORDER BY descripcion')
+        defs=read_df('SELECT * FROM defectos WHERE activo=1 ORDER BY CAST(codigo AS INTEGER)')
+        opt_prod=['']+[f'{r.item} | {r.descripcion}' for r in prod.itertuples()]
+        opt_defs=['']+[f'{r.codigo} | {r.defecto}' for r in defs.itertuples()]
+        a,b,c=st.columns(3)
+        fecha=a.date_input('Fecha *',date.today(),key=f'dev_fecha_{nonce}')
+        od=b.selectbox('Código / Defecto *',opt_defs,key=f'dev_def_{nonce}')
+        cedis=c.text_input('Cedis *',key=f'dev_cedis_{nonce}')
+        codigo=od.split('|')[0].strip() if od else ''
+        dr=defs[defs.codigo.astype(str)==codigo].iloc[0] if codigo and codigo in defs.codigo.astype(str).values else None
+        defecto='' if dr is None else str(dr.defecto)
+        a,b,c=st.columns(3)
+        pais_estado=a.text_input('País / Estado *',key=f'dev_pais_{nonce}')
+        op=b.selectbox('ITEM *',opt_prod,key=f'dev_item_{nonce}')
+        item=op.split('|')[0].strip() if op else ''
+        pr=prod[prod.item.astype(str)==item].iloc[0] if item and item in prod.item.astype(str).values else None
+        producto='' if pr is None or pd.isna(pr.descripcion) else str(pr.descripcion).strip()
+        cliente='' if pr is None or pd.isna(pr.cliente) else str(pr.cliente).strip()
+        c.text_input('Producto',producto,disabled=True,key=f'dev_producto_{nonce}_{item or "sin_item"}')
+        a,b,c=st.columns(3)
+        a.text_input('Cliente',cliente,disabled=True,key=f'dev_cliente_{nonce}_{item or "sin_item"}')
+        linea=b.selectbox('Línea *',opt_blank(catalog('linea_sector')),key=f'dev_linea_{nonce}')
+        lote=c.text_input('Lote *',key=f'dev_lote_{nonce}')
+        a,b,c=st.columns(3)
+        caducidad=a.text_input('Caducidad *',key=f'dev_cad_{nonce}')
+        comprobado=b.selectbox('Comprobado *',['','Sí','No'],key=f'dev_comp_{nonce}')
+        cantidad=c.number_input('Cant. afectada *',min_value=0.0,step=1.0,format='%.2f',key=f'dev_cant_{nonce}')
+        descripcion=st.text_area('Descripción del defecto *',value=defecto,key=f'dev_desc_{nonce}_{codigo or "sin_codigo"}')
+        a,b,c=st.columns(3)
+        unidad=a.selectbox('Unidad *',['','Bulto','Bolsa','Pieza','Tarima'],key=f'dev_unidad_{nonce}')
+        sector=b.text_input('Sector *',key=f'dev_sector_{nonce}')
+        disposicion=c.selectbox('Disposición *',opt_blank(catalog('disposicion')),key=f'dev_disp_{nonce}')
+        a,b,c=st.columns(3)
+        tsp=a.text_input('TSP N°',key=f'dev_tsp_{nonce}')
+        status=b.selectbox('Status *',['','Cerrado','Abierto'],key=f'dev_status_{nonce}')
+        nave=c.selectbox('Nave *',opt_blank(catalog('nave')),key=f'dev_nave_{nonce}')
+        if st.button('Guardar registro',key=f'guardar_dev_{nonce}',type='primary'):
+            req={'Fecha':fecha,'Código / Defecto':codigo,'Cedis':cedis,'País / Estado':pais_estado,'ITEM':item,'Producto':producto,'Cliente':cliente,'Línea':linea,'Lote':lote,'Caducidad':caducidad,'Descripción del defecto':descripcion,'Comprobado':comprobado,'Cant. afectada':cantidad,'Unidad':unidad,'Sector':sector,'Disposición':disposicion,'Status':status,'Nave':nave}
+            faltan=[k for k,v in req.items() if v is None or (isinstance(v,str) and not v.strip()) or (k=='Cant. afectada' and float(v)<=0)]
+            if faltan: st.error('Completa los siguientes campos obligatorios: '+', '.join(faltan)+'.')
+            else:
+                rid=exec_sql('INSERT INTO devoluciones_registros(fecha,codigo_defecto,defecto,cedis,pais_estado,item,producto,cliente,linea,lote,caducidad,descripcion_defecto,comprobado,cantidad_afectada,unidad,sector,disposicion,tsp_numero,status,nave,creado_por,creado_en) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',(fecha.isoformat(),codigo,defecto,cedis.strip(),pais_estado.strip(),item,producto,cliente,linea,lote.strip(),caducidad.strip(),descripcion.strip(),comprobado,float(cantidad),unidad,sector.strip(),disposicion,tsp.strip(),status,nave,st.session_state.auth['usuario'],now_iso()))
+                audit(st.session_state.auth['usuario'],'CREAR_DEVOLUCION',f'ID {rid}'); limpiar_form(); st.session_state.flash_registro_guardado=f'Devolución guardada correctamente: Número {rid}'; st.rerun()
+        st.markdown('</div></div>',unsafe_allow_html=True)
+
     def form_reclamos():
         nonce=st.session_state.form_nonce
         st.markdown('<div class="registro-full-panel"><div class="registro-pill">Nuevo registro</div><div class="registro-full-title">📣 Reclamos</div><div class="registro-full-subtitle">Los campos marcados con * son obligatorios. Producto, cliente, familia y datos del defecto se completan desde los catálogos vigentes.</div>',unsafe_allow_html=True)
@@ -1968,6 +2056,7 @@ def page_registro():
     elif st.session_state.registro_tipo=='ME': form_hallazgo('me_registros','🧲 Materia Extraña','CREAR_ME')
     elif st.session_state.registro_tipo=='DDM_RX': form_hallazgo('ddm_rx_registros','📦 Producto segregado por detector de metales y RX','CREAR_DDM_RX')
     elif st.session_state.registro_tipo=='RECLAMOS': form_reclamos()
+    elif st.session_state.registro_tipo=='DEVOLUCIONES': form_devoluciones()
 def page_consulta():
     if 'consulta_tipo' not in st.session_state:
         st.session_state.consulta_tipo=None
@@ -2139,7 +2228,7 @@ def page_consulta():
         matriz_entregas()
         return
 
-    t1,t2,t3,t4=st.tabs(['PNC´s','Materia Extraña','Detector de metales y RX','Reclamos'])
+    t1,t2,t3,t4,t5=st.tabs(['PNC´s','Materia Extraña','Detector de metales y RX','Reclamos','Devoluciones'])
     with t1:
         df=read_df('SELECT * FROM pnc_registros ORDER BY id ASC'); selected,shown=table(df,'pnc')
         if not shown.empty: st.download_button('Descargar PNC CSV',prep(shown).to_csv(index=False).encode('utf-8-sig'),f"pnc_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",'text/csv')
@@ -2280,6 +2369,25 @@ def page_consulta():
                             st.rerun()
             if is_dev():
                 delete_confirm('reclamos_registros','reclamos','ELIMINAR_RECLAMO',selected)
+
+    with t5:
+        df=read_df('SELECT * FROM devoluciones_registros ORDER BY id ASC'); selected,shown=table(df,'devoluciones')
+        if not shown.empty: st.download_button('Descargar Devoluciones CSV',prep(shown).to_csv(index=False).encode('utf-8-sig'),f"devoluciones_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",'text/csv')
+        if selected:
+            st.markdown(f'### Devolución seleccionada: Número {selected}')
+            row_df=read_df('SELECT * FROM devoluciones_registros WHERE id=?',(selected,))
+            if not row_df.empty:
+                r=row_df.iloc[0].to_dict(); cols=[c for c in row_df.columns if c not in ['id','creado_por','creado_en','actualizado_por','actualizado_en']]
+                with st.expander('✏️ Editar registro de Devolución',expanded=True):
+                    editado=st.data_editor(row_df[cols],use_container_width=True,hide_index=True,num_rows='fixed',key=f'editor_dev_{selected}',column_config={'comprobado':st.column_config.SelectboxColumn('Comprobado',options=['Sí','No']),'unidad':st.column_config.SelectboxColumn('Unidad',options=['Bulto','Bolsa','Pieza','Tarima']),'status':st.column_config.SelectboxColumn('Status',options=['Cerrado','Abierto'])})
+                    if st.button('Guardar cambios',type='primary',key=f'guardar_dev_edit_{selected}'):
+                        d=editado.iloc[0].to_dict(); oblig=['fecha','codigo_defecto','defecto','cedis','pais_estado','item','producto','cliente','linea','lote','caducidad','descripcion_defecto','comprobado','cantidad_afectada','unidad','sector','disposicion','status','nave']
+                        faltan=[c for c in oblig if d.get(c) is None or str(d.get(c)).strip()=='' or (c=='cantidad_afectada' and float(d.get(c) or 0)<=0)]
+                        if faltan: st.error('Completa los campos obligatorios: '+', '.join(faltan)+'.')
+                        else:
+                            asign=', '.join([f'"{c}"=?' for c in cols]+['actualizado_por=?','actualizado_en=?']); vals=tuple(None if pd.isna(d[c]) else d[c] for c in cols)+(st.session_state.auth['usuario'],now_iso(),selected)
+                            exec_sql(f'UPDATE devoluciones_registros SET {asign} WHERE id=?',vals); audit(st.session_state.auth['usuario'],'EDITAR_DEVOLUCION',f'ID {selected}'); st.success(f'Devolución actualizada correctamente: Número {selected}'); st.rerun()
+            if is_dev(): delete_confirm('devoluciones_registros','devoluciones','ELIMINAR_DEVOLUCION',selected)
 
 def page_muestras_retencion():
     periodos=[
