@@ -841,6 +841,35 @@ def init_db():
         clasificacion_defecto TEXT NOT NULL, red_social TEXT NOT NULL,
         creado_por TEXT, creado_en TEXT, actualizado_por TEXT, actualizado_en TEXT
     )""")
+    # Migración compatible para instalaciones que ya tenían una versión anterior de Reclamos.
+    # CREATE TABLE IF NOT EXISTS no agrega columnas nuevas a una tabla existente.
+    columnas_reclamos = {
+        'fecha':'TEXT', 'codigo_defecto':'TEXT', 'descripcion_defecto':'TEXT',
+        'fuente':'TEXT', 'mercado':'TEXT', 'pais_estado':'TEXT', 'numero_caso':'TEXT',
+        'item':'TEXT', 'producto':'TEXT', 'cliente':'TEXT', 'familia':'TEXT',
+        'descripcion_reclamo':'TEXT', 'causa_raiz':'TEXT',
+        'acciones_correctivas_contingentes':'TEXT', 'comprobado':'TEXT',
+        'cantidad_afectada':'REAL DEFAULT 0', 'unidad':'TEXT', 'sector':'TEXT',
+        'estado_reclamo':'TEXT', 'fecha_cierre':'TEXT', 'tsp_numero':'TEXT',
+        'caducidad':'TEXT', 'lote':'TEXT', 'nave':'TEXT', 'pmd':'TEXT',
+        'tipo_defecto':'TEXT', 'clasificacion_defecto':'TEXT', 'red_social':'TEXT',
+        'creado_por':'TEXT', 'creado_en':'TEXT', 'actualizado_por':'TEXT',
+        'actualizado_en':'TEXT'
+    }
+    columnas_actuales = {fila[1] for fila in cur.execute("PRAGMA table_info(reclamos_registros)").fetchall()}
+    for columna, tipo_sql in columnas_reclamos.items():
+        if columna not in columnas_actuales:
+            cur.execute(f'ALTER TABLE reclamos_registros ADD COLUMN "{columna}" {tipo_sql}')
+    columnas_actuales = {fila[1] for fila in cur.execute("PRAGMA table_info(reclamos_registros)").fetchall()}
+    # Conserva información capturada con la estructura anterior.
+    if 'linea' in columnas_actuales:
+        cur.execute("UPDATE reclamos_registros SET familia=COALESCE(NULLIF(TRIM(familia),''), linea) WHERE familia IS NULL OR TRIM(familia)='' ")
+    if 'acciones_contingentes' in columnas_actuales or 'acciones_correctivas' in columnas_actuales:
+        partes=[]
+        if 'acciones_contingentes' in columnas_actuales: partes.append("NULLIF(TRIM(acciones_contingentes),'')")
+        if 'acciones_correctivas' in columnas_actuales: partes.append("NULLIF(TRIM(acciones_correctivas),'')")
+        expresion="COALESCE(" + ", ".join(partes + ["''"]) + ")"
+        cur.execute(f"UPDATE reclamos_registros SET acciones_correctivas_contingentes={expresion} WHERE acciones_correctivas_contingentes IS NULL OR TRIM(acciones_correctivas_contingentes)='' ")
     cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS ux_reclamos_numero_caso ON reclamos_registros(UPPER(TRIM(numero_caso)))")
     for tbl in ['me_registros','ddm_rx_registros']:
         columnas_nuevas = {
@@ -1689,13 +1718,13 @@ def page_registro():
         defecto=str(dr.defecto) if dr is not None else ''; tipo_defecto=str(dr.tipo_defecto) if dr is not None else ''; clasificacion=str(dr.clasificacion) if dr is not None else ''
         fuente=c.text_input('Fuente *',key=f'recl_fuente_{nonce}')
         a,b,c=st.columns(3); a.text_input('Descripción del defecto',defecto,disabled=True); b.text_input('Tipo de defecto',tipo_defecto,disabled=True); c.text_input('Clasificación del defecto',clasificacion,disabled=True)
-        a,b,c=st.columns(3); mercado=a.text_input('Mercado *',key=f'recl_mercado_{nonce}'); pais_estado=b.text_input('País / Estado *',key=f'recl_pais_{nonce}'); numero_caso=c.text_input('No. Caso Right Now / MDLZ *',key=f'recl_caso_{nonce}')
+        a,b,c=st.columns(3); mercado=a.selectbox('Mercado *',['','Interno','Externo'],key=f'recl_mercado_{nonce}'); pais_estado=b.text_input('País / Estado *',key=f'recl_pais_{nonce}'); numero_caso=c.text_input('No. Caso Right Now / MDLZ *',key=f'recl_caso_{nonce}')
         a,b,c=st.columns(3)
         op=a.selectbox('ITEM *',opt_prod,key=f'recl_item_{nonce}'); item=op.split('|')[0].strip() if op else ''
         pr=prod[prod.item.astype(str)==item].iloc[0] if item and item in prod.item.astype(str).values else None
-        producto=str(pr.descripcion) if pr is not None else ''; cliente=str(pr.cliente) if pr is not None else ''; familia=str(pr.familia) if pr is not None else ''
+        producto=str(pr.descripcion) if pr is not None else ''; cliente=str(pr.cliente) if pr is not None else ''; familia='' if pr is None or pd.isna(pr.familia) else str(pr.familia).strip()
         b.text_input('Producto',producto,disabled=True); c.text_input('Cliente',cliente,disabled=True)
-        st.text_input('Familia',familia,disabled=True,key=f'recl_familia_{nonce}')
+        st.text_input('Familia',value=familia,disabled=True,key=f'recl_familia_{nonce}_{item or "sin_item"}')
         descripcion_reclamo=st.text_area('Descripción del reclamo *',key=f'recl_desc_{nonce}')
         causa_raiz=st.text_area('Causa raíz del defecto *',key=f'recl_causa_{nonce}')
         acciones=st.text_area('Acciones correctivas y contingentes *',key=f'recl_acciones_{nonce}')
