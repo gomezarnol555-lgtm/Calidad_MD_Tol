@@ -717,7 +717,7 @@ def migrar_catalogo_formatos_entrega(cur):
     cur.execute("DELETE FROM app_config WHERE clave='formatos_entrega_linea_sector_v2'")
 
 def asegurar_columnas_catalogos(cur):
-    """Completa esquemas antiguos sin impedir el inicio de la aplicación."""
+    """Completa esquemas antiguos antes de insertar o consultar catálogos."""
     migraciones={
         'productos':{
             'item':'TEXT','descripcion':'TEXT','cliente':'TEXT',
@@ -737,52 +737,20 @@ def asegurar_columnas_catalogos(cur):
         }
     }
     for tabla,columnas in migraciones.items():
-        try:
-            existe=cur.execute(
-                "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",(tabla,)
-            ).fetchone()
-            if not existe:
-                continue
-            actuales={r[1] for r in cur.execute(f'PRAGMA table_info("{tabla}")').fetchall()}
-            for columna,tipo_sql in columnas.items():
-                if columna not in actuales:
-                    try:
-                        cur.execute(f'ALTER TABLE "{tabla}" ADD COLUMN "{columna}" {tipo_sql}')
-                    except sqlite3.OperationalError:
-                        # Otra ejecución o una estructura antigua pudo agregarla previamente.
-                        pass
-        except sqlite3.OperationalError:
-            # La migración de un catálogo no debe bloquear el resto de la aplicación.
+        existe=cur.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",(tabla,)).fetchone()
+        if not existe:
             continue
-
-    # Normalizaciones opcionales y protegidas. Primero se vuelve a consultar el
-    # esquema real, porque CREATE TABLE IF NOT EXISTS no modifica tablas antiguas.
-    for tabla in ('productos','defectos','catalogos','catalogo_naves_lineas'):
-        try:
-            existe=cur.execute(
-                "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",(tabla,)
-            ).fetchone()
-            if not existe:
-                continue
-            actuales={r[1] for r in cur.execute(f'PRAGMA table_info("{tabla}")').fetchall()}
-            if 'activo' in actuales:
-                try:
-                    cur.execute(f'UPDATE "{tabla}" SET "activo"=1 WHERE "activo" IS NULL')
-                except sqlite3.OperationalError:
-                    pass
-            if tabla=='catalogo_naves_lineas':
-                if {'linea','linea_norm'}.issubset(actuales):
-                    try:
-                        cur.execute("UPDATE catalogo_naves_lineas SET linea_norm=UPPER(TRIM(COALESCE(linea,''))) WHERE linea_norm IS NULL OR TRIM(linea_norm)='' ")
-                    except sqlite3.OperationalError:
-                        pass
-                if {'sector','sector_norm'}.issubset(actuales):
-                    try:
-                        cur.execute("UPDATE catalogo_naves_lineas SET sector_norm=UPPER(TRIM(COALESCE(sector,''))) WHERE sector_norm IS NULL OR TRIM(sector_norm)='' ")
-                    except sqlite3.OperationalError:
-                        pass
-        except sqlite3.OperationalError:
-            continue
+        actuales={r[1] for r in cur.execute(f'PRAGMA table_info({tabla})').fetchall()}
+        for columna,tipo_sql in columnas.items():
+            if columna not in actuales:
+                cur.execute(f'ALTER TABLE {tabla} ADD COLUMN {columna} {tipo_sql}')
+    # Normaliza nulos de bases anteriores.
+    cur.execute('UPDATE productos SET activo=1 WHERE activo IS NULL')
+    cur.execute('UPDATE defectos SET activo=1 WHERE activo IS NULL')
+    cur.execute('UPDATE catalogos SET activo=1 WHERE activo IS NULL')
+    cur.execute('UPDATE catalogo_naves_lineas SET activo=1 WHERE activo IS NULL')
+    cur.execute("UPDATE catalogo_naves_lineas SET linea_norm=UPPER(TRIM(COALESCE(linea,''))) WHERE linea_norm IS NULL OR TRIM(linea_norm)='' ")
+    cur.execute("UPDATE catalogo_naves_lineas SET sector_norm=UPPER(TRIM(COALESCE(sector,''))) WHERE sector_norm IS NULL OR TRIM(sector_norm)='' ")
 
 def normalizar_estructura_formatos_entrega(cur):
     """Separa TROQUEL DE POOSH y ENVASADO en los formatos, sin alterar registros históricos."""
