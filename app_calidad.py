@@ -949,12 +949,12 @@ def init_db():
         if 'acciones_correctivas' in columnas_actuales: partes.append("NULLIF(TRIM(acciones_correctivas),'')")
         expresion="COALESCE(" + ", ".join(partes + ["''"]) + ")"
         cur.execute(f"UPDATE reclamos_registros SET acciones_correctivas_contingentes={expresion} WHERE acciones_correctivas_contingentes IS NULL OR TRIM(acciones_correctivas_contingentes)='' ")
-    # Reconstrucción canónica de Reclamos. SQLite conserva restricciones NOT NULL
-    # de versiones anteriores aunque se agreguen columnas con ALTER TABLE. Por eso
-    # un INSERT nuevo podía fallar al omitir linea, acciones_contingentes o
-    # acciones_correctivas. La tabla se reconstruye conservando todos los datos.
+    # Reconstrucción canónica de Reclamos. Se copian los datos fila por fila con
+    # parámetros SQLite, evitando generar un SELECT dinámico incompatible con
+    # esquemas heredados, nombres de columnas o tipos de datos antiguos.
     columnas_info=cur.execute("PRAGMA table_info(reclamos_registros)").fetchall()
-    columnas_existentes={fila[1] for fila in columnas_info}
+    columnas_existentes=[fila[1] for fila in columnas_info]
+    conjunto_existentes=set(columnas_existentes)
     columnas_heredadas={'linea','acciones_contingentes','acciones_correctivas'}
     columnas_canonicas=[
         'id','fecha','codigo_defecto','descripcion_defecto','fuente','mercado',
@@ -966,12 +966,18 @@ def init_db():
         'creado_en','actualizado_por','actualizado_en'
     ]
     requiere_reconstruccion=(
-        bool(columnas_heredadas & columnas_existentes)
-        or not set(columnas_canonicas).issubset(columnas_existentes)
+        bool(columnas_heredadas & conjunto_existentes)
+        or not set(columnas_canonicas).issubset(conjunto_existentes)
         or any(fila[3] for fila in columnas_info if fila[1] in columnas_heredadas)
     )
     if requiere_reconstruccion:
+        # Lee primero todos los registros. sqlite3.Row permite migrar por nombre
+        # sin construir expresiones SQL que dependan del esquema anterior.
+        cur.row_factory=sqlite3.Row
+        filas_anteriores=cur.execute('SELECT * FROM reclamos_registros').fetchall()
+        cur.row_factory=None
         cur.execute('DROP INDEX IF EXISTS ux_reclamos_numero_caso')
+        cur.execute('DROP INDEX IF EXISTS ix_reclamos_numero_caso')
         cur.execute('DROP TABLE IF EXISTS reclamos_registros_nueva')
         cur.execute("""CREATE TABLE reclamos_registros_nueva(
             id INTEGER PRIMARY KEY AUTOINCREMENT, fecha TEXT,
@@ -985,32 +991,46 @@ def init_db():
             clasificacion_defecto TEXT, red_social TEXT, creado_por TEXT,
             creado_en TEXT, actualizado_por TEXT, actualizado_en TEXT
         )""")
-        def expr_reclamo(columna,alternativas=(),valor="''"):
-            disponibles=[c for c in (columna,)+tuple(alternativas) if c in columnas_existentes]
-            if not disponibles:
+        def valor_migrado(datos,columna):
+            def limpio(nombre):
+                valor=datos.get(nombre)
+                if valor is None:
+                    return None
+                if isinstance(valor,str):
+                    valor=valor.strip()
+                    return valor if valor else None
                 return valor
-            if len(disponibles)==1:
-                return f'"{disponibles[0]}"'
-            partes=[f'NULLIF(TRIM(CAST("{c}" AS TEXT)),'')' for c in disponibles]
-            return 'COALESCE('+','.join(partes)+','+valor+')'
-        expresiones=[]
-        for columna in columnas_canonicas:
             if columna=='familia':
-                expresiones.append(expr_reclamo('familia',('linea',)))
-            elif columna=='acciones_correctivas_contingentes':
-                expresiones.append(expr_reclamo(
-                    'acciones_correctivas_contingentes',
-                    ('acciones_contingentes','acciones_correctivas')
-                ))
-            elif columna=='cantidad_afectada':
-                expresiones.append(expr_reclamo(columna,valor='0'))
-            elif columna=='id':
-                expresiones.append(expr_reclamo(columna,valor='NULL'))
-            else:
-                expresiones.append(expr_reclamo(columna))
+                return limpio('familia') or limpio('linea') or ''
+            if columna=='acciones_correctivas_contingentes':
+                valores=[]
+                for nombre in ('acciones_correctivas_contingentes','acciones_contingentes','acciones_correctivas'):
+                    valor=limpio(nombre)
+                    if valor is not None and str(valor) not in [str(x) for x in valores]:
+                        valores.append(valor)
+                return ' | '.join(str(x) for x in valores)
+            if columna=='cantidad_afectada':
+                valor=limpio(columna)
+                try:
+                    return float(valor or 0)
+                except (TypeError,ValueError):
+                    return 0.0
+            if columna=='id':
+                return limpio(columna)
+            return limpio(columna) or ''
+        marcadores=','.join('?' for _ in columnas_canonicas)
         destino=','.join(f'"{c}"' for c in columnas_canonicas)
-        origen=','.join(expresiones)
-        cur.execute(f'INSERT INTO reclamos_registros_nueva({destino}) SELECT {origen} FROM reclamos_registros')
+        insertar=f'INSERT INTO reclamos_registros_nueva({destino}) VALUES({marcadores})'
+        for fila in filas_anteriores:
+            datos={clave:fila[clave] for clave in fila.keys()}
+            valores=tuple(valor_migrado(datos,columna) for columna in columnas_canonicas)
+            try:
+                cur.execute(insertar,valores)
+            except sqlite3.IntegrityError:
+                # Solo un ID heredado inválido puede colisionar. Se conserva la
+                # fila dejando que SQLite asigne un ID nuevo.
+                valores=list(valores); valores[0]=None
+                cur.execute(insertar,tuple(valores))
         cur.execute('DROP TABLE reclamos_registros')
         cur.execute('ALTER TABLE reclamos_registros_nueva RENAME TO reclamos_registros')
     # La aplicación valida duplicados antes de guardar. Un índice no único evita
