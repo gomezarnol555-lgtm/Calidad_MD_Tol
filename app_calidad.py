@@ -1,9 +1,9 @@
 import streamlit as st
 import pandas as pd
 import altair as alt
-import sqlite3, hashlib, os, base64, threading
+import sqlite3, hashlib, os, base64
 from io import BytesIO
-from openpyxl.styles import Font, PatternFill, Alignment
+from openpyxl.styles import Font, PatternFill
 from datetime import datetime, date, timedelta
 from pathlib import Path
 from uuid import uuid4
@@ -1089,23 +1089,6 @@ def init_db():
     for col in ['categoria_inicial_pnc','categoria_final_pnc']:
         try: cur.execute(f'ALTER TABLE pnc_registros ADD COLUMN {col} TEXT')
         except sqlite3.OperationalError: pass
-    cur.execute("""CREATE TABLE IF NOT EXISTS muestras_retencion(
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        periodo_codigo TEXT NOT NULL,
-        periodo_nombre TEXT NOT NULL,
-        item TEXT NOT NULL,
-        descripcion TEXT NOT NULL,
-        lote TEXT NOT NULL,
-        destino TEXT NOT NULL,
-        numero_muestras REAL NOT NULL DEFAULT 0,
-        numero_corrugado REAL NOT NULL DEFAULT 0,
-        responsable TEXT NOT NULL,
-        observaciones TEXT,
-        creado_por TEXT,
-        creado_en TEXT,
-        actualizado_por TEXT,
-        actualizado_en TEXT
-    )""")
     # Tablas independientes para cada periodo de muestras de retención.
     cur.execute("CREATE TABLE IF NOT EXISTS muestras_10_meses(id INTEGER PRIMARY KEY AUTOINCREMENT, item TEXT NOT NULL, descripcion TEXT NOT NULL, lote TEXT NOT NULL, destino TEXT NOT NULL, numero_muestras REAL NOT NULL DEFAULT 0, numero_corrugado REAL NOT NULL DEFAULT 0, responsable TEXT NOT NULL, observaciones TEXT, creado_por TEXT, creado_en TEXT, actualizado_por TEXT, actualizado_en TEXT)")
     cur.execute("CREATE TABLE IF NOT EXISTS muestras_12_meses_alergeno(id INTEGER PRIMARY KEY AUTOINCREMENT, item TEXT NOT NULL, descripcion TEXT NOT NULL, lote TEXT NOT NULL, destino TEXT NOT NULL, numero_muestras REAL NOT NULL DEFAULT 0, numero_corrugado REAL NOT NULL DEFAULT 0, responsable TEXT NOT NULL, observaciones TEXT, creado_por TEXT, creado_en TEXT, actualizado_por TEXT, actualizado_en TEXT)")
@@ -2228,7 +2211,11 @@ def page_consulta():
                 if missing: st.error('Completa los siguientes campos obligatorios: '+', '.join(dict.fromkeys(missing))+'.')
                 else:
                     updates={**values,**auto}
-                    columnas_tabla={r[1] for r in conn().execute(f'PRAGMA table_info({table_name})').fetchall()}
+                    c_esquema=conn()
+                    try:
+                        columnas_tabla={r[1] for r in c_esquema.execute(f'PRAGMA table_info({table_name})').fetchall()}
+                    finally:
+                        c_esquema.close()
                     if {'actualizado_por','actualizado_en'}.issubset(columnas_tabla):
                         updates['actualizado_por']=st.session_state.auth['usuario']
                         updates['actualizado_en']=now_iso()
@@ -2696,11 +2683,6 @@ def admin_required():
     if not is_dev(): st.warning('Solo el usuario administrador puede modificar catálogos.'); return False
     return True
 
-def general_catalog_dataframe():
-    m={'Supervisores':'supervisor','Analistas':'analista','Nave':'nave','Status':'status','Responsable de detectar PNC':'responsable_detecta','Etapa':'etapa','Línea':'linea_sector','Turno':'turno','Defecto':'tipo_defecto','Disposición':'disposicion'}
-    data={}; mx=0
-    for h,c in m.items(): data[h]=catalog(c); mx=max(mx,len(data[h]))
-    return pd.DataFrame({h:v+['']*(mx-len(v)) for h,v in data.items()})
 
 def page_catalogos():
     st.title('Catálogos'); st.caption('Datos precargados desde el Excel adjunto. El administrador puede agregar o eliminar elementos.')
