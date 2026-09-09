@@ -744,11 +744,23 @@ def asegurar_columnas_catalogos(cur):
         for columna,tipo_sql in columnas.items():
             if columna not in actuales:
                 cur.execute(f'ALTER TABLE {tabla} ADD COLUMN {columna} {tipo_sql}')
-    # Normaliza nulos de bases anteriores.
-    cur.execute('UPDATE productos SET activo=1 WHERE activo IS NULL')
-    cur.execute('UPDATE defectos SET activo=1 WHERE activo IS NULL')
-    cur.execute('UPDATE catalogos SET activo=1 WHERE activo IS NULL')
-    cur.execute('UPDATE catalogo_naves_lineas SET activo=1 WHERE activo IS NULL')
+    # Normaliza nulos solamente cuando la tabla y la columna existen.
+    # Algunas bases antiguas pueden conservar triggers o estructuras parciales;
+    # una normalización opcional no debe impedir el inicio completo de la app.
+    for tabla in ('productos','defectos','catalogos','catalogo_naves_lineas'):
+        try:
+            existe=cur.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",(tabla,)
+            ).fetchone()
+            if not existe:
+                continue
+            actuales={r[1] for r in cur.execute(f'PRAGMA table_info("{tabla}")').fetchall()}
+            if 'activo' in actuales:
+                cur.execute(f'UPDATE "{tabla}" SET activo=1 WHERE activo IS NULL')
+        except sqlite3.OperationalError:
+            # El DEFAULT 1 agregado en la migración ya protege altas nuevas.
+            # Se evita bloquear init_db por un objeto heredado inconsistente.
+            pass
     cur.execute("UPDATE catalogo_naves_lineas SET linea_norm=UPPER(TRIM(COALESCE(linea,''))) WHERE linea_norm IS NULL OR TRIM(linea_norm)='' ")
     cur.execute("UPDATE catalogo_naves_lineas SET sector_norm=UPPER(TRIM(COALESCE(sector,''))) WHERE sector_norm IS NULL OR TRIM(sector_norm)='' ")
 
