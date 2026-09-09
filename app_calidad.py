@@ -826,6 +826,22 @@ def init_db():
     cur.execute("""CREATE TABLE IF NOT EXISTS pnc_registros(id INTEGER PRIMARY KEY AUTOINCREMENT, folio TEXT UNIQUE, fecha_apertura TEXT, linea_sector TEXT, nave TEXT, item TEXT, descripcion_producto TEXT, cliente TEXT, familia TEXT, lote TEXT, etapa TEXT, codigo_defecto TEXT, defecto TEXT, tipo_defecto TEXT, clasificacion TEXT, turno TEXT, supervisor TEXT, analista TEXT, responsable_detecta TEXT, descripcion_defecto TEXT, acciones_inmediatas TEXT, disposicion TEXT, cantidad_observada REAL DEFAULT 0, cantidad_reproceso REAL DEFAULT 0, cantidad_decomiso REAL DEFAULT 0, cantidad_aprobado_segunda REAL DEFAULT 0, cantidad_total_pnc REAL DEFAULT 0, status TEXT DEFAULT 'ABIERTO', fecha_final_tratamiento TEXT, observaciones TEXT, material_hallado TEXT, creado_por TEXT, creado_en TEXT)""")
     cur.execute("CREATE TABLE IF NOT EXISTS me_registros(id INTEGER PRIMARY KEY AUTOINCREMENT, dia INTEGER, mes INTEGER, anio INTEGER, nave TEXT, linea_sector TEXT, familia TEXT, equipo_hallazgo TEXT, item TEXT, producto TEXT, lote TEXT, descripcion_hallazgo TEXT, tipo TEXT, particulas_halladas INTEGER DEFAULT 0, accion_contingente TEXT, investigacion_origen TEXT, analista_detecta TEXT, supervisor_responsable TEXT, acciones_evitar_incidencia TEXT, creado_por TEXT, creado_en TEXT)")
     cur.execute("CREATE TABLE IF NOT EXISTS ddm_rx_registros(id INTEGER PRIMARY KEY AUTOINCREMENT, dia INTEGER, mes INTEGER, anio INTEGER, nave TEXT, linea_sector TEXT, familia TEXT, equipo_hallazgo TEXT, item TEXT, producto TEXT, lote TEXT, descripcion_hallazgo TEXT, tipo TEXT, particulas_halladas INTEGER DEFAULT 0, accion_contingente TEXT, investigacion_origen TEXT, analista_detecta TEXT, supervisor_responsable TEXT, acciones_evitar_incidencia TEXT, creado_por TEXT, creado_en TEXT)")
+    cur.execute("""CREATE TABLE IF NOT EXISTS reclamos_registros(
+        id INTEGER PRIMARY KEY AUTOINCREMENT, fecha TEXT NOT NULL,
+        codigo_defecto TEXT NOT NULL, descripcion_defecto TEXT NOT NULL,
+        fuente TEXT NOT NULL, mercado TEXT NOT NULL, pais_estado TEXT NOT NULL,
+        numero_caso TEXT NOT NULL, item TEXT NOT NULL, producto TEXT NOT NULL,
+        cliente TEXT NOT NULL, linea TEXT NOT NULL, descripcion_reclamo TEXT NOT NULL,
+        causa_raiz TEXT NOT NULL, acciones_contingentes TEXT NOT NULL,
+        acciones_correctivas TEXT NOT NULL, comprobado TEXT NOT NULL,
+        cantidad_afectada REAL NOT NULL DEFAULT 0, unidad TEXT NOT NULL,
+        sector TEXT NOT NULL, estado_reclamo TEXT NOT NULL, fecha_cierre TEXT,
+        tsp_numero TEXT, caducidad TEXT, lote TEXT NOT NULL, nave TEXT NOT NULL,
+        pmd TEXT NOT NULL, tipo_defecto TEXT NOT NULL,
+        clasificacion_defecto TEXT NOT NULL, red_social TEXT NOT NULL,
+        creado_por TEXT, creado_en TEXT, actualizado_por TEXT, actualizado_en TEXT
+    )""")
+    cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS ux_reclamos_numero_caso ON reclamos_registros(UPPER(TRIM(numero_caso)))")
     for tbl in ['me_registros','ddm_rx_registros']:
         columnas_nuevas = {
             'linea_sector': 'TEXT', 'familia': 'TEXT', 'etapa': 'TEXT',
@@ -1114,6 +1130,7 @@ def styles(compact=False):
     div[class*="st-key-card_pnc"] button,
     div[class*="st-key-card_me"] button,
     div[class*="st-key-card_ddm"] button,
+    div[class*="st-key-card_reclamos"] button,
     div[class*="st-key-consulta_tarjeta_"] button,
     div[class*="st-key-card_muestras_"] button,
     div[class*="st-key-card_muestras"] button,
@@ -1142,6 +1159,7 @@ def styles(compact=False):
     div[class*="st-key-card_pnc"] button p,
     div[class*="st-key-card_me"] button p,
     div[class*="st-key-card_ddm"] button p,
+    div[class*="st-key-card_reclamos"] button p,
     div[class*="st-key-consulta_tarjeta_"] button p,
     div[class*="st-key-card_muestras_"] button p,
     div[class*="st-key-card_muestras"] button p,
@@ -1157,6 +1175,7 @@ def styles(compact=False):
     div[class*="st-key-card_pnc"] button:hover,
     div[class*="st-key-card_me"] button:hover,
     div[class*="st-key-card_ddm"] button:hover,
+    div[class*="st-key-card_reclamos"] button:hover,
     div[class*="st-key-consulta_tarjeta_"] button:hover,
     div[class*="st-key-card_muestras_"] button:hover,
     div[class*="st-key-card_muestras"] button:hover,
@@ -1186,6 +1205,7 @@ def styles(compact=False):
         div[class*="st-key-card_pnc"] button,
         div[class*="st-key-card_me"] button,
         div[class*="st-key-card_ddm"] button,
+    div[class*="st-key-card_reclamos"] button,
         div[class*="st-key-consulta_tarjeta_"] button,
         div[class*="st-key-card_muestras_"] button,
         div[class*="st-key-card_muestras"] button,
@@ -1205,6 +1225,7 @@ def styles(compact=False):
         div[class*="st-key-card_pnc"] button,
         div[class*="st-key-card_me"] button,
         div[class*="st-key-card_ddm"] button,
+    div[class*="st-key-card_reclamos"] button,
         div[class*="st-key-consulta_tarjeta_"] button,
         div[class*="st-key-card_muestras_"] button,
         div[class*="st-key-card_muestras"] button,
@@ -1269,6 +1290,7 @@ def styles(compact=False):
     div[class*="st-key-card_pnc"] button p,
     div[class*="st-key-card_me"] button p,
     div[class*="st-key-card_ddm"] button p,
+    div[class*="st-key-card_reclamos"] button p,
     div[class*="st-key-consulta_tarjeta_"] button p,
     div[class*="st-key-card_muestras_"] button p,
     div[class*="st-key-entrega_Nave"] button p {
@@ -1297,6 +1319,7 @@ def styles(compact=False):
     div[class*="st-key-card_pnc"] button p,
     div[class*="st-key-card_me"] button p,
     div[class*="st-key-card_ddm"] button p,
+    div[class*="st-key-card_reclamos"] button p,
     div[class*="st-key-consulta_tarjeta_"] button p,
     div[class*="st-key-card_muestras_"] button p,
     div[class*="st-key-entrega_Nave"] button p {
@@ -1315,6 +1338,7 @@ def styles(compact=False):
     div[class*="st-key-card_pnc"] button strong,
     div[class*="st-key-card_me"] button strong,
     div[class*="st-key-card_ddm"] button strong,
+    div[class*="st-key-card_reclamos"] button strong,
     div[class*="st-key-consulta_tarjeta_"] button strong,
     div[class*="st-key-card_muestras_"] button strong,
     div[class*="st-key-entrega_Nave"] button strong {
@@ -1326,6 +1350,7 @@ def styles(compact=False):
     div[class*="st-key-card_pnc"] button em,
     div[class*="st-key-card_me"] button em,
     div[class*="st-key-card_ddm"] button em,
+    div[class*="st-key-card_reclamos"] button em,
     div[class*="st-key-consulta_tarjeta_"] button em,
     div[class*="st-key-card_muestras_"] button em,
     div[class*="st-key-entrega_Nave"] button em {
@@ -1561,7 +1586,7 @@ def page_registro():
         st.rerun()
     def selector():
         st.markdown("""<div class="registro-landing-hero"><div class="registro-landing-title">Nuevo registro</div><div class="registro-landing-subtitle">Selecciona el tipo de registro que deseas capturar.</div></div>""",unsafe_allow_html=True)
-        a,b,c=st.columns(3,gap='large')
+        a,b,c,d=st.columns(4,gap='large')
         with a:
             st.markdown('<span class="registro-card-slot"></span>',unsafe_allow_html=True)
             if st.button("📝  **PNC´s**\n\nCaptura y seguimiento de producto no conforme.\n\n*Abrir registro*",key='card_pnc'):
@@ -1574,6 +1599,10 @@ def page_registro():
             st.markdown('<span class="registro-card-slot"></span>',unsafe_allow_html=True)
             if st.button("📦  **Detector de metales y RX**\n\nControl de producto segregado por detección.\n\n*Abrir registro*",key='card_ddm'):
                 st.session_state.registro_tipo='DDM_RX'; st.rerun()
+        with d:
+            st.markdown('<span class="registro-card-slot"></span>',unsafe_allow_html=True)
+            if st.button("📣  **Reclamos**\n\nRegistro, investigación y seguimiento de reclamos.\n\n*Abrir registro*",key='card_reclamos'):
+                st.session_state.registro_tipo='RECLAMOS'; st.rerun()
     def form_hallazgo(tabla,titulo,audit_action):
         nonce=st.session_state.form_nonce
         st.markdown(f"""<div class="registro-full-panel"><div class="registro-pill">Nuevo registro</div><div class="registro-full-title">{titulo}</div><div class="registro-full-subtitle">Los campos marcados con * son obligatorios.</div>""",unsafe_allow_html=True)
@@ -1643,6 +1672,50 @@ def page_registro():
                 limpiar_form(); st.session_state.flash_registro_guardado=f'Registro guardado correctamente: Número {rid}'
                 st.rerun()
         st.markdown('</div></div>',unsafe_allow_html=True)
+    def form_reclamos():
+        nonce=st.session_state.form_nonce
+        st.markdown('<div class="registro-full-panel"><div class="registro-pill">Nuevo registro</div><div class="registro-full-title">📣 Reclamos</div><div class="registro-full-subtitle">Los campos marcados con * son obligatorios. Producto, cliente y datos del defecto se completan desde los catálogos vigentes.</div>',unsafe_allow_html=True)
+        if st.button('← Cambiar tipo de registro',key='volver_reclamos'): volver_selector()
+        st.markdown('<div class="registro-form-shell">',unsafe_allow_html=True)
+        prod=read_df('SELECT * FROM productos WHERE activo=1 ORDER BY descripcion')
+        defs=read_df('SELECT * FROM defectos WHERE activo=1 ORDER BY CAST(codigo AS INTEGER)')
+        opt_prod=['']+[f'{r.item} | {r.descripcion}' for r in prod.itertuples()]
+        opt_defs=['']+[f'{r.codigo} | {r.defecto}' for r in defs.itertuples()]
+        a,b,c=st.columns(3)
+        fecha=a.date_input('Fecha *',date.today(),key=f'recl_fecha_{nonce}')
+        od=b.selectbox('Código / Defecto *',opt_defs,key=f'recl_def_{nonce}')
+        codigo=od.split('|')[0].strip() if od else ''
+        dr=defs[defs.codigo.astype(str)==codigo].iloc[0] if codigo and codigo in defs.codigo.astype(str).values else None
+        defecto=str(dr.defecto) if dr is not None else ''; tipo_defecto=str(dr.tipo_defecto) if dr is not None else ''; clasificacion=str(dr.clasificacion) if dr is not None else ''
+        fuente=c.selectbox('Fuente *',['','Externo','Interno'],key=f'recl_fuente_{nonce}')
+        a,b,c=st.columns(3); a.text_input('Descripción del defecto',defecto,disabled=True); b.text_input('Tipo de defecto',tipo_defecto,disabled=True); c.text_input('Clasificación del defecto',clasificacion,disabled=True)
+        a,b,c=st.columns(3); mercado=a.text_input('Mercado *',key=f'recl_mercado_{nonce}'); pais_estado=b.text_input('País / Estado *',key=f'recl_pais_{nonce}'); numero_caso=c.text_input('No. Caso Right Now / MDLZ *',key=f'recl_caso_{nonce}')
+        a,b,c=st.columns(3)
+        op=a.selectbox('ITEM *',opt_prod,key=f'recl_item_{nonce}'); item=op.split('|')[0].strip() if op else ''
+        pr=prod[prod.item.astype(str)==item].iloc[0] if item and item in prod.item.astype(str).values else None
+        producto=str(pr.descripcion) if pr is not None else ''; cliente=str(pr.cliente) if pr is not None else ''
+        b.text_input('Producto',producto,disabled=True); c.text_input('Cliente',cliente,disabled=True)
+        linea=st.selectbox('Línea *',opt_blank(catalog('linea_sector')),key=f'recl_linea_{nonce}')
+        descripcion_reclamo=st.text_area('Descripción del reclamo *',key=f'recl_desc_{nonce}')
+        causa_raiz=st.text_area('Causa raíz del defecto *',key=f'recl_causa_{nonce}')
+        acciones_contingentes=st.text_area('1. Acciones contingentes *',key=f'recl_cont_{nonce}')
+        acciones_correctivas=st.text_area('2. Acciones correctivas *',key=f'recl_corr_{nonce}')
+        a,b,c=st.columns(3); comprobado=a.selectbox('Comprobado *',['','Sí','No'],key=f'recl_comp_{nonce}'); cantidad=b.number_input('Cantidad afectada *',0.0,step=1.0,format='%.2f',key=f'recl_cant_{nonce}'); unidad=c.selectbox('Unidad *',['','Bulto','Bolsa','Pieza','Lámina'],key=f'recl_unidad_{nonce}')
+        a,b,c=st.columns(3); sector=a.text_input('Sector *',key=f'recl_sector_{nonce}'); estado=b.selectbox('Estado del reclamo *',['','Abierto','Cerrado'],key=f'recl_estado_{nonce}'); fecha_cierre=c.date_input('Fecha de cierre *',date.today(),key=f'recl_cierre_{nonce}') if estado=='Cerrado' else None
+        a,b,c=st.columns(3); tsp=a.text_input('TSP N°',key=f'recl_tsp_{nonce}'); caducidad=b.date_input('Caducidad',value=None,key=f'recl_cad_{nonce}'); lote=c.text_input('Lote *',key=f'recl_lote_{nonce}')
+        a,b,c=st.columns(3); nave=a.selectbox('Nave *',opt_blank(catalog('nave')),key=f'recl_nave_{nonce}'); pmd=b.selectbox('P / M / D *',['','1 - Manipulación','2 - Producción','3 - Diseño'],key=f'recl_pmd_{nonce}'); red_social=c.selectbox('Red social *',['','Mail','Web','Instagram','No indica','Facebook'],key=f'recl_red_{nonce}')
+        if st.button('Guardar registro',key=f'guardar_reclamos_{nonce}',type='primary'):
+            req={'Código / Defecto':codigo,'Descripción del defecto':defecto,'Fuente':fuente,'Mercado':mercado,'País / Estado':pais_estado,'No. Caso Right Now / MDLZ':numero_caso,'ITEM':item,'Producto':producto,'Cliente':cliente,'Línea':linea,'Descripción del reclamo':descripcion_reclamo,'Causa raíz':causa_raiz,'Acciones contingentes':acciones_contingentes,'Acciones correctivas':acciones_correctivas,'Comprobado':comprobado,'Cantidad afectada':cantidad,'Unidad':unidad,'Sector':sector,'Estado':estado,'Lote':lote,'Nave':nave,'P / M / D':pmd,'Tipo de defecto':tipo_defecto,'Clasificación':clasificacion,'Red social':red_social}
+            faltan=[k for k,v in req.items() if v is None or (isinstance(v,str) and not v.strip()) or (k=='Cantidad afectada' and float(v)<=0)]
+            duplicado=not read_df('SELECT id FROM reclamos_registros WHERE UPPER(TRIM(numero_caso))=UPPER(TRIM(?))',(numero_caso,)).empty if numero_caso.strip() else False
+            if duplicado: st.error('Registro repetido. Ya existe un reclamo con el mismo No. Caso Right Now / MDLZ. Corrige el número de caso o edita el registro existente.')
+            elif faltan: st.error('Completa los siguientes campos obligatorios: '+', '.join(dict.fromkeys(faltan))+'.')
+            elif fecha_cierre and fecha_cierre<fecha: st.error('La fecha de cierre no puede ser anterior a la fecha del reclamo.')
+            else:
+                rid=exec_sql('INSERT INTO reclamos_registros(fecha,codigo_defecto,descripcion_defecto,fuente,mercado,pais_estado,numero_caso,item,producto,cliente,linea,descripcion_reclamo,causa_raiz,acciones_contingentes,acciones_correctivas,comprobado,cantidad_afectada,unidad,sector,estado_reclamo,fecha_cierre,tsp_numero,caducidad,lote,nave,pmd,tipo_defecto,clasificacion_defecto,red_social,creado_por,creado_en) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',(fecha.isoformat(),codigo,defecto,fuente,mercado.strip(),pais_estado.strip(),numero_caso.strip(),item,producto,cliente,linea,descripcion_reclamo.strip(),causa_raiz.strip(),acciones_contingentes.strip(),acciones_correctivas.strip(),comprobado,float(cantidad),unidad,sector.strip(),estado,fecha_cierre.isoformat() if fecha_cierre else None,tsp.strip(),caducidad.isoformat() if caducidad else None,lote.strip(),nave,pmd,tipo_defecto,clasificacion,red_social,st.session_state.auth['usuario'],now_iso()))
+                audit(st.session_state.auth['usuario'],'CREAR_RECLAMO',f'ID {rid} | Caso {numero_caso.strip()}'); limpiar_form(); st.session_state.flash_registro_guardado=f'Reclamo guardado correctamente: Número {rid}'; st.rerun()
+        st.markdown('</div></div>',unsafe_allow_html=True)
+
     def form_pnc():
         nonce=st.session_state.form_nonce
         st.markdown("""<div class="registro-full-panel"><div class="registro-pill">Nuevo registro</div><div class="registro-full-title">📝 PNC´s</div><div class="registro-full-subtitle">Los campos marcados con * son obligatorios.</div>""",unsafe_allow_html=True)
@@ -1698,6 +1771,7 @@ def page_registro():
     elif st.session_state.registro_tipo=='PNC': form_pnc()
     elif st.session_state.registro_tipo=='ME': form_hallazgo('me_registros','🧲 Materia Extraña','CREAR_ME')
     elif st.session_state.registro_tipo=='DDM_RX': form_hallazgo('ddm_rx_registros','📦 Producto segregado por detector de metales y RX','CREAR_DDM_RX')
+    elif st.session_state.registro_tipo=='RECLAMOS': form_reclamos()
 def page_consulta():
     if 'consulta_tipo' not in st.session_state:
         st.session_state.consulta_tipo=None
@@ -1705,7 +1779,7 @@ def page_consulta():
     if st.session_state.consulta_tipo is None:
         st.markdown('''<div class="registro-landing-hero"><div class="registro-landing-title">Consulta y descarga</div><div class="registro-landing-subtitle">Selecciona la sección que deseas consultar para acceder a su información.</div></div>''',unsafe_allow_html=True)
         tarjetas=[
-            ('NO_CONFORMIDADES','📋  **Consulta y seguimiento de No Conformes**\n\nPNC, Materia Extraña y Detector de metales/RX.\n\n*Abrir sección*'),
+            ('NO_CONFORMIDADES','📋  **Consulta y seguimiento de No Conformes**\n\nPNC, Materia Extraña, Detector de metales/RX y Reclamos.\n\n*Abrir sección*'),
             ('MUESTRAS','🧪  **Muestras de retención**\n\nConsulta, edición, eliminación y descarga de muestras.\n\n*Abrir sección*'),
             ('MATRIZ','📊  **Matriz de entrega de turno**\n\nRegistros de las tres naves, indicadores y reportes por registro.\n\n*Abrir sección*')
         ]
@@ -1866,7 +1940,7 @@ def page_consulta():
         matriz_entregas()
         return
 
-    t1,t2,t3=st.tabs(['PNC´s','Materia Extraña','Detector de metales y RX'])
+    t1,t2,t3,t4=st.tabs(['PNC´s','Materia Extraña','Detector de metales y RX','Reclamos'])
     with t1:
         df=read_df('SELECT * FROM pnc_registros ORDER BY id ASC'); selected,shown=table(df,'pnc')
         if not shown.empty: st.download_button('Descargar PNC CSV',prep(shown).to_csv(index=False).encode('utf-8-sig'),f"pnc_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",'text/csv')
@@ -1904,6 +1978,30 @@ def page_consulta():
             edit_record('ddm_rx_registros','ddm',selected)
             if is_dev(): delete_confirm('ddm_rx_registros','ddm','ELIMINAR_DDM_RX',selected)
 
+    with t4:
+        df=read_df('SELECT * FROM reclamos_registros ORDER BY id ASC')
+        selected,shown=table(df,'reclamos')
+        if not shown.empty: st.download_button('Descargar Reclamos CSV',prep(shown).to_csv(index=False).encode('utf-8-sig'),f"reclamos_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",'text/csv')
+        if selected:
+            st.markdown(f'### Reclamo seleccionado: Número {selected}')
+            original=read_df('SELECT * FROM reclamos_registros WHERE id=?',(selected,))
+            if not original.empty:
+                cols=[c for c in original.columns if c not in ['id','creado_por','creado_en','actualizado_por','actualizado_en']]
+                base=original[cols].copy()
+                st.caption('Edición directa del almacenamiento. Modifica la fila y guarda los cambios. El número, la creación y la auditoría permanecen protegidos.')
+                editado=st.data_editor(base,use_container_width=True,hide_index=True,num_rows='fixed',key=f'editor_reclamos_{selected}',column_config={'fuente':st.column_config.SelectboxColumn('Fuente',options=['Externo','Interno']),'comprobado':st.column_config.SelectboxColumn('Comprobado',options=['Sí','No']),'unidad':st.column_config.SelectboxColumn('Unidad',options=['Bulto','Bolsa','Pieza','Lámina']),'estado_reclamo':st.column_config.SelectboxColumn('Estado del reclamo',options=['Abierto','Cerrado']),'pmd':st.column_config.SelectboxColumn('P / M / D',options=['1 - Manipulación','2 - Producción','3 - Diseño']),'red_social':st.column_config.SelectboxColumn('Red social',options=['Mail','Web','Instagram','No indica','Facebook'])})
+                if st.button('Guardar cambios del reclamo',type='primary',key=f'guardar_editor_reclamos_{selected}'):
+                    r=editado.iloc[0].to_dict(); oblig=['fecha','codigo_defecto','descripcion_defecto','fuente','mercado','pais_estado','numero_caso','item','producto','cliente','linea','descripcion_reclamo','causa_raiz','acciones_contingentes','acciones_correctivas','comprobado','cantidad_afectada','unidad','sector','estado_reclamo','lote','nave','pmd','tipo_defecto','clasificacion_defecto','red_social']
+                    faltan=[c for c in oblig if r.get(c) is None or str(r.get(c)).strip()=='' or (c=='cantidad_afectada' and float(r.get(c) or 0)<=0)]
+                    duplicado=not read_df('SELECT id FROM reclamos_registros WHERE UPPER(TRIM(numero_caso))=UPPER(TRIM(?)) AND id<>?',(str(r.get('numero_caso') or ''),selected)).empty
+                    if duplicado: st.error('Ya existe otro reclamo con el mismo No. Caso Right Now / MDLZ.')
+                    elif faltan: st.error('Completa los campos obligatorios: '+', '.join(faltan)+'.')
+                    elif str(r.get('estado_reclamo'))=='Cerrado' and not str(r.get('fecha_cierre') or '').strip(): st.error('Captura la fecha de cierre para un reclamo cerrado.')
+                    elif str(r.get('fecha_cierre') or '').strip() and pd.to_datetime(r['fecha_cierre']).date()<pd.to_datetime(r['fecha']).date(): st.error('La fecha de cierre no puede ser anterior a la fecha del reclamo.')
+                    else:
+                        asignaciones=', '.join([f'"{c}"=?' for c in cols]+['actualizado_por=?','actualizado_en=?']); valores=tuple(None if pd.isna(r[c]) else r[c] for c in cols)+(st.session_state.auth['usuario'],now_iso(),selected)
+                        exec_sql(f'UPDATE reclamos_registros SET {asignaciones} WHERE id=?',valores); audit(st.session_state.auth['usuario'],'EDITAR_RECLAMO',f'ID {selected}'); st.success(f'Reclamo actualizado correctamente: Número {selected}'); st.rerun()
+            if is_dev(): delete_confirm('reclamos_registros','reclamos','ELIMINAR_RECLAMO',selected)
 def page_muestras_retencion():
     periodos=[
         ('muestras_10_meses','10 Meses','🗓️'),
