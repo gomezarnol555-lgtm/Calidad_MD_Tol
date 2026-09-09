@@ -2250,8 +2250,11 @@ def page_consulta():
             if is_dev(): delete_confirm('pnc_registros','pnc','ELIMINAR_PNC',selected)
     with t2:
         df=read_df('SELECT * FROM me_registros ORDER BY id ASC')
-        columnas_retiradas=['etapa','responsable_detecta','disposicion','status','cantidad_observada']
-        df_tabla=df.drop(columns=[c for c in columnas_retiradas if c in df.columns])
+        campos_actuales=['id','dia','mes','anio','semana','nave','item','producto','familia','lote','linea_sector','codigo_defecto','turno','supervisor_responsable','analista_detecta','descripcion_hallazgo','acciones_inmediatas','categoria_inicial','equipo_hallazgo','tipo','particulas_halladas','investigacion_origen','acciones_evitar_incidencia']
+        disponibles=[c for c in campos_actuales if c in df.columns]
+        df_tabla=df[disponibles].copy()
+        if all(c in df_tabla.columns for c in ['dia','mes','anio']):
+            df_tabla.insert(1,'Fecha',pd.to_datetime(dict(year=df_tabla.pop('anio'),month=df_tabla.pop('mes'),day=df_tabla.pop('dia')),errors='coerce').dt.strftime('%Y-%m-%d'))
         selected,shown=table(df_tabla,'me')
         if not shown.empty: st.download_button('Descargar Materia Extraña CSV',prep(shown).to_csv(index=False).encode('utf-8-sig'),f"materia_extrana_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",'text/csv')
         if selected:
@@ -2265,8 +2268,11 @@ def page_consulta():
             if is_dev(): delete_confirm('me_registros','me','ELIMINAR_ME',selected)
     with t3:
         df=read_df('SELECT * FROM ddm_rx_registros ORDER BY id ASC')
-        columnas_retiradas=['etapa','responsable_detecta','disposicion','status','cantidad_observada']
-        df_tabla=df.drop(columns=[c for c in columnas_retiradas if c in df.columns])
+        campos_actuales=['id','dia','mes','anio','semana','nave','item','producto','familia','lote','linea_sector','codigo_defecto','turno','supervisor_responsable','analista_detecta','descripcion_hallazgo','acciones_inmediatas','categoria_inicial','equipo_hallazgo','tipo','particulas_halladas','investigacion_origen','acciones_evitar_incidencia']
+        disponibles=[c for c in campos_actuales if c in df.columns]
+        df_tabla=df[disponibles].copy()
+        if all(c in df_tabla.columns for c in ['dia','mes','anio']):
+            df_tabla.insert(1,'Fecha',pd.to_datetime(dict(year=df_tabla.pop('anio'),month=df_tabla.pop('mes'),day=df_tabla.pop('dia')),errors='coerce').dt.strftime('%Y-%m-%d'))
         selected,shown=table(df_tabla,'ddm')
         if not shown.empty: st.download_button('Descargar Detector de metales y RX CSV',prep(shown).to_csv(index=False).encode('utf-8-sig'),f"ddm_rx_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",'text/csv')
         if selected:
@@ -2385,17 +2391,28 @@ def page_consulta():
         if selected:
             st.markdown(f'### Devolución seleccionada: Número {selected}')
             row_df=read_df('SELECT * FROM devoluciones_registros WHERE id=?',(selected,))
-            if not row_df.empty:
-                r=row_df.iloc[0].to_dict(); cols=[c for c in row_df.columns if c not in ['id','linea','creado_por','creado_en','actualizado_por','actualizado_en']]
+            if row_df.empty: st.warning('El registro seleccionado ya no está disponible.')
+            else:
+                r=row_df.iloc[0].to_dict(); prod=read_df('SELECT * FROM productos WHERE activo=1 ORDER BY descripcion'); defs=read_df('SELECT * FROM defectos WHERE activo=1 ORDER BY CAST(codigo AS INTEGER)')
+                opt_prod=['']+[f'{x.item} | {x.descripcion}' for x in prod.itertuples()]; opt_defs=['']+[f'{x.codigo} | {x.defecto}' for x in defs.itertuples()]
+                item0=str(r.get('item') or ''); cod0=str(r.get('codigo_defecto') or ''); op0=next((x for x in opt_prod if x.split('|')[0].strip()==item0),''); od0=next((x for x in opt_defs if x.split('|')[0].strip()==cod0),'')
+                fv=pd.to_datetime(r.get('fecha'),errors='coerce')
                 with st.expander('✏️ Editar registro de Devolución',expanded=True):
-                    editado=st.data_editor(row_df[cols],use_container_width=True,hide_index=True,num_rows='fixed',key=f'editor_dev_{selected}',column_config={'descripcion_defecto':st.column_config.TextColumn('Descripción de la devolución'),'familia':st.column_config.TextColumn('Familia',disabled=True),'comprobado':st.column_config.SelectboxColumn('Comprobado',options=['Sí','No']),'unidad':st.column_config.SelectboxColumn('Unidad',options=['Bulto','Bolsa','Pieza','Tarima']),'status':st.column_config.SelectboxColumn('Status',options=['Cerrado','Abierto'])})
-                    if st.button('Guardar cambios',type='primary',key=f'guardar_dev_edit_{selected}'):
-                        d=editado.iloc[0].to_dict(); oblig=['fecha','codigo_defecto','defecto','cedis','pais_estado','item','producto','cliente','familia','lote','caducidad','descripcion_defecto','comprobado','cantidad_afectada','unidad','sector','disposicion','status','nave']
-                        faltan=[c for c in oblig if d.get(c) is None or str(d.get(c)).strip()=='' or (c=='cantidad_afectada' and float(d.get(c) or 0)<=0)]
-                        if faltan: st.error('Completa los campos obligatorios: '+', '.join(faltan)+'.')
+                    with st.form(f'editar_devolucion_{selected}'):
+                        a,b,c=st.columns(3); fecha=a.date_input('Fecha *',fv.date() if pd.notna(fv) else date.today()); od=b.selectbox('Código / Defecto *',opt_defs,index=idx_or_zero(opt_defs,od0)); cedis=c.text_input('Cedis *',str(r.get('cedis') or ''))
+                        codigo=od.split('|')[0].strip() if od else ''; dr=defs[defs.codigo.astype(str)==codigo].iloc[0] if codigo and codigo in defs.codigo.astype(str).values else None; defecto='' if dr is None else str(dr.defecto)
+                        a,b,c=st.columns(3); pais=a.text_input('País / Estado *',str(r.get('pais_estado') or '')); op=b.selectbox('ITEM *',opt_prod,index=idx_or_zero(opt_prod,op0)); item=op.split('|')[0].strip() if op else ''
+                        pr=prod[prod.item.astype(str)==item].iloc[0] if item and item in prod.item.astype(str).values else None; producto='' if pr is None or pd.isna(pr.descripcion) else str(pr.descripcion).strip(); cliente='' if pr is None or pd.isna(pr.cliente) else str(pr.cliente).strip(); familia='' if pr is None or pd.isna(pr.familia) else str(pr.familia).strip()
+                        c.text_input('Producto',producto,disabled=True); a,b,c=st.columns(3); a.text_input('Cliente',cliente,disabled=True); b.text_input('Familia',familia,disabled=True); lote=c.text_input('Lote *',str(r.get('lote') or ''))
+                        a,b,c=st.columns(3); cad=a.text_input('Caducidad *',str(r.get('caducidad') or '')); comp=b.selectbox('Comprobado *',['','Sí','No'],index=idx_or_zero(['','Sí','No'],str(r.get('comprobado') or ''))); cant=c.number_input('Cant. afectada *',0.0,step=1.0,value=float(r.get('cantidad_afectada') or 0))
+                        desc=st.text_area('Descripción de la devolución *',str(r.get('descripcion_defecto') or ''))
+                        a,b,c=st.columns(3); uops=['','Bulto','Bolsa','Pieza','Tarima']; unidad=a.selectbox('Unidad *',uops,index=idx_or_zero(uops,str(r.get('unidad') or ''))); sector=b.text_input('Sector *',str(r.get('sector') or '')); dops=opt_blank(catalog('disposicion')); da=str(r.get('disposicion') or ''); dops=dops+([da] if da and da not in dops else []); disp=c.selectbox('Disposición *',dops,index=idx_or_zero(dops,da))
+                        a,b,c=st.columns(3); tsp=a.text_input('TSP N°',str(r.get('tsp_numero') or '')); status=b.selectbox('Status *',['','Cerrado','Abierto'],index=idx_or_zero(['','Cerrado','Abierto'],str(r.get('status') or ''))); nops=opt_blank(catalog('nave')); na=str(r.get('nave') or ''); nops=nops+([na] if na and na not in nops else []); nave=c.selectbox('Nave *',nops,index=idx_or_zero(nops,na)); guardar=st.form_submit_button('Guardar cambios',type='primary')
+                    if guardar:
+                        req={'Código':codigo,'Cedis':cedis,'País/Estado':pais,'ITEM':item,'Producto':producto,'Cliente':cliente,'Familia':familia,'Lote':lote,'Caducidad':cad,'Descripción':desc,'Comprobado':comp,'Cantidad':cant,'Unidad':unidad,'Sector':sector,'Disposición':disp,'Status':status,'Nave':nave}; faltan=[k for k,v in req.items() if v is None or (isinstance(v,str) and not v.strip()) or (k=='Cantidad' and float(v)<=0)]
+                        if faltan: st.error('Completa los siguientes campos obligatorios: '+', '.join(faltan)+'.')
                         else:
-                            asign=', '.join([f'"{c}"=?' for c in cols]+['actualizado_por=?','actualizado_en=?']); vals=tuple(None if pd.isna(d[c]) else d[c] for c in cols)+(st.session_state.auth['usuario'],now_iso(),selected)
-                            exec_sql(f'UPDATE devoluciones_registros SET {asign} WHERE id=?',vals); audit(st.session_state.auth['usuario'],'EDITAR_DEVOLUCION',f'ID {selected}'); st.success(f'Devolución actualizada correctamente: Número {selected}'); st.rerun()
+                            exec_sql('UPDATE devoluciones_registros SET fecha=?,codigo_defecto=?,defecto=?,cedis=?,pais_estado=?,item=?,producto=?,cliente=?,familia=?,lote=?,caducidad=?,descripcion_defecto=?,comprobado=?,cantidad_afectada=?,unidad=?,sector=?,disposicion=?,tsp_numero=?,status=?,nave=?,actualizado_por=?,actualizado_en=? WHERE id=?',(fecha.isoformat(),codigo,defecto,cedis.strip(),pais.strip(),item,producto,cliente,familia,lote.strip(),cad.strip(),desc.strip(),comp,float(cant),unidad,sector.strip(),disp,tsp.strip(),status,nave,st.session_state.auth['usuario'],now_iso(),selected)); audit(st.session_state.auth['usuario'],'EDITAR_DEVOLUCION',f'ID {selected}'); st.success(f'Devolución actualizada correctamente: Número {selected}'); st.rerun()
             if is_dev(): delete_confirm('devoluciones_registros','devoluciones','ELIMINAR_DEVOLUCION',selected)
 
 def page_muestras_retencion():
