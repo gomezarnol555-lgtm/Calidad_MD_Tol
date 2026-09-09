@@ -949,7 +949,74 @@ def init_db():
         if 'acciones_correctivas' in columnas_actuales: partes.append("NULLIF(TRIM(acciones_correctivas),'')")
         expresion="COALESCE(" + ", ".join(partes + ["''"]) + ")"
         cur.execute(f"UPDATE reclamos_registros SET acciones_correctivas_contingentes={expresion} WHERE acciones_correctivas_contingentes IS NULL OR TRIM(acciones_correctivas_contingentes)='' ")
-    cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS ux_reclamos_numero_caso ON reclamos_registros(UPPER(TRIM(numero_caso)))")
+    # Reconstrucción canónica de Reclamos. SQLite conserva restricciones NOT NULL
+    # de versiones anteriores aunque se agreguen columnas con ALTER TABLE. Por eso
+    # un INSERT nuevo podía fallar al omitir linea, acciones_contingentes o
+    # acciones_correctivas. La tabla se reconstruye conservando todos los datos.
+    columnas_info=cur.execute("PRAGMA table_info(reclamos_registros)").fetchall()
+    columnas_existentes={fila[1] for fila in columnas_info}
+    columnas_heredadas={'linea','acciones_contingentes','acciones_correctivas'}
+    columnas_canonicas=[
+        'id','fecha','codigo_defecto','descripcion_defecto','fuente','mercado',
+        'pais_estado','numero_caso','item','producto','cliente','familia',
+        'descripcion_reclamo','causa_raiz','acciones_correctivas_contingentes',
+        'comprobado','cantidad_afectada','unidad','sector','estado_reclamo',
+        'fecha_cierre','tsp_numero','caducidad','lote','nave','pmd',
+        'tipo_defecto','clasificacion_defecto','red_social','creado_por',
+        'creado_en','actualizado_por','actualizado_en'
+    ]
+    requiere_reconstruccion=(
+        bool(columnas_heredadas & columnas_existentes)
+        or not set(columnas_canonicas).issubset(columnas_existentes)
+        or any(fila[3] for fila in columnas_info if fila[1] in columnas_heredadas)
+    )
+    if requiere_reconstruccion:
+        cur.execute('DROP INDEX IF EXISTS ux_reclamos_numero_caso')
+        cur.execute('DROP TABLE IF EXISTS reclamos_registros_nueva')
+        cur.execute("""CREATE TABLE reclamos_registros_nueva(
+            id INTEGER PRIMARY KEY AUTOINCREMENT, fecha TEXT,
+            codigo_defecto TEXT, descripcion_defecto TEXT, fuente TEXT,
+            mercado TEXT, pais_estado TEXT, numero_caso TEXT, item TEXT,
+            producto TEXT, cliente TEXT, familia TEXT, descripcion_reclamo TEXT,
+            causa_raiz TEXT, acciones_correctivas_contingentes TEXT,
+            comprobado TEXT, cantidad_afectada REAL DEFAULT 0, unidad TEXT,
+            sector TEXT, estado_reclamo TEXT, fecha_cierre TEXT, tsp_numero TEXT,
+            caducidad TEXT, lote TEXT, nave TEXT, pmd TEXT, tipo_defecto TEXT,
+            clasificacion_defecto TEXT, red_social TEXT, creado_por TEXT,
+            creado_en TEXT, actualizado_por TEXT, actualizado_en TEXT
+        )""")
+        def expr_reclamo(columna,alternativas=(),valor="''"):
+            disponibles=[c for c in (columna,)+tuple(alternativas) if c in columnas_existentes]
+            if not disponibles:
+                return valor
+            if len(disponibles)==1:
+                return f'"{disponibles[0]}"'
+            partes=[f'NULLIF(TRIM(CAST("{c}" AS TEXT)),'')' for c in disponibles]
+            return 'COALESCE('+','.join(partes)+','+valor+')'
+        expresiones=[]
+        for columna in columnas_canonicas:
+            if columna=='familia':
+                expresiones.append(expr_reclamo('familia',('linea',)))
+            elif columna=='acciones_correctivas_contingentes':
+                expresiones.append(expr_reclamo(
+                    'acciones_correctivas_contingentes',
+                    ('acciones_contingentes','acciones_correctivas')
+                ))
+            elif columna=='cantidad_afectada':
+                expresiones.append(expr_reclamo(columna,valor='0'))
+            elif columna=='id':
+                expresiones.append(expr_reclamo(columna,valor='NULL'))
+            else:
+                expresiones.append(expr_reclamo(columna))
+        destino=','.join(f'"{c}"' for c in columnas_canonicas)
+        origen=','.join(expresiones)
+        cur.execute(f'INSERT INTO reclamos_registros_nueva({destino}) SELECT {origen} FROM reclamos_registros')
+        cur.execute('DROP TABLE reclamos_registros')
+        cur.execute('ALTER TABLE reclamos_registros_nueva RENAME TO reclamos_registros')
+    # La aplicación valida duplicados antes de guardar. Un índice no único evita
+    # que datos históricos repetidos bloqueen init_db y mantiene búsquedas rápidas.
+    cur.execute('DROP INDEX IF EXISTS ux_reclamos_numero_caso')
+    cur.execute("CREATE INDEX IF NOT EXISTS ix_reclamos_numero_caso ON reclamos_registros(UPPER(TRIM(numero_caso)))")
     for tbl in ['me_registros','ddm_rx_registros']:
         columnas_nuevas = {
             'linea_sector': 'TEXT', 'familia': 'TEXT', 'etapa': 'TEXT',
@@ -1820,8 +1887,11 @@ def page_registro():
             elif estado=='Cerrado' and not fecha_cierre: st.error('Captura la fecha de cierre para el reclamo cerrado.')
             elif fecha_cierre and fecha_cierre<fecha: st.error('La fecha de cierre no puede ser anterior a la fecha del reclamo.')
             else:
-                rid=exec_sql('INSERT INTO reclamos_registros(fecha,codigo_defecto,descripcion_defecto,fuente,mercado,pais_estado,numero_caso,item,producto,cliente,familia,descripcion_reclamo,causa_raiz,acciones_correctivas_contingentes,comprobado,cantidad_afectada,unidad,sector,estado_reclamo,fecha_cierre,tsp_numero,caducidad,lote,nave,pmd,tipo_defecto,clasificacion_defecto,red_social,creado_por,creado_en) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',(fecha.isoformat(),codigo,defecto,fuente.strip(),mercado.strip(),pais_estado.strip(),numero_caso.strip(),item,producto,cliente,familia,descripcion_reclamo.strip(),causa_raiz.strip(),acciones.strip(),comprobado,float(cantidad),unidad,sector.strip(),estado,fecha_cierre.isoformat() if fecha_cierre else None,tsp.strip(),caducidad.strip(),lote.strip(),nave,pmd,tipo_defecto,clasificacion,red_social,st.session_state.auth['usuario'],now_iso()))
-                audit(st.session_state.auth['usuario'],'CREAR_RECLAMO',f'ID {rid} | Caso {numero_caso.strip()}'); limpiar_form(); st.session_state.flash_registro_guardado=f'Reclamo guardado correctamente: Número {rid}'; st.rerun()
+                try:
+                    rid=exec_sql('INSERT INTO reclamos_registros(fecha,codigo_defecto,descripcion_defecto,fuente,mercado,pais_estado,numero_caso,item,producto,cliente,familia,descripcion_reclamo,causa_raiz,acciones_correctivas_contingentes,comprobado,cantidad_afectada,unidad,sector,estado_reclamo,fecha_cierre,tsp_numero,caducidad,lote,nave,pmd,tipo_defecto,clasificacion_defecto,red_social,creado_por,creado_en) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',(fecha.isoformat(),codigo,defecto,fuente.strip(),mercado.strip(),pais_estado.strip(),numero_caso.strip(),item,producto,cliente,familia,descripcion_reclamo.strip(),causa_raiz.strip(),acciones.strip(),comprobado,float(cantidad),unidad,sector.strip(),estado,fecha_cierre.isoformat() if fecha_cierre else None,tsp.strip(),caducidad.strip(),lote.strip(),nave,pmd,tipo_defecto,clasificacion,red_social,st.session_state.auth['usuario'],now_iso()))
+                    audit(st.session_state.auth['usuario'],'CREAR_RECLAMO',f'ID {rid} | Caso {numero_caso.strip()}'); limpiar_form(); st.session_state.flash_registro_guardado=f'Reclamo guardado correctamente: Número {rid}'; st.rerun()
+                except sqlite3.IntegrityError:
+                    st.error('No fue posible guardar el reclamo porque existe un registro incompatible o repetido. Actualiza la página y verifica el número de caso.')
         st.markdown('</div></div>',unsafe_allow_html=True)
 
     def form_pnc():
