@@ -1646,8 +1646,10 @@ def left_menu():
     menu_button('Consulta y descarga','📊 Consulta y descarga','📊')
     menu_button('Muestras de retención','🧪 Muestras de retención','🧪')
     menu_button('Entrega de turno','🔄 Entrega de turno','🔄')
+    # Todos los usuarios pueden abrir Catálogos. El contenido se limita por rol
+    # dentro de page_catalogos, sin exponer administración sensible.
+    menu_button('Catálogos','🧩 Catálogos','🧩')
     if is_dev():
-        menu_button('Catálogos','🧩 Catálogos','🧩')
         menu_button('Usuarios','👤 Usuarios','👤')
         menu_button('Auditoría','🧾 Auditoría','🧾')
     st.markdown('<div style="height:1rem"></div>',unsafe_allow_html=True)
@@ -1849,27 +1851,28 @@ def page_registro():
         st.rerun()
     def selector():
         st.markdown("""<div class="registro-landing-hero"><div class="registro-landing-title">Nuevo registro</div><div class="registro-landing-subtitle">Selecciona el tipo de registro que deseas capturar.</div></div>""",unsafe_allow_html=True)
-        a,b,c,d,e=st.columns(5,gap='large')
-        with a:
-            st.markdown('<span class="registro-card-slot"></span>',unsafe_allow_html=True)
-            if st.button("📝  **PNC´s**\n\nCaptura y seguimiento de producto no conforme.\n\n*Abrir registro*",key='card_pnc'):
-                st.session_state.registro_tipo='PNC'; st.rerun()
-        with b:
-            st.markdown('<span class="registro-card-slot"></span>',unsafe_allow_html=True)
-            if st.button("🧲  **Materia Extraña**\n\nRegistro de hallazgos y acciones de contención.\n\n*Abrir registro*",key='card_me'):
-                st.session_state.registro_tipo='ME'; st.rerun()
-        with c:
-            st.markdown('<span class="registro-card-slot"></span>',unsafe_allow_html=True)
-            if st.button("📦  **Detector de metales y RX**\n\nControl de producto segregado por detección.\n\n*Abrir registro*",key='card_ddm'):
-                st.session_state.registro_tipo='DDM_RX'; st.rerun()
-        with d:
-            st.markdown('<span class="registro-card-slot"></span>',unsafe_allow_html=True)
-            if st.button("📣  **Reclamos**\n\nRegistro, investigación y seguimiento de reclamos.\n\n*Abrir registro*",key='card_reclamos'):
-                st.session_state.registro_tipo='RECLAMOS'; st.rerun()
-        with e:
-            st.markdown('<span class="registro-card-slot"></span>',unsafe_allow_html=True)
-            if st.button("↩️  **Devoluciones**\n\nRegistro y seguimiento de producto devuelto.\n\n*Abrir registro*",key='card_devoluciones'):
-                st.session_state.registro_tipo='DEVOLUCIONES'; st.rerun()
+        tarjetas=[
+            ('PNC','📝  **PNC´s**\n\nCaptura y seguimiento de producto no conforme.\n\n*Abrir registro*','card_pnc'),
+            ('ME','🧲  **Materia Extraña**\n\nRegistro de hallazgos y acciones de contención.\n\n*Abrir registro*','card_me'),
+            ('DDM_RX','📦  **Detector de metales y RX**\n\nControl de producto segregado por detección.\n\n*Abrir registro*','card_ddm'),
+            ('RECLAMOS','📣  **Reclamos**\n\nRegistro, investigación y seguimiento de reclamos.\n\n*Abrir registro*','card_reclamos'),
+            ('DEVOLUCIONES','↩️  **Devoluciones**\n\nRegistro y seguimiento de producto devuelto.\n\n*Abrir registro*','card_devoluciones')
+        ]
+        # Misma estructura visual de Muestras de retención: hasta tres tarjetas
+        # por fila, con ancho y separación uniformes.
+        for inicio in range(0,len(tarjetas),3):
+            lote=tarjetas[inicio:inicio+3]
+            if len(lote)==2:
+                columnas=st.columns([.5,1,1,.5],gap='large')[1:3]
+            else:
+                columnas=st.columns(3,gap='large')
+            for columna,(valor,texto,clave) in zip(columnas,lote):
+                with columna:
+                    st.markdown('<span class="registro-card-slot"></span>',unsafe_allow_html=True)
+                    if st.button(texto,key=clave):
+                        st.session_state.registro_tipo=valor
+                        st.rerun()
+
     def form_hallazgo(tabla,titulo,audit_action):
         nonce=st.session_state.form_nonce
         st.markdown(f"""<div class="registro-full-panel"><div class="registro-pill">Nuevo registro</div><div class="registro-full-title">{titulo}</div><div class="registro-full-subtitle">Los campos marcados con * son obligatorios.</div>""",unsafe_allow_html=True)
@@ -2725,6 +2728,45 @@ def admin_required():
 
 
 def page_catalogos():
+    # El rol usuario dispone únicamente del catálogo de Productos y solo puede
+    # consultar/agregar. La edición, eliminación y los demás catálogos continúan
+    # reservados al rol desarrollador.
+    if not is_dev():
+        st.title('Catálogo de Productos')
+        st.caption('Consulta los productos disponibles y agrega nuevos elementos al catálogo.')
+        productos=read_df('SELECT id,item,descripcion,cliente,familia FROM productos WHERE activo=1 ORDER BY descripcion')
+        vista=productos.rename(columns={'id':'ID','item':'ITEM','descripcion':'Descripción','cliente':'Cliente','familia':'Familia'})
+        if vista.empty:
+            st.info('Todavía no hay productos activos en el catálogo.')
+        else:
+            st.dataframe(vista,use_container_width=True,hide_index=True)
+        with st.expander('Agregar producto',expanded=True):
+            with st.form('usuario_agregar_producto',clear_on_submit=True):
+                a,b=st.columns(2)
+                item=a.text_input('ITEM *')
+                descripcion=b.text_input('Descripción *')
+                c,d=st.columns(2)
+                cliente=c.text_input('Cliente *')
+                familia=d.text_input('Familia *')
+                agregar=st.form_submit_button('Agregar producto',type='primary')
+            if agregar:
+                valores=[item.strip(),descripcion.strip(),cliente.strip(),familia.strip()]
+                etiquetas=['ITEM','Descripción','Cliente','Familia']
+                faltantes=[etiquetas[i] for i,v in enumerate(valores) if not v]
+                existente=read_df('SELECT id,activo FROM productos WHERE item=?',(valores[0],)) if valores[0] else pd.DataFrame()
+                if faltantes:
+                    st.error('Completa los campos obligatorios: '+', '.join(faltantes)+'.')
+                elif not existente.empty and int(existente.iloc[0].get('activo',1) or 0)==1:
+                    st.error('No fue posible agregar el producto porque el ITEM ya existe.')
+                elif not existente.empty:
+                    exec_sql('UPDATE productos SET descripcion=?,cliente=?,familia=?,activo=1 WHERE id=?',(valores[1],valores[2],valores[3],int(existente.iloc[0].id)))
+                    audit(st.session_state.auth['usuario'],'REACTIVAR_PRODUCTO',f'ITEM {valores[0]}')
+                    st.success('Producto agregado correctamente.'); st.rerun()
+                else:
+                    exec_sql('INSERT INTO productos(item,descripcion,cliente,familia,activo) VALUES(?,?,?,?,1)',tuple(valores))
+                    audit(st.session_state.auth['usuario'],'AGREGAR_PRODUCTO',f'ITEM {valores[0]}')
+                    st.success('Producto agregado correctamente.'); st.rerun()
+        return
     st.title('Catálogos'); st.caption('Datos precargados desde el Excel adjunto. El administrador puede agregar o eliminar elementos.')
     tab1,tab2,tab3,tab4,tab5=st.tabs(['Productos','Defectos','Datos generales','Naves, líneas y sectores','Formatos entrega de turno'])
     def catalogo_seleccionable(tabla, consulta, columnas_vista, clave, titulo_singular, campos, insertar_sql, actualizar_sql, duplicado_sql, valores_opciones=None):
