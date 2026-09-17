@@ -1658,7 +1658,11 @@ def left_menu():
 
 
 def _selector_indicador_actual(indicador,key):
-    opciones=['PNC','Materia extraña','Producto segregado por detector de metales y RX','SPAC']
+    opciones=['PNC','Materia extraña','Producto segregado por detector de metales y RX','Reclamos','Devoluciones','SPAC']
+    # Protege instalaciones o sesiones antiguas que conserven un valor no disponible.
+    if indicador not in opciones:
+        indicador='PNC'
+        st.session_state.inicio_indicador=indicador
     with st.popover('Indicador',use_container_width=True):
         nuevo=st.radio('Seleccionar indicador',opciones,index=opciones.index(indicador),key=key,label_visibility='collapsed')
         if nuevo!=indicador:
@@ -1755,39 +1759,113 @@ def panel_indicadores_spac_inicio(indicador='SPAC'):
         grafica_lineas_con_valores(gp,'Indicador SPAC Producción','inicio_chart_produccion')
 
 def _panel_registros_inicio(tipo):
-    cfg={'PNC':('pnc_registros','fecha_apertura','defecto','Producto No Conforme','analista'),'Materia extraña':('me_registros','_fecha','descripcion_hallazgo','Materia extraña','analista_detecta'),'Producto segregado por detector de metales y RX':('ddm_rx_registros','_fecha','descripcion_hallazgo','Producto segregado por detector de metales y RX','analista_detecta')}
-    tabla,fecha,defecto,titulo,c_analista=cfg[tipo]; d=read_df(f'SELECT * FROM {tabla}')
-    if fecha=='_fecha': d[fecha]=pd.to_datetime(dict(year=pd.to_numeric(d.get('anio'),errors='coerce'),month=pd.to_numeric(d.get('mes'),errors='coerce'),day=pd.to_numeric(d.get('dia'),errors='coerce')),errors='coerce') if not d.empty else pd.Series(dtype='datetime64[ns]')
-    else: d[fecha]=pd.to_datetime(d[fecha],errors='coerce') if fecha in d.columns else pd.NaT
-    fechas=d[fecha].dropna(); lineas=sorted(d.get('linea_sector',pd.Series(dtype=str)).dropna().astype(str).unique()); naves=sorted(d.get('nave',pd.Series(dtype=str)).dropna().astype(str).unique()); analistas=sorted(d.get(c_analista,pd.Series(dtype=str)).dropna().astype(str).unique())
+    # Cada indicador conserva el mismo flujo del panel actual: lectura, filtros,
+    # cuatro KPI y tres graficas. Solo se parametrizan los nombres reales de
+    # columnas para no modificar tablas, formularios ni registros historicos.
+    cfg={
+        'PNC':{
+            'tabla':'pnc_registros','fecha':'fecha_apertura','defecto':'defecto',
+            'titulo':'Producto No Conforme','analista':'analista',
+            'linea':'linea_sector','estado':'status','cantidad':'cantidad_total_pnc'
+        },
+        'Materia extraña':{
+            'tabla':'me_registros','fecha':'_fecha','defecto':'descripcion_hallazgo',
+            'titulo':'Materia extraña','analista':'analista_detecta',
+            'linea':'linea_sector','estado':None,'cantidad':None
+        },
+        'Producto segregado por detector de metales y RX':{
+            'tabla':'ddm_rx_registros','fecha':'_fecha','defecto':'descripcion_hallazgo',
+            'titulo':'Producto segregado por detector de metales y RX','analista':'analista_detecta',
+            'linea':'linea_sector','estado':None,'cantidad':None
+        },
+        'Reclamos':{
+            'tabla':'reclamos_registros','fecha':'fecha','defecto':'descripcion_defecto',
+            'titulo':'Reclamos','analista':'creado_por',
+            'linea':'sector','estado':'estado_reclamo','cantidad':'cantidad_afectada'
+        },
+        'Devoluciones':{
+            'tabla':'devoluciones_registros','fecha':'fecha','defecto':'defecto',
+            'titulo':'Devoluciones','analista':'creado_por',
+            'linea':'sector','estado':'status','cantidad':'cantidad_afectada'
+        }
+    }
+    if tipo not in cfg:
+        st.session_state.inicio_indicador='PNC'
+        st.rerun()
+    conf=cfg[tipo]
+    tabla=conf['tabla']; fecha=conf['fecha']; defecto=conf['defecto']
+    titulo=conf['titulo']; c_analista=conf['analista']; c_linea=conf['linea']
+    d=read_df(f'SELECT * FROM {tabla}')
+    if fecha=='_fecha':
+        d[fecha]=pd.to_datetime(dict(
+            year=pd.to_numeric(d.get('anio'),errors='coerce'),
+            month=pd.to_numeric(d.get('mes'),errors='coerce'),
+            day=pd.to_numeric(d.get('dia'),errors='coerce')
+        ),errors='coerce') if not d.empty else pd.Series(dtype='datetime64[ns]')
+    else:
+        d[fecha]=pd.to_datetime(d[fecha],errors='coerce') if fecha in d.columns else pd.NaT
+    fechas=d[fecha].dropna()
+    lineas=sorted(d.get(c_linea,pd.Series(dtype=str)).dropna().astype(str).loc[lambda x:x.str.strip().ne('')].unique())
+    naves=sorted(d.get('nave',pd.Series(dtype=str)).dropna().astype(str).loc[lambda x:x.str.strip().ne('')].unique())
+    analistas=sorted(d.get(c_analista,pd.Series(dtype=str)).dropna().astype(str).loc[lambda x:x.str.strip().ne('')].unique())
     h,sel,fil=st.columns([7.1,1.4,1.5],vertical_alignment='center')
-    with h: st.markdown(f'<div class="indicator-title">Indicadores de {titulo}</div>',unsafe_allow_html=True)
-    with sel: st.markdown('<span class="toolbar-marker"></span>',unsafe_allow_html=True); _selector_indicador_actual(tipo,f'selector_{tabla}')
+    with h:
+        st.markdown(f'<div class="indicator-title">Indicadores de {titulo}</div>',unsafe_allow_html=True)
+    with sel:
+        st.markdown('<span class="toolbar-marker"></span>',unsafe_allow_html=True)
+        _selector_indicador_actual(tipo,f'selector_{tabla}')
     with fil:
         st.markdown('<span class="toolbar-marker"></span>',unsafe_allow_html=True)
         with st.popover('Filtros',use_container_width=True):
             if not fechas.empty:
-                mn,mx=fechas.min().date(),fechas.max().date(); a,b=st.columns(2); desde=a.date_input('Fecha inicial',mn,min_value=mn,max_value=mx,key=f'desde_{tabla}'); hasta=b.date_input('Fecha final',mx,min_value=mn,max_value=mx,key=f'hasta_{tabla}')
-            else: desde=hasta=None
-            sl=st.multiselect('Línea/Sector',lineas,key=f'lineas_{tabla}'); sn=st.multiselect('Nave',naves,key=f'naves_{tabla}'); sa=st.multiselect('Analista',analistas,key=f'analistas_{tabla}')
+                mn,mx=fechas.min().date(),fechas.max().date()
+                a,b=st.columns(2)
+                desde=a.date_input('Fecha inicial',mn,min_value=mn,max_value=mx,key=f'desde_{tabla}')
+                hasta=b.date_input('Fecha final',mx,min_value=mn,max_value=mx,key=f'hasta_{tabla}')
+            else:
+                desde=hasta=None
+            sl=st.multiselect('Línea/Sector',lineas,key=f'lineas_{tabla}')
+            sn=st.multiselect('Nave',naves,key=f'naves_{tabla}')
+            sa=st.multiselect('Analista / usuario',analistas,key=f'analistas_{tabla}')
     x=d.copy()
     if desde and hasta:
-        if desde>hasta: st.error('La fecha inicial no puede ser posterior a la fecha final.'); return
+        if desde>hasta:
+            st.error('La fecha inicial no puede ser posterior a la fecha final.')
+            return
         x=x[(x[fecha].dt.date>=desde)&(x[fecha].dt.date<=hasta)]
-    if sl:x=x[x.linea_sector.isin(sl)]
-    if sn:x=x[x.nave.isin(sn)]
-    if sa:x=x[x[c_analista].isin(sa)]
-    total=len(x); ln=x.get('linea_sector',pd.Series(dtype=str)).replace('',pd.NA).nunique(); dn=x.get(defecto,pd.Series(dtype=str)).replace('',pd.NA).nunique(); meses=x[fecha].dropna().dt.to_period('M').nunique()
+    if sl: x=x[x[c_linea].isin(sl)]
+    if sn: x=x[x['nave'].isin(sn)]
+    if sa: x=x[x[c_analista].isin(sa)]
+    total=len(x)
+    ln=x.get(c_linea,pd.Series(dtype=str)).replace('',pd.NA).nunique()
+    dn=x.get(defecto,pd.Series(dtype=str)).replace('',pd.NA).nunique()
+    meses=x[fecha].dropna().dt.to_period('M').nunique()
     if tipo=='PNC':
-        e=x.get('status',pd.Series('',index=x.index)).fillna('').astype(str).str.upper(); ce=int(e.eq('CERRADO').sum()); ab=int(e.eq('ABIERTO').sum()); kg=pd.to_numeric(x.get('cantidad_total_pnc',pd.Series(0,index=x.index)),errors='coerce').fillna(0).sum(); cards=[('Total de PNC',f'{total:,}','Número de registros totales','#00A884'),('% de cierre',f'{(ce/total*100 if total else 0):.1f}%','PNC cerrados respecto al total','#5850EC'),('Kg totales de PNC',f'{kg:,.2f} kg','Cantidad total registrada','#3F7BFF'),('PNC abiertos',f'{ab:,}','Registros pendientes de cierre','#F59E0B')]
-    else: cards=[('Registros',total,'Total filtrado','#00A884'),('Defectos',dn,'Tipos identificados','#5850EC'),('Líneas / sectores',ln,'Con registros','#3F7BFF'),('Meses',meses,'Periodos con actividad','#F59E0B')]
+        e=x.get('status',pd.Series('',index=x.index)).fillna('').astype(str).str.strip().str.upper()
+        ce=int(e.eq('CERRADO').sum()); ab=int(e.eq('ABIERTO').sum())
+        kg=pd.to_numeric(x.get('cantidad_total_pnc',pd.Series(0,index=x.index)),errors='coerce').fillna(0).sum()
+        cards=[('Total de PNC',f'{total:,}','Número de registros totales','#00A884'),('% de cierre',f'{(ce/total*100 if total else 0):.1f}%','PNC cerrados respecto al total','#5850EC'),('Kg totales de PNC',f'{kg:,.2f} kg','Cantidad total registrada','#3F7BFF'),('PNC abiertos',f'{ab:,}','Registros pendientes de cierre','#F59E0B')]
+    elif tipo in {'Reclamos','Devoluciones'}:
+        estado_col=conf['estado']; cantidad_col=conf['cantidad']
+        e=x.get(estado_col,pd.Series('',index=x.index)).fillna('').astype(str).str.strip().str.upper()
+        cerrados=int(e.eq('CERRADO').sum()); abiertos=int(e.eq('ABIERTO').sum())
+        cantidad=pd.to_numeric(x.get(cantidad_col,pd.Series(0,index=x.index)),errors='coerce').fillna(0).sum()
+        singular='Reclamo' if tipo=='Reclamos' else 'Devolución'
+        cards=[(f'Total de {tipo.lower()}',f'{total:,}','Número de registros totales','#00A884'),('% de cierre',f'{(cerrados/total*100 if total else 0):.1f}%',f'{tipo} cerrados respecto al total','#5850EC'),('Cantidad afectada',f'{cantidad:,.2f}','Suma de la cantidad registrada','#3F7BFF'),(f'{singular} abiertos',f'{abiertos:,}','Registros pendientes de cierre','#F59E0B')]
+    else:
+        cards=[('Registros',total,'Total filtrado','#00A884'),('Defectos',dn,'Tipos identificados','#5850EC'),('Líneas / sectores',ln,'Con registros','#3F7BFF'),('Meses',meses,'Periodos con actividad','#F59E0B')]
     cols=st.columns(4,gap='large')
     for c,(la,va,pi,co) in zip(cols,cards):
-        with c: st.markdown(f'<div class="kpi" style="--c:{co}"><div class="kpi-label">{la}</div><div class="kpi-value">{va}</div><div class="kpi-foot">{pi}</div></div>',unsafe_allow_html=True)
+        with c:
+            st.markdown(f'<div class="kpi" style="--c:{co}"><div class="kpi-label">{la}</div><div class="kpi-value">{va}</div><div class="kpi-foot">{pi}</div></div>',unsafe_allow_html=True)
+    nombre_registros='PNC' if tipo=='PNC' else titulo
     a,b=st.columns(2)
-    with a: st.markdown('<span class="chart-marker"></span>',unsafe_allow_html=True); _grafica_conteo(x,defecto,f'Defectos vs Número de registros de {"PNC" if tipo=="PNC" else titulo}','Defecto',f'def_{tabla}')
-    with b: _grafica_conteo(x,'linea_sector',f'Línea/Sector vs Número de registros de {"PNC" if tipo=="PNC" else titulo}','Línea/Sector',f'lin_{tabla}')
-    _grafica_mes(x,fecha,f'Mes vs Número de registros de {"PNC" if tipo=="PNC" else titulo}',f'mes_{tabla}')
+    with a:
+        st.markdown('<span class="chart-marker"></span>',unsafe_allow_html=True)
+        _grafica_conteo(x,defecto,f'Defectos vs Número de registros de {nombre_registros}','Defecto',f'def_{tabla}')
+    with b:
+        _grafica_conteo(x,c_linea,f'Línea/Sector vs Número de registros de {nombre_registros}','Línea/Sector',f'lin_{tabla}')
+    _grafica_mes(x,fecha,f'Mes vs Número de registros de {nombre_registros}',f'mes_{tabla}')
 
 def page_inicio():
     st.markdown('<div class="home-hero"><div class="home-hero-title">Panel Calidad Mundo Dulce</div></div>',unsafe_allow_html=True)
