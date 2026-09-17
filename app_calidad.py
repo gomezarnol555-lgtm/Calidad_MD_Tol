@@ -234,7 +234,7 @@ def pdf_pnc(rid):
     c.showPage(); c.save(); return b.getvalue()
 
 def pdf_pnc_fisico(rid):
-    """Genera el Registro Fisico de PNC con base en el Anexo 1 Rev. 2."""
+    """Genera el Registro Fisico PNC en A4, llenado unicamente hasta Disposicion."""
     try:
         from reportlab.lib.pagesizes import A4
         from reportlab.pdfgen import canvas
@@ -247,7 +247,7 @@ def pdf_pnc_fisico(rid):
     r=df.iloc[0].to_dict()
     def v(campo):
         x=r.get(campo,'')
-        return '' if x is None or pd.isna(x) else str(x)
+        return '' if x is None or pd.isna(x) else str(x).strip()
     def fecha_es(x):
         try: return pd.to_datetime(x).strftime('%d/%m/%Y')
         except Exception: return str(x or '')
@@ -264,83 +264,92 @@ def pdf_pnc_fisico(rid):
         c.setFont(fuente,actual)
         if centrado: c.drawCentredString(x+ancho/2,y,texto)
         else: c.drawString(x,y,texto)
-    def wrap(c,texto,x,y,ancho,tam=7.5,leading=10,max_lines=5,negrita=False):
-        fuente='Helvetica-Bold' if negrita else 'Helvetica'; lineas=[]
-        for bloque in str(texto or '').splitlines() or ['']:
-            linea=''
-            for palabra in bloque.split():
-                prueba=(linea+' '+palabra).strip()
-                if stringWidth(prueba,fuente,tam)<=ancho: linea=prueba
-                else:
-                    if linea: lineas.append(linea)
-                    linea=palabra
-            if linea: lineas.append(linea)
-        c.setFont(fuente,tam)
-        for i,linea in enumerate(lineas[:max_lines]): c.drawString(x,y-i*leading,linea)
     def logo(c,x,y,w,h):
         try:
             data=BytesIO(base64.b64decode(LOGO_MUNDO_DULCE_BASE64))
             c.drawImage(ImageReader(data),x,y,width=w,height=h,preserveAspectRatio=True,anchor='c',mask='auto')
-        except Exception: fit(c,'Mundo Dulce',x,y+h/2,w,10,True,True)
+        except Exception: fit(c,'Mundo Dulce',x,y+h/2,w,9,True,True)
     def encabezado(c,reverso=False):
-        x0,x1,x2,x3=38,188,506,557; top,bot=805,752
-        c.setLineWidth(.8); c.rect(x0,bot,x3-x0,top-bot); c.line(x1,bot,x1,top); c.line(x2,bot,x2,top)
-        logo(c,x0+12,bot+7,x1-x0-24,top-bot-14)
-        fit(c,'Anexo 1. Registro de Productos No Conformes',x1+4,top-20,x2-x1-8,8,True,True)
-        fit(c,'PG-CAL01-2301-01760-2007',x1+4,top-39,x2-x1-8,7.5,False,True)
-        fit(c,'Rev. 2',x2+2,top-20,x3-x2-4,7.5,True,True)
-        if reverso: fit(c,'Reverso',x2+2,top-38,x3-x2-4,7.2,False,True)
+        x0,x1,x2,x3=38,132,494,557; top,bot=805,756
+        c.setLineWidth(.8); c.rect(x0,bot,x3-x0,top-bot)
+        c.line(x1,bot,x1,top); c.line(x2,bot,x2,top)
+        logo(c,x0+6,bot+5,x1-x0-12,top-bot-10)
+        fit(c,'Anexo 1. Registro de Productos No Conformes',x1+3,top-17,278,8,False,True)
+        fit(c,'Rev. 2',412,top-17,72,8,False,True)
+        fit(c,'PG-CAL01-2301-01760-2007',x1+4,bot+7,x2-x1-8,7.5,False,True)
+        fit(c,'Reverso' if reverso else 'NUMERO',x2+2,top-28,x3-x2-4,8,False,True)
     b=BytesIO(); c=canvas.Canvas(b,pagesize=A4); W,H=A4
     c.setTitle('Registro Fisico de Producto No Conforme')
+    # Pagina 1: formato A4 fiel a la referencia.
     encabezado(c)
-    folio=v('folio') or f'{rid}/{pd.to_datetime(v("fecha_apertura"),errors="coerce").year if v("fecha_apertura") else datetime.now().year}'
-    t(c,'NUMERO',500,731,7.5,True); c.rect(500,708,57,18); fit(c,folio,502,713,53,7,True,True)
-    t(c,'Sector:',38,719,8,True); c.line(82,717,470,717); fit(c,v('linea_sector'),85,720,380,8)
+    try: anio=str(pd.to_datetime(v('fecha_apertura')).year)
+    except Exception: anio=str(datetime.now().year)
+    fit(c,f'{rid}/{anio}',496,765,59,8,True,True)
+    t(c,'Sector:',39,733,8); c.line(79,731,404,731); fit(c,v('linea_sector'),82,734,319,8)
     # Identificacion
-    y=690; c.setFillColorRGB(.90,.94,.95); c.rect(38,y,519,20,fill=1,stroke=1); c.setFillColorRGB(0,0,0)
-    t(c,'IDENTIFICACION',44,y+6,9,True)
-    filas=[('Codigo:', '_'.join(x for x in [v('etapa'),v('codigo_defecto')] if x)),('Fecha:',fecha_es(v('fecha_apertura'))),('ITEM:',v('item')),('Producto o Semielaborado:',v('descripcion_producto')),('Lote:',v('lote')),('Cantidad observada:',(f"{float(v('cantidad_observada')):.2f} kg" if v('cantidad_observada') else '')),('Responsable / Persona que detecta:',v('analista') or v('responsable_detecta'))]
-    y0=670
-    for i,(lab,val) in enumerate(filas):
-        yy=y0-i*22
-        t(c,lab,44,yy,7.5,True); c.line(205,yy-2,551,yy-2); fit(c,val,209,yy,338,7.5)
+    x0,x3=38,557; top_id,bot_id=711,498
+    c.setLineWidth(.8); c.rect(x0,bot_id,x3-x0,top_id-bot_id)
+    c.rect(x0,top_id-18,x3-x0,18); c.setFont('Helvetica-Bold',8); c.drawCentredString((x0+x3)/2,top_id-13,'IDENTIFICACION')
+    codigo='_'.join(x for x in [v('etapa'),v('codigo_defecto')] if x)
+    cantidad=''
+    if v('cantidad_observada'):
+        try: cantidad=f"{float(v('cantidad_observada')):.2f} kg"
+        except Exception: cantidad=v('cantidad_observada')
+    # ITEM y producto comparten una fila como en el formato fisico.
+    campos=[('Codigo:',codigo,681),('Fecha:',fecha_es(v('fecha_apertura')),648),('ITEM:',v('item'),615),('Lote:',v('lote'),582),('Cantidad observada:',cantidad,549),('Responsable / Persona que detecta:',' / '.join(x for x in [v('supervisor'),v('analista')] if x),516)]
+    for etiqueta,valor,y in campos:
+        t(c,etiqueta,40,y,7.6); fit(c,valor,173,y,360,7.6)
+    t(c,'Producto o Semielaborado:',300,615,7.6); fit(c,v('descripcion_producto'),430,615,121,7.2)
     # Disposicion
-    y=500; c.setFillColorRGB(.90,.94,.95); c.rect(38,y,519,20,fill=1,stroke=1); c.setFillColorRGB(0,0,0); t(c,'DISPOSICION',44,y+6,9,True)
-    t(c,'Marque con una X el recuadro correspondiente:',44,482,7.2)
+    top_d,bot_d=482,350; medio=300
+    c.rect(x0,bot_d,x3-x0,top_d-bot_d); c.rect(x0,top_d-18,x3-x0,18)
+    c.setFont('Helvetica-Bold',8); c.drawCentredString((x0+x3)/2,top_d-13,'DISPOSICION')
+    c.line(medio,bot_d,medio,top_d-18)
+    t(c,'Marque con una X el recuadro correspondiente:',40,451,7.3)
+    t(c,'Fecha, nombre y firma de responsable de disposicion:',304,451,7.1)
     opciones=['Reproceso','Retrabajo','Decomiso','Inspeccion','Aprobado en segunda instancia','Otro']
-    actual=v('disposicion').strip().lower()
+    actual=v('disposicion').lower()
     for i,op in enumerate(opciones):
-        yy=462-i*20; c.rect(47,yy-2,12,12); t(c,'X' if op.lower()==actual else '',49,yy,9,True); t(c,op,66,yy,7.3)
-    t(c,'Fecha, nombre y firma de responsable de disposicion:',285,482,7.2)
-    c.rect(285,352,266,116); wrap(c,(fecha_es(v('fecha_final_tratamiento'))+'  '+v('supervisor')).strip(),292,449,250,7.5,11,5)
-    # Tratamiento
-    y=325; c.setFillColorRGB(.90,.94,.95); c.rect(38,y,519,20,fill=1,stroke=1); c.setFillColorRGB(0,0,0); t(c,'TRATAMIENTO',44,y+6,9,True)
-    tratamientos=[('Kg Aprobados en segunda instancia',v('cantidad_aprobado_segunda')),('Kg Decomiso',v('cantidad_decomiso')),('Kg Reproceso',v('cantidad_reproceso')),('Fecha comienzo del tratamiento',fecha_es(v('fecha_apertura'))),('Fecha final del tratamiento',fecha_es(v('fecha_final_tratamiento')))]
-    for i,(lab,val) in enumerate(tratamientos):
-        yy=303-i*22; t(c,lab,44,yy,7.2,True); c.line(210,yy-2,325,yy-2); fit(c,val,214,yy,107,7.2)
-    t(c,'Nombre y firma del responsable del tratamiento:',340,303,7.2,True); c.rect(340,214,211,75); fit(c,v('supervisor'),345,274,201,7.3,False,True)
-    # Consideraciones
-    y=184; c.setFillColorRGB(.90,.94,.95); c.rect(38,y,519,20,fill=1,stroke=1); c.setFillColorRGB(0,0,0); t(c,'CONSIDERACIONES DE TRABAJO',44,y+6,9,True)
-    t(c,'Dias de retrabajo:',44,161,7.2,True); c.line(135,159,210,159)
-    t(c,'No. de personas:',225,161,7.2,True); c.line(308,159,382,159)
-    t(c,'Materiales:',397,161,7.2,True); c.line(452,159,551,159)
-    t(c,'Otro:',44,136,7.2,True); c.line(76,134,551,134); fit(c,v('material_hallado') or v('observaciones'),80,137,467,7.2)
-    t(c,'Fecha:',44,105,7.2,True); c.line(80,103,210,103); fit(c,fecha_es(v('fecha_final_tratamiento') or v('fecha_apertura')),84,106,122,7.2)
-    t(c,'Nombre y firma:',225,105,7.2,True); c.line(304,103,551,103); fit(c,v('analista'),308,106,239,7.2)
+        y=430-i*16
+        c.rect(40,y-3,82,16); t(c,op+':',124,y+1,7.3)
+        normal_op=op.lower().replace('inspeccion','inspección')
+        if normal_op==actual or op.lower()==actual:
+            c.setFont('Helvetica-Bold',10); c.drawCentredString(81,y, 'X')
+    # Fecha arriba y nombre del analista abajo. Sin firma autogenerada.
+    fit(c,fecha_es(v('fecha_apertura')),307,430,242,8,False,True)
+    fit(c,v('analista'),307,365,242,8,False,True)
+    # Tratamiento: estructura vacia.
+    top_t,bot_t=334,216
+    c.rect(x0,bot_t,x3-x0,top_t-bot_t); c.rect(x0,top_t-18,x3-x0,18)
+    c.setFont('Helvetica-Bold',8); c.drawCentredString((x0+x3)/2,top_t-13,'TRATAMIENTO')
+    cortes=[x0+94,x0+188,x0+282,x0+376]
+    for xx in cortes: c.line(xx,bot_t,xx,top_t-18)
+    c.line(x0,top_t-67,x3,top_t-67)
+    titulos=[('Kg Aprobados en\nsegunda instancia',x0+2,top_t-31),('Kg Decomiso',x0+190,top_t-43),('Kg Reproceso',x0+378,top_t-43),('Fecha comienzo del tratamiento',x0+2,top_t-82),('Fecha final de tratamiento',x0+190,top_t-82),('Nombre y firma del responsable del\ntratamiento:',x0+378,top_t-82)]
+    for texto,x,y in titulos:
+        for j,linea in enumerate(texto.split('\n')): t(c,linea,x,y-j*10,6.9)
+    # Consideraciones: estructura vacia.
+    top_c,bot_c=198,76
+    c.rect(x0,bot_c,x3-x0,top_c-bot_c); c.rect(x0,top_c-18,x3-x0,18)
+    c.setFont('Helvetica-Bold',8); c.drawCentredString((x0+x3)/2,top_c-13,'CONSIDERACIONES DE TRABAJO')
+    filas=[('Dias de retrabajo:',top_c-34),('No. de personas:',top_c-52),('Materiales:',top_c-70),('Otro:',top_c-88)]
+    for etiqueta,y in filas: t(c,etiqueta,x0+2,y,7); c.line(x0,y-5,x3,y-5)
+    c.line(300,bot_c,300,top_c-93); t(c,'Fecha:',x0+2,bot_c+7,7); t(c,'Nombre y firma:',302,bot_c+7,7)
     c.showPage()
-    # Reverso del formato, reproducido como parte del archivo fisico.
+    # Pagina 2: reverso informativo del formato.
     encabezado(c,True)
-    t(c,'Instrucciones para el uso del Registro de Productos No Conformes:',38,720,9,True)
+    t(c,'Instrucciones para el uso del Registro de Productos No Conformes:',40,727,8.5)
     secciones=[
-      ('ENCABEZADO:','En el cuadro superior derecho se coloca el numero consecutivo del registro que se genera. La numeracion se compone como NNN / AA, donde NNN es el numero consecutivo y AA corresponde a los dos ultimos digitos del ano en curso.'),
-      ('IDENTIFICACION:','Codigo: se coloca el codigo de retencion de acuerdo con la codificacion aplicable. Registrar la fecha del Producto No Conforme, ITEM, descripcion del producto o semielaborado, lote, cantidad observada y responsable o persona que detecta.'),
-      ('DISPOSICION:','Marcar con una X el casillero correspondiente y colocar fecha, nombre y firma de la persona responsable de la disposicion.'),
-      ('TRATAMIENTO:','Registrar las fechas de comienzo y final del tratamiento, la firma de la persona responsable y los kilogramos aprobados en segunda instancia, decomisados o reprocesados.'),
-      ('CONSIDERACIONES DE TRABAJO:','Registrar la informacion necesaria para determinar el costo de la no calidad: personas, materiales y tiempo de retrabajo, ademas de fecha y firma de validacion. Cuando el retrabajo abarque diferentes dias o turnos, detallar dicha informacion. Este apartado solo puede ser completado por personal de Calidad.')]
-    yy=686
-    for titulo,par in secciones:
-        t(c,titulo,44,yy,8.5,True); yy-=16
-        wrap(c,par,52,yy,493,8,12,8); lineas=max(2,(len(par)//95)+1); yy-=lineas*12+18
+      ('ENCABEZADO:',['En el cuadro superior derecho se coloca el numero consecutivo del registro que se genera. La','numeracion se compone de la siguiente manera:','NNN / AA','donde:','  - NNN es el numero consecutivo','  - AA son los dos ultimos digitos del ano en curso.']),
+      ('IDENTIFICACION:',['- Codigo: se coloca el codigo de retencion de acuerdo con la codificacion aplicable.','- Fecha en la que se produjo el Producto No Conforme.','- ITEM de Semielaborado o Producto Terminado.','- Producto o Semielaborado: descripcion.','- Lote(s) del producto.','- Cantidad observada: producto que potencialmente no cumple con las especificaciones.']),
+      ('DISPOSICION:',['En el casillero de disposicion marcar con una X y colocar fecha, nombre y firma del responsable.']),
+      ('TRATAMIENTO:',['Registrar las fechas de comienzo y final del tratamiento, la firma de la persona responsable y','los kilogramos aprobados en segunda instancia, decomisados o reprocesados.']),
+      ('CONSIDERACIONES DE TRABAJO:',['Registrar la informacion necesaria para determinar el costo de la no calidad: personas, materiales y','tiempo de retrabajo, ademas de fecha y firma de validacion. Este apartado solo puede ser completado','por personal del area de Calidad.'])]
+    yy=694
+    for titulo,lineas in secciones:
+        t(c,titulo,40,yy,8,True); yy-=16
+        for linea in lineas: t(c,linea,53,yy,7.6); yy-=12
+        yy-=12
     c.showPage(); c.save(); return b.getvalue()
 
 def _pdf_hallazgo_base(tabla,rid,tipo_formato):
@@ -442,18 +451,18 @@ def _pdf_hallazgo_base(tabla,rid,tipo_formato):
         t(c,'SECTOR DEL HALLAZGO:',28,520,8,True)
         # Las opciones se marcan por coincidencia con la descripción, cuando existe.
         ubic=(v('descripcion_hallazgo')+' '+v('equipo_hallazgo')).upper()
-        opciones=[('CONFORMADO',245),('ENVOLTURA',363),('EMPAQUE',481)]
-        for nombre,x in opciones:
-            c.setFont('Helvetica',7.0); c.drawCentredString(x+28,531,nombre); c.rect(x,510,56,15)
-            if nombre in ubic: c.setFont('Helvetica-Bold',11); c.drawCentredString(x+28,512,'X')
+        opciones=[('CONFORMADO',219,286),('ENVOLTURA',361,425),('EMPAQUE',485,532)]
+        for nombre,label_x,box_x in opciones:
+            t(c,nombre,label_x,515,7.0); c.rect(box_x,507,34,15)
+            if nombre in ubic: c.setFont('Helvetica-Bold',11); c.drawCentredString(box_x+17,509,'X')
         line_value(c,'PRODUCTO:',f'{v("item")} - {v("producto")}'.strip(' -'),468,label_x=28,value_x=119,right=x3,bold=True)
         line_value(c,'LOTE:',v('lote'),400,label_x=28,value_x=119,right=x3,bold=True)
         t(c,'DESCRIPCIÓN DEL MATERIAL HALLADO:',28,361,8,True); c.line(320,359,x3,359); c.line(x0,334,x3,334)
         wrap(c,v('descripcion_hallazgo'),323,362,x3-326,7.6,12,2)
         t(c,'UBICACIÓN:',28,308,8,True)
-        for nombre,x in [('MASA',205),('RELLENO',352),('RECUBIERTO',499)]:
-            c.setFont('Helvetica',7.0); c.drawCentredString(x+21.5,319,nombre); c.rect(x,298,43,15)
-            if nombre in ubic: c.setFont('Helvetica-Bold',11); c.drawCentredString(x+21.5,300,'X')
+        for nombre,label_x,box_x in [('MASA',190,226),('RELLENO',337,383),('RECUBIERTO',478,535)]:
+            t(c,nombre,label_x,303,7.0); c.rect(box_x,295,30,15)
+            if nombre in ubic: c.setFont('Helvetica-Bold',11); c.drawCentredString(box_x+15,297,'X')
         t(c,'ADJUNTAR AQUÍ MUESTRA DEL MATERIAL HALLADO',28,267,8,True)
         # Área amplia para colocar muestra física
         c.rect(x0,143,x3-x0,105)
