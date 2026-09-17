@@ -1659,31 +1659,43 @@ def left_menu():
 
 def _selector_indicador_actual(indicador,key):
     opciones=['PNC','Materia extraña','Producto segregado por detector de metales y RX','Reclamos','Devoluciones','SPAC']
-    # Protege instalaciones o sesiones antiguas que conserven un valor no disponible.
-    if indicador not in opciones:
-        indicador='PNC'
-        st.session_state.inicio_indicador=indicador
     with st.popover('Indicador',use_container_width=True):
         nuevo=st.radio('Seleccionar indicador',opciones,index=opciones.index(indicador),key=key,label_visibility='collapsed')
         if nuevo!=indicador:
             st.session_state.inicio_indicador=nuevo
             st.rerun()
 
-def _grafica_conteo(data,campo,titulo,etiqueta,key):
+def _grafica_conteo(data,campo,titulo,etiqueta,key,color='#00A884'):
     if data.empty or campo not in data.columns:
         st.info('No hay información disponible para generar esta gráfica.'); return
     serie=data[campo].fillna('').astype(str).str.strip(); serie=serie[serie.ne('')]
-    if serie.empty: st.info('No hay información disponible para generar esta gráfica.'); return
-    g=serie.value_counts().head(15).rename_axis(etiqueta).reset_index(name='Número de registros'); orden=g[etiqueta].tolist()
-    base=alt.Chart(g).encode(x=alt.X('Número de registros:Q',title='Número de registros',axis=alt.Axis(tickMinStep=1)),y=alt.Y(f'{etiqueta}:N',title=None,sort=orden),tooltip=[f'{etiqueta}:N',alt.Tooltip('Número de registros:Q',format=',d')])
-    st.altair_chart((base.mark_bar(cornerRadiusEnd=5,color='#00A884')+base.mark_text(align='left',dx=5,fontWeight='bold').encode(text=alt.Text('Número de registros:Q',format=',d'))).properties(title=titulo,height=max(260,min(500,40*len(g)))),use_container_width=True,key=key)
+    if serie.empty:
+        st.info('No hay información disponible para generar esta gráfica.'); return
+    g=serie.value_counts().head(15).rename_axis(etiqueta).reset_index(name='Registros')
+    orden=g[etiqueta].tolist()
+    base=alt.Chart(g).encode(
+        x=alt.X('Registros:Q',title='Número de registros',axis=alt.Axis(tickMinStep=1,grid=True,gridColor='#E8EDF3',domain=False,labelColor='#526078',titleColor='#344054')),
+        y=alt.Y(f'{etiqueta}:N',title=None,sort=orden,axis=alt.Axis(domain=False,ticks=False,labelColor='#344054',labelLimit=320)),
+        tooltip=[alt.Tooltip(f'{etiqueta}:N',title=etiqueta),alt.Tooltip('Registros:Q',title='Registros',format=',d')])
+    barras=base.mark_bar(cornerRadiusEnd=7,color=color,size=22)
+    textos=base.mark_text(align='left',dx=7,fontWeight='bold',fontSize=11,color='#203047').encode(text=alt.Text('Registros:Q',format=',d'))
+    grafica=(barras+textos).properties(title=alt.TitleParams(titulo,anchor='start',fontSize=17,fontWeight=700,color='#0B3440',offset=18),height=max(270,min(520,38*len(g)))).configure_view(stroke=None).configure_axis(labelFontSize=11,titleFontSize=12)
+    st.altair_chart(grafica,use_container_width=True,key=key)
 
 def _grafica_mes(data,campo,titulo,key):
     fechas=pd.to_datetime(data[campo],errors='coerce').dropna() if campo in data.columns else pd.Series(dtype='datetime64[ns]')
-    if fechas.empty: st.info('No hay fechas válidas para generar esta gráfica.'); return
-    g=fechas.dt.to_period('M').astype(str).value_counts().sort_index().rename_axis('Mes').reset_index(name='Número de registros')
-    base=alt.Chart(g).encode(x=alt.X('Mes:N',sort=None,title='Mes',axis=alt.Axis(labelAngle=-35)),y=alt.Y('Número de registros:Q',axis=alt.Axis(tickMinStep=1)),tooltip=['Mes:N',alt.Tooltip('Número de registros:Q',format=',d')])
-    st.altair_chart((base.mark_line(point=True,strokeWidth=3,color='#5850EC')+base.mark_text(dy=-12,fontWeight='bold').encode(text=alt.Text('Número de registros:Q',format=',d'))).properties(title=titulo,height=300),use_container_width=True,key=key)
+    if fechas.empty:
+        st.info('No hay fechas válidas para generar esta gráfica.'); return
+    g=fechas.dt.to_period('M').astype(str).value_counts().sort_index().rename_axis('Mes').reset_index(name='Registros')
+    base=alt.Chart(g).encode(
+        x=alt.X('Mes:N',sort=None,title=None,axis=alt.Axis(labelAngle=-35,labelColor='#526078',domain=False,ticks=False)),
+        y=alt.Y('Registros:Q',title='Número de registros',axis=alt.Axis(tickMinStep=1,grid=True,gridColor='#E8EDF3',domain=False,labelColor='#526078',titleColor='#344054')),
+        tooltip=[alt.Tooltip('Mes:N',title='Mes'),alt.Tooltip('Registros:Q',title='Registros',format=',d')])
+    area=base.mark_area(color='#5850EC',opacity=.09)
+    linea=base.mark_line(point=alt.OverlayMarkDef(filled=True,fill='#FFFFFF',stroke='#5850EC',strokeWidth=3,size=90),strokeWidth=3,color='#5850EC')
+    textos=base.mark_text(dy=-14,fontWeight='bold',fontSize=11,color='#203047').encode(text=alt.Text('Registros:Q',format=',d'))
+    grafica=(area+linea+textos).properties(title=alt.TitleParams(titulo,anchor='start',fontSize=17,fontWeight=700,color='#0B3440',offset=18),height=315).configure_view(stroke=None).configure_axis(labelFontSize=11,titleFontSize=12)
+    st.altair_chart(grafica,use_container_width=True,key=key)
 
 def panel_indicadores_spac_inicio(indicador='SPAC'):
     # Mantiene SPAC seleccionado cuando cambian sus filtros internos.
@@ -1759,113 +1771,63 @@ def panel_indicadores_spac_inicio(indicador='SPAC'):
         grafica_lineas_con_valores(gp,'Indicador SPAC Producción','inicio_chart_produccion')
 
 def _panel_registros_inicio(tipo):
-    # Cada indicador conserva el mismo flujo del panel actual: lectura, filtros,
-    # cuatro KPI y tres graficas. Solo se parametrizan los nombres reales de
-    # columnas para no modificar tablas, formularios ni registros historicos.
     cfg={
-        'PNC':{
-            'tabla':'pnc_registros','fecha':'fecha_apertura','defecto':'defecto',
-            'titulo':'Producto No Conforme','analista':'analista',
-            'linea':'linea_sector','estado':'status','cantidad':'cantidad_total_pnc'
-        },
-        'Materia extraña':{
-            'tabla':'me_registros','fecha':'_fecha','defecto':'descripcion_hallazgo',
-            'titulo':'Materia extraña','analista':'analista_detecta',
-            'linea':'linea_sector','estado':None,'cantidad':None
-        },
-        'Producto segregado por detector de metales y RX':{
-            'tabla':'ddm_rx_registros','fecha':'_fecha','defecto':'descripcion_hallazgo',
-            'titulo':'Producto segregado por detector de metales y RX','analista':'analista_detecta',
-            'linea':'linea_sector','estado':None,'cantidad':None
-        },
-        'Reclamos':{
-            'tabla':'reclamos_registros','fecha':'fecha','defecto':'descripcion_defecto',
-            'titulo':'Reclamos','analista':'creado_por',
-            'linea':'sector','estado':'estado_reclamo','cantidad':'cantidad_afectada'
-        },
-        'Devoluciones':{
-            'tabla':'devoluciones_registros','fecha':'fecha','defecto':'defecto',
-            'titulo':'Devoluciones','analista':'creado_por',
-            'linea':'sector','estado':'status','cantidad':'cantidad_afectada'
-        }
-    }
+        'PNC':('pnc_registros','fecha_apertura','defecto','Producto No Conforme','analista','linea_sector','status','cantidad_total_pnc'),
+        'Materia extraña':('me_registros','_fecha','_codigo_defecto_panel','Materia extraña','analista_detecta','linea_sector',None,None),
+        'Producto segregado por detector de metales y RX':('ddm_rx_registros','_fecha','_codigo_defecto_panel','Producto segregado por detector de metales y RX','analista_detecta','linea_sector',None,None),
+        'Reclamos':('reclamos_registros','fecha','descripcion_defecto','Reclamos','creado_por','sector','estado_reclamo','cantidad_afectada'),
+        'Devoluciones':('devoluciones_registros','fecha','defecto','Devoluciones','creado_por','sector','status','cantidad_afectada')}
     if tipo not in cfg:
-        st.session_state.inicio_indicador='PNC'
-        st.rerun()
-    conf=cfg[tipo]
-    tabla=conf['tabla']; fecha=conf['fecha']; defecto=conf['defecto']
-    titulo=conf['titulo']; c_analista=conf['analista']; c_linea=conf['linea']
+        st.session_state.inicio_indicador='PNC'; st.rerun()
+    tabla,fecha,defecto,titulo,c_analista,c_linea,c_estado,c_cantidad=cfg[tipo]
     d=read_df(f'SELECT * FROM {tabla}')
     if fecha=='_fecha':
-        d[fecha]=pd.to_datetime(dict(
-            year=pd.to_numeric(d.get('anio'),errors='coerce'),
-            month=pd.to_numeric(d.get('mes'),errors='coerce'),
-            day=pd.to_numeric(d.get('dia'),errors='coerce')
-        ),errors='coerce') if not d.empty else pd.Series(dtype='datetime64[ns]')
-    else:
-        d[fecha]=pd.to_datetime(d[fecha],errors='coerce') if fecha in d.columns else pd.NaT
+        d[fecha]=pd.to_datetime(dict(year=pd.to_numeric(d.get('anio'),errors='coerce'),month=pd.to_numeric(d.get('mes'),errors='coerce'),day=pd.to_numeric(d.get('dia'),errors='coerce')),errors='coerce') if not d.empty else pd.Series(dtype='datetime64[ns]')
+    else: d[fecha]=pd.to_datetime(d[fecha],errors='coerce') if fecha in d.columns else pd.NaT
+    if defecto=='_codigo_defecto_panel':
+        cat=read_df('SELECT codigo,defecto FROM defectos')
+        mapa={str(r.codigo).strip():str(r.defecto).strip() for r in cat.itertuples()}
+        cod=d.get('codigo_defecto',pd.Series('',index=d.index)).fillna('').astype(str).str.strip()
+        d[defecto]=cod.map(lambda x:f'{x} | {mapa.get(x,"Defecto no catalogado")}' if x else '')
     fechas=d[fecha].dropna()
-    lineas=sorted(d.get(c_linea,pd.Series(dtype=str)).dropna().astype(str).loc[lambda x:x.str.strip().ne('')].unique())
-    naves=sorted(d.get('nave',pd.Series(dtype=str)).dropna().astype(str).loc[lambda x:x.str.strip().ne('')].unique())
-    analistas=sorted(d.get(c_analista,pd.Series(dtype=str)).dropna().astype(str).loc[lambda x:x.str.strip().ne('')].unique())
+    limpio=lambda campo:sorted(d.get(campo,pd.Series(dtype=str)).dropna().astype(str).loc[lambda z:z.str.strip().ne('')].unique())
+    lineas,naves,analistas=limpio(c_linea),limpio('nave'),limpio(c_analista)
     h,sel,fil=st.columns([7.1,1.4,1.5],vertical_alignment='center')
-    with h:
-        st.markdown(f'<div class="indicator-title">Indicadores de {titulo}</div>',unsafe_allow_html=True)
-    with sel:
-        st.markdown('<span class="toolbar-marker"></span>',unsafe_allow_html=True)
-        _selector_indicador_actual(tipo,f'selector_{tabla}')
+    with h: st.markdown(f'<div class="indicator-title">Indicadores de {titulo}</div>',unsafe_allow_html=True)
+    with sel: st.markdown('<span class="toolbar-marker"></span>',unsafe_allow_html=True); _selector_indicador_actual(tipo,f'selector_{tabla}')
     with fil:
         st.markdown('<span class="toolbar-marker"></span>',unsafe_allow_html=True)
         with st.popover('Filtros',use_container_width=True):
             if not fechas.empty:
-                mn,mx=fechas.min().date(),fechas.max().date()
-                a,b=st.columns(2)
-                desde=a.date_input('Fecha inicial',mn,min_value=mn,max_value=mx,key=f'desde_{tabla}')
-                hasta=b.date_input('Fecha final',mx,min_value=mn,max_value=mx,key=f'hasta_{tabla}')
-            else:
-                desde=hasta=None
-            sl=st.multiselect('Línea/Sector',lineas,key=f'lineas_{tabla}')
-            sn=st.multiselect('Nave',naves,key=f'naves_{tabla}')
-            sa=st.multiselect('Analista / usuario',analistas,key=f'analistas_{tabla}')
+                mn,mx=fechas.min().date(),fechas.max().date(); a,b=st.columns(2)
+                desde=a.date_input('Fecha inicial',mn,min_value=mn,max_value=mx,key=f'desde_{tabla}'); hasta=b.date_input('Fecha final',mx,min_value=mn,max_value=mx,key=f'hasta_{tabla}')
+            else: desde=hasta=None
+            sl=st.multiselect('Línea/Sector',lineas,key=f'lineas_{tabla}'); sn=st.multiselect('Nave',naves,key=f'naves_{tabla}'); sa=st.multiselect('Analista / usuario',analistas,key=f'analistas_{tabla}')
     x=d.copy()
     if desde and hasta:
-        if desde>hasta:
-            st.error('La fecha inicial no puede ser posterior a la fecha final.')
-            return
+        if desde>hasta: st.error('La fecha inicial no puede ser posterior a la fecha final.'); return
         x=x[(x[fecha].dt.date>=desde)&(x[fecha].dt.date<=hasta)]
-    if sl: x=x[x[c_linea].isin(sl)]
-    if sn: x=x[x['nave'].isin(sn)]
-    if sa: x=x[x[c_analista].isin(sa)]
-    total=len(x)
-    ln=x.get(c_linea,pd.Series(dtype=str)).replace('',pd.NA).nunique()
-    dn=x.get(defecto,pd.Series(dtype=str)).replace('',pd.NA).nunique()
-    meses=x[fecha].dropna().dt.to_period('M').nunique()
+    if sl:x=x[x[c_linea].isin(sl)]
+    if sn:x=x[x.nave.isin(sn)]
+    if sa:x=x[x[c_analista].isin(sa)]
+    total=len(x); ln=x.get(c_linea,pd.Series(dtype=str)).replace('',pd.NA).nunique(); dn=x.get(defecto,pd.Series(dtype=str)).replace('',pd.NA).nunique(); meses=x[fecha].dropna().dt.to_period('M').nunique()
     if tipo=='PNC':
-        e=x.get('status',pd.Series('',index=x.index)).fillna('').astype(str).str.strip().str.upper()
-        ce=int(e.eq('CERRADO').sum()); ab=int(e.eq('ABIERTO').sum())
-        kg=pd.to_numeric(x.get('cantidad_total_pnc',pd.Series(0,index=x.index)),errors='coerce').fillna(0).sum()
-        cards=[('Total de PNC',f'{total:,}','Número de registros totales','#00A884'),('% de cierre',f'{(ce/total*100 if total else 0):.1f}%','PNC cerrados respecto al total','#5850EC'),('Kg totales de PNC',f'{kg:,.2f} kg','Cantidad total registrada','#3F7BFF'),('PNC abiertos',f'{ab:,}','Registros pendientes de cierre','#F59E0B')]
+        e=x.get(c_estado,pd.Series('',index=x.index)).fillna('').astype(str).str.strip().str.upper(); ce=int(e.eq('CERRADO').sum()); ab=int(e.eq('ABIERTO').sum()); cantidad=pd.to_numeric(x.get(c_cantidad,pd.Series(0,index=x.index)),errors='coerce').fillna(0).sum()
+        cards=[('Total de PNC',f'{total:,}','Número de registros totales','#00A884'),('% de cierre',f'{(ce/total*100 if total else 0):.1f}%','PNC cerrados respecto al total','#5850EC'),('Kg totales de PNC',f'{cantidad:,.2f} kg','Cantidad total registrada','#3F7BFF'),('PNC abiertos',f'{ab:,}','Registros pendientes de cierre','#F59E0B')]
     elif tipo in {'Reclamos','Devoluciones'}:
-        estado_col=conf['estado']; cantidad_col=conf['cantidad']
-        e=x.get(estado_col,pd.Series('',index=x.index)).fillna('').astype(str).str.strip().str.upper()
-        cerrados=int(e.eq('CERRADO').sum()); abiertos=int(e.eq('ABIERTO').sum())
-        cantidad=pd.to_numeric(x.get(cantidad_col,pd.Series(0,index=x.index)),errors='coerce').fillna(0).sum()
-        singular='Reclamo' if tipo=='Reclamos' else 'Devolución'
-        cards=[(f'Total de {tipo.lower()}',f'{total:,}','Número de registros totales','#00A884'),('% de cierre',f'{(cerrados/total*100 if total else 0):.1f}%',f'{tipo} cerrados respecto al total','#5850EC'),('Cantidad afectada',f'{cantidad:,.2f}','Suma de la cantidad registrada','#3F7BFF'),(f'{singular} abiertos',f'{abiertos:,}','Registros pendientes de cierre','#F59E0B')]
-    else:
-        cards=[('Registros',total,'Total filtrado','#00A884'),('Defectos',dn,'Tipos identificados','#5850EC'),('Líneas / sectores',ln,'Con registros','#3F7BFF'),('Meses',meses,'Periodos con actividad','#F59E0B')]
+        e=x.get(c_estado,pd.Series('',index=x.index)).fillna('').astype(str).str.strip().str.upper(); ce=int(e.eq('CERRADO').sum()); ab=int(e.eq('ABIERTO').sum()); cantidad=pd.to_numeric(x.get(c_cantidad,pd.Series(0,index=x.index)),errors='coerce').fillna(0).sum(); singular='Reclamos' if tipo=='Reclamos' else 'Devoluciones'
+        cards=[(f'Total de {tipo.lower()}',f'{total:,}','Número de registros totales','#00A884'),('% de cierre',f'{(ce/total*100 if total else 0):.1f}%',f'{singular} cerrados respecto al total','#5850EC'),('Cantidad afectada',f'{cantidad:,.2f}','Suma de la cantidad registrada','#3F7BFF'),('Registros abiertos',f'{ab:,}','Pendientes de cierre','#F59E0B')]
+    else: cards=[('Registros',total,'Total filtrado','#00A884'),('Códigos / defectos',dn,'Tipos identificados','#5850EC'),('Líneas / sectores',ln,'Con registros','#3F7BFF'),('Meses',meses,'Periodos con actividad','#F59E0B')]
     cols=st.columns(4,gap='large')
     for c,(la,va,pi,co) in zip(cols,cards):
-        with c:
-            st.markdown(f'<div class="kpi" style="--c:{co}"><div class="kpi-label">{la}</div><div class="kpi-value">{va}</div><div class="kpi-foot">{pi}</div></div>',unsafe_allow_html=True)
-    nombre_registros='PNC' if tipo=='PNC' else titulo
+        with c: st.markdown(f'<div class="kpi" style="--c:{co}"><div class="kpi-label">{la}</div><div class="kpi-value">{va}</div><div class="kpi-foot">{pi}</div></div>',unsafe_allow_html=True)
     a,b=st.columns(2)
     with a:
         st.markdown('<span class="chart-marker"></span>',unsafe_allow_html=True)
-        _grafica_conteo(x,defecto,f'Defectos vs Número de registros de {nombre_registros}','Defecto',f'def_{tabla}')
-    with b:
-        _grafica_conteo(x,c_linea,f'Línea/Sector vs Número de registros de {nombre_registros}','Línea/Sector',f'lin_{tabla}')
-    _grafica_mes(x,fecha,f'Mes vs Número de registros de {nombre_registros}',f'mes_{tabla}')
+        especial=tipo in {'Materia extraña','Producto segregado por detector de metales y RX'}
+        _grafica_conteo(x,defecto,'Distribución por código y defecto' if especial else 'Distribución de defectos','Código / Defecto' if especial else 'Defecto',f'def_{tabla}','#00A884')
+    with b: _grafica_conteo(x,c_linea,'Registros por línea o sector','Línea/Sector',f'lin_{tabla}','#3F7BFF')
+    _grafica_mes(x,fecha,'Evolución mensual de registros',f'mes_{tabla}')
 
 def page_inicio():
     st.markdown('<div class="home-hero"><div class="home-hero-title">Panel Calidad Mundo Dulce</div></div>',unsafe_allow_html=True)
