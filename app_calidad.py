@@ -370,7 +370,7 @@ def pdf_entrega(eid):
         from reportlab.lib.styles import getSampleStyleSheet
         from reportlab.platypus import SimpleDocTemplate,Paragraph,Spacer,Table,TableStyle
     except ModuleNotFoundError:return None
-    h=read_df('SELECT * FROM entregas_turno WHERE id=?',(eid,));d=read_df('SELECT * FROM entregas_turno_lineas WHERE entrega_id=? ORDER BY orden_fila',(eid,));m=read_df('SELECT * FROM matriz_entrega WHERE entrega_id=?',(eid,))
+    h=read_df('SELECT * FROM entregas_turno WHERE id=?',(eid,));d=read_df('SELECT * FROM entregas_turno_lineas WHERE entrega_id=? ORDER BY orden_fila',(eid,));m=read_df('SELECT * FROM matriz_entrega WHERE entrega_id=?',(eid,));sg=read_df('SELECT * FROM entregas_turno_seguimientos WHERE entrega_id=? ORDER BY bloque,orden_fila,id',(eid,))
     if h.empty:return None
     r=h.iloc[0];b=BytesIO();doc=SimpleDocTemplate(b,pagesize=landscape(A4),leftMargin=28,rightMargin=28,topMargin=28,bottomMargin=28);sty=getSampleStyleSheet();story=[Paragraph('REPORTE DE ENTREGA DE TURNO',sty['Title']),Spacer(1,8)]
     meta=[['Registro',eid,'Fecha',r.fecha,'Analista',r.analista,'Turno',r.turno],['Nave',r.nave,'Referencia',r.referencia,'Creado por',r.creado_por,'Creado en',r.creado_en]];t=Table(meta);t.setStyle(TableStyle([('GRID',(0,0),(-1,-1),.4,colors.grey),('BACKGROUND',(0,0),(-1,0),colors.HexColor('#DDF4EF'))]));story+=[t,Spacer(1,10)]
@@ -378,7 +378,20 @@ def pdf_entrega(eid):
         x=m.iloc[0];mt=Table([['Total carga','Horas Nave 1','Horas Nave 2','Horas Nave 3'],[f'{x.total_carga_datos:.2f}',f'{x.horas_nave1:.2f}',f'{x.horas_nave2:.2f}',f'{x.horas_nave3:.2f}']],colWidths=[165]*4);mt.setStyle(TableStyle([('BACKGROUND',(0,0),(-1,0),colors.HexColor('#062C36')),('TEXTCOLOR',(0,0),(-1,0),colors.white),('ALIGN',(0,0),(-1,-1),'CENTER'),('GRID',(0,0),(-1,-1),.4,colors.grey)]));story+=[mt,Spacer(1,10)]
     data=[['Nave','Grupo','Línea/Sector','Producto/Análisis','Horas','Carga','Observaciones']]
     for q in d.itertuples():data.append([str(getattr(q,'nave_catalogo','') or ''),q.grupo or '',q.linea or '',q.producto_descripcion or '',f'{float(q.horas_trabajadas or 0):.2f}',f'{float(q.carga_spac or 0):.2f}',q.observaciones or ''])
-    dt=Table(data,colWidths=[55,85,145,145,45,45,190],repeatRows=1);dt.setStyle(TableStyle([('BACKGROUND',(0,0),(-1,0),colors.HexColor('#0A4652')),('TEXTCOLOR',(0,0),(-1,0),colors.white),('FONTSIZE',(0,0),(-1,-1),7),('GRID',(0,0),(-1,-1),.3,colors.grey),('VALIGN',(0,0),(-1,-1),'MIDDLE')]));story.append(dt);doc.build(story);return b.getvalue()
+    dt=Table(data,colWidths=[55,85,145,145,45,45,190],repeatRows=1);dt.setStyle(TableStyle([('BACKGROUND',(0,0),(-1,0),colors.HexColor('#0A4652')),('TEXTCOLOR',(0,0),(-1,0),colors.white),('FONTSIZE',(0,0),(-1,-1),7),('GRID',(0,0),(-1,-1),.3,colors.grey),('VALIGN',(0,0),(-1,-1),'MIDDLE')]));story.append(dt)
+    if not sg.empty:
+        columnas=['registro_numero','hoja_fisica','carga_electronica','correo','descripcion_seguimiento']
+        lleno=sg[columnas].fillna('').astype(str).apply(lambda col:col.str.strip()).ne('').any(axis=1)
+        sg=sg[lleno].copy()
+        if not sg.empty:
+            story += [Spacer(1,12),Paragraph('SEGUIMIENTOS REGISTRADOS',sty['Heading2']),Spacer(1,6)]
+            datos_s=[['Seguimiento','Registro #','Hoja física','Carga electrónica','Correo','Descripción del seguimiento']]
+            for q in sg.itertuples():
+                datos_s.append([q.bloque or '',q.registro_numero or '',q.hoja_fisica or '',q.carga_electronica or '',q.correo or '',q.descripcion_seguimiento or ''])
+            ts=Table(datos_s,colWidths=[130,66,65,78,52,300],repeatRows=1)
+            ts.setStyle(TableStyle([('BACKGROUND',(0,0),(-1,0),colors.HexColor('#062C36')),('TEXTCOLOR',(0,0),(-1,0),colors.white),('FONTSIZE',(0,0),(-1,-1),7),('GRID',(0,0),(-1,-1),.3,colors.grey),('VALIGN',(0,0),(-1,-1),'TOP'),('ROWBACKGROUNDS',(0,1),(-1,-1),[colors.white,colors.HexColor('#F2F5F8')])]))
+            story.append(ts)
+    doc.build(story);return b.getvalue()
 
 def estilo_faltantes_matriz(df, primeras_columnas=1):
     def pintar(valor):
@@ -724,6 +737,11 @@ def formato_entrega(nave,tipo='PROCESO'):
     for r in df.itertuples(): resultado.setdefault(str(r.linea),[]).append(str(r.sector))
     return resultado
 
+def formato_seguimientos():
+    """Devuelve los seguimientos generales activos para los formatos de las tres naves."""
+    df=read_df('SELECT nombre FROM catalogo_seguimientos_entrega WHERE activo=1 ORDER BY orden,id')
+    return df['nombre'].dropna().astype(str).str.strip().loc[lambda x:x.ne('')].tolist() if not df.empty else []
+
 def migrar_catalogo_formatos_entrega(cur):
     """Migra cualquier versión anterior sin perder los formatos existentes."""
     fila=cur.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='catalogo_formatos_entrega'").fetchone()
@@ -896,6 +914,11 @@ def init_db():
     cur.execute("CREATE TABLE IF NOT EXISTS usuarios(id INTEGER PRIMARY KEY AUTOINCREMENT, usuario TEXT UNIQUE, nombre TEXT, password_hash TEXT, rol TEXT, activo INTEGER DEFAULT 1, creado_en TEXT)")
     cur.execute("CREATE TABLE IF NOT EXISTS app_config(clave TEXT PRIMARY KEY,valor TEXT,actualizado_en TEXT)")
     cur.execute("CREATE TABLE IF NOT EXISTS catalogo_formatos_entrega(id INTEGER PRIMARY KEY AUTOINCREMENT,formato_nave TEXT NOT NULL,tipo TEXT NOT NULL,linea TEXT NOT NULL,sector TEXT NOT NULL,tipo_analisis TEXT DEFAULT '',orden_linea INTEGER DEFAULT 0,orden_sector INTEGER DEFAULT 0,activo INTEGER DEFAULT 1,UNIQUE(formato_nave,tipo,linea,sector,tipo_analisis))")
+    cur.execute("CREATE TABLE IF NOT EXISTS catalogo_seguimientos_entrega(id INTEGER PRIMARY KEY AUTOINCREMENT,nombre TEXT NOT NULL,orden INTEGER DEFAULT 0,activo INTEGER DEFAULT 1,UNIQUE(nombre))")
+    seguimientos_base=['Seguimiento a Contaminaciones','Seguimiento a PNC´S','Limpiezas','Seguimiento a ORDENES DE FALLO','GIRO / JUNTA DE EQUIPO']
+    if cur.execute('SELECT COUNT(*) FROM catalogo_seguimientos_entrega').fetchone()[0]==0:
+        for orden,nombre in enumerate(seguimientos_base):
+            cur.execute('INSERT OR IGNORE INTO catalogo_seguimientos_entrega(nombre,orden,activo) VALUES(?,?,1)',(nombre,orden))
     migrar_catalogo_formatos_entrega(cur)
     cur.execute("CREATE TABLE IF NOT EXISTS catalogos(id INTEGER PRIMARY KEY AUTOINCREMENT, categoria TEXT, valor TEXT, activo INTEGER DEFAULT 1, UNIQUE(categoria,valor))")
     cur.execute("CREATE TABLE IF NOT EXISTS productos(id INTEGER PRIMARY KEY AUTOINCREMENT, item TEXT UNIQUE, descripcion TEXT, cliente TEXT, familia TEXT, activo INTEGER DEFAULT 1)")
@@ -1646,10 +1669,8 @@ def left_menu():
     menu_button('Consulta y descarga','📊 Consulta y descarga','📊')
     menu_button('Muestras de retención','🧪 Muestras de retención','🧪')
     menu_button('Entrega de turno','🔄 Entrega de turno','🔄')
-    # Todos los usuarios pueden abrir Catálogos. El contenido se limita por rol
-    # dentro de page_catalogos, sin exponer administración sensible.
-    menu_button('Catálogos','🧩 Catálogos','🧩')
     if is_dev():
+        menu_button('Catálogos','🧩 Catálogos','🧩')
         menu_button('Usuarios','👤 Usuarios','👤')
         menu_button('Auditoría','🧾 Auditoría','🧾')
     st.markdown('<div style="height:1rem"></div>',unsafe_allow_html=True)
@@ -1660,44 +1681,28 @@ def left_menu():
 
 
 def _selector_indicador_actual(indicador,key):
-    opciones=['PNC','Materia extraña','Producto segregado por detector de metales y RX','Reclamos','Devoluciones','SPAC']
+    opciones=['PNC','Materia extraña','Producto segregado por detector de metales y RX','SPAC']
     with st.popover('Indicador',use_container_width=True):
         nuevo=st.radio('Seleccionar indicador',opciones,index=opciones.index(indicador),key=key,label_visibility='collapsed')
         if nuevo!=indicador:
             st.session_state.inicio_indicador=nuevo
             st.rerun()
 
-def _grafica_conteo(data,campo,titulo,etiqueta,key,color='#00A884'):
+def _grafica_conteo(data,campo,titulo,etiqueta,key):
     if data.empty or campo not in data.columns:
         st.info('No hay información disponible para generar esta gráfica.'); return
     serie=data[campo].fillna('').astype(str).str.strip(); serie=serie[serie.ne('')]
-    if serie.empty:
-        st.info('No hay información disponible para generar esta gráfica.'); return
-    g=serie.value_counts().head(15).rename_axis(etiqueta).reset_index(name='Registros')
-    orden=g[etiqueta].tolist()
-    base=alt.Chart(g).encode(
-        x=alt.X('Registros:Q',title='Número de registros',axis=alt.Axis(tickMinStep=1,grid=True,gridColor='#E8EDF3',domain=False,labelColor='#526078',titleColor='#344054')),
-        y=alt.Y(f'{etiqueta}:N',title=None,sort=orden,axis=alt.Axis(domain=False,ticks=False,labelColor='#344054',labelLimit=320)),
-        tooltip=[alt.Tooltip(f'{etiqueta}:N',title=etiqueta),alt.Tooltip('Registros:Q',title='Registros',format=',d')])
-    barras=base.mark_bar(cornerRadiusEnd=7,color=color,size=22)
-    textos=base.mark_text(align='left',dx=7,fontWeight='bold',fontSize=11,color='#203047').encode(text=alt.Text('Registros:Q',format=',d'))
-    grafica=(barras+textos).properties(title=alt.TitleParams(titulo,anchor='start',fontSize=17,fontWeight=700,color='#0B3440',offset=18),height=max(270,min(520,38*len(g)))).configure_view(stroke=None).configure_axis(labelFontSize=11,titleFontSize=12)
-    st.altair_chart(grafica,use_container_width=True,key=key)
+    if serie.empty: st.info('No hay información disponible para generar esta gráfica.'); return
+    g=serie.value_counts().head(15).rename_axis(etiqueta).reset_index(name='Número de registros'); orden=g[etiqueta].tolist()
+    base=alt.Chart(g).encode(x=alt.X('Número de registros:Q',title='Número de registros',axis=alt.Axis(tickMinStep=1)),y=alt.Y(f'{etiqueta}:N',title=None,sort=orden),tooltip=[f'{etiqueta}:N',alt.Tooltip('Número de registros:Q',format=',d')])
+    st.altair_chart((base.mark_bar(cornerRadiusEnd=5,color='#00A884')+base.mark_text(align='left',dx=5,fontWeight='bold').encode(text=alt.Text('Número de registros:Q',format=',d'))).properties(title=titulo,height=max(260,min(500,40*len(g)))),use_container_width=True,key=key)
 
 def _grafica_mes(data,campo,titulo,key):
     fechas=pd.to_datetime(data[campo],errors='coerce').dropna() if campo in data.columns else pd.Series(dtype='datetime64[ns]')
-    if fechas.empty:
-        st.info('No hay fechas válidas para generar esta gráfica.'); return
-    g=fechas.dt.to_period('M').astype(str).value_counts().sort_index().rename_axis('Mes').reset_index(name='Registros')
-    base=alt.Chart(g).encode(
-        x=alt.X('Mes:N',sort=None,title=None,axis=alt.Axis(labelAngle=-35,labelColor='#526078',domain=False,ticks=False)),
-        y=alt.Y('Registros:Q',title='Número de registros',axis=alt.Axis(tickMinStep=1,grid=True,gridColor='#E8EDF3',domain=False,labelColor='#526078',titleColor='#344054')),
-        tooltip=[alt.Tooltip('Mes:N',title='Mes'),alt.Tooltip('Registros:Q',title='Registros',format=',d')])
-    area=base.mark_area(color='#5850EC',opacity=.09)
-    linea=base.mark_line(point=alt.OverlayMarkDef(filled=True,fill='#FFFFFF',stroke='#5850EC',strokeWidth=3,size=90),strokeWidth=3,color='#5850EC')
-    textos=base.mark_text(dy=-14,fontWeight='bold',fontSize=11,color='#203047').encode(text=alt.Text('Registros:Q',format=',d'))
-    grafica=(area+linea+textos).properties(title=alt.TitleParams(titulo,anchor='start',fontSize=17,fontWeight=700,color='#0B3440',offset=18),height=315).configure_view(stroke=None).configure_axis(labelFontSize=11,titleFontSize=12)
-    st.altair_chart(grafica,use_container_width=True,key=key)
+    if fechas.empty: st.info('No hay fechas válidas para generar esta gráfica.'); return
+    g=fechas.dt.to_period('M').astype(str).value_counts().sort_index().rename_axis('Mes').reset_index(name='Número de registros')
+    base=alt.Chart(g).encode(x=alt.X('Mes:N',sort=None,title='Mes',axis=alt.Axis(labelAngle=-35)),y=alt.Y('Número de registros:Q',axis=alt.Axis(tickMinStep=1)),tooltip=['Mes:N',alt.Tooltip('Número de registros:Q',format=',d')])
+    st.altair_chart((base.mark_line(point=True,strokeWidth=3,color='#5850EC')+base.mark_text(dy=-12,fontWeight='bold').encode(text=alt.Text('Número de registros:Q',format=',d'))).properties(title=titulo,height=300),use_container_width=True,key=key)
 
 def panel_indicadores_spac_inicio(indicador='SPAC'):
     # Mantiene SPAC seleccionado cuando cambian sus filtros internos.
@@ -1773,27 +1778,11 @@ def panel_indicadores_spac_inicio(indicador='SPAC'):
         grafica_lineas_con_valores(gp,'Indicador SPAC Producción','inicio_chart_produccion')
 
 def _panel_registros_inicio(tipo):
-    cfg={
-        'PNC':('pnc_registros','fecha_apertura','defecto','Producto No Conforme','analista','linea_sector','status','cantidad_total_pnc'),
-        'Materia extraña':('me_registros','_fecha','_codigo_defecto_panel','Materia extraña','analista_detecta','linea_sector',None,None),
-        'Producto segregado por detector de metales y RX':('ddm_rx_registros','_fecha','_codigo_defecto_panel','Producto segregado por detector de metales y RX','analista_detecta','linea_sector',None,None),
-        'Reclamos':('reclamos_registros','fecha','descripcion_defecto','Reclamos','creado_por','sector','estado_reclamo','cantidad_afectada'),
-        'Devoluciones':('devoluciones_registros','fecha','defecto','Devoluciones','creado_por','sector','status','cantidad_afectada')}
-    if tipo not in cfg:
-        st.session_state.inicio_indicador='PNC'; st.rerun()
-    tabla,fecha,defecto,titulo,c_analista,c_linea,c_estado,c_cantidad=cfg[tipo]
-    d=read_df(f'SELECT * FROM {tabla}')
-    if fecha=='_fecha':
-        d[fecha]=pd.to_datetime(dict(year=pd.to_numeric(d.get('anio'),errors='coerce'),month=pd.to_numeric(d.get('mes'),errors='coerce'),day=pd.to_numeric(d.get('dia'),errors='coerce')),errors='coerce') if not d.empty else pd.Series(dtype='datetime64[ns]')
+    cfg={'PNC':('pnc_registros','fecha_apertura','defecto','Producto No Conforme','analista'),'Materia extraña':('me_registros','_fecha','descripcion_hallazgo','Materia extraña','analista_detecta'),'Producto segregado por detector de metales y RX':('ddm_rx_registros','_fecha','descripcion_hallazgo','Producto segregado por detector de metales y RX','analista_detecta')}
+    tabla,fecha,defecto,titulo,c_analista=cfg[tipo]; d=read_df(f'SELECT * FROM {tabla}')
+    if fecha=='_fecha': d[fecha]=pd.to_datetime(dict(year=pd.to_numeric(d.get('anio'),errors='coerce'),month=pd.to_numeric(d.get('mes'),errors='coerce'),day=pd.to_numeric(d.get('dia'),errors='coerce')),errors='coerce') if not d.empty else pd.Series(dtype='datetime64[ns]')
     else: d[fecha]=pd.to_datetime(d[fecha],errors='coerce') if fecha in d.columns else pd.NaT
-    if defecto=='_codigo_defecto_panel':
-        cat=read_df('SELECT codigo,defecto FROM defectos')
-        mapa={str(r.codigo).strip():str(r.defecto).strip() for r in cat.itertuples()}
-        cod=d.get('codigo_defecto',pd.Series('',index=d.index)).fillna('').astype(str).str.strip()
-        d[defecto]=cod.map(lambda x:f'{x} | {mapa.get(x,"Defecto no catalogado")}' if x else '')
-    fechas=d[fecha].dropna()
-    limpio=lambda campo:sorted(d.get(campo,pd.Series(dtype=str)).dropna().astype(str).loc[lambda z:z.str.strip().ne('')].unique())
-    lineas,naves,analistas=limpio(c_linea),limpio('nave'),limpio(c_analista)
+    fechas=d[fecha].dropna(); lineas=sorted(d.get('linea_sector',pd.Series(dtype=str)).dropna().astype(str).unique()); naves=sorted(d.get('nave',pd.Series(dtype=str)).dropna().astype(str).unique()); analistas=sorted(d.get(c_analista,pd.Series(dtype=str)).dropna().astype(str).unique())
     h,sel,fil=st.columns([7.1,1.4,1.5],vertical_alignment='center')
     with h: st.markdown(f'<div class="indicator-title">Indicadores de {titulo}</div>',unsafe_allow_html=True)
     with sel: st.markdown('<span class="toolbar-marker"></span>',unsafe_allow_html=True); _selector_indicador_actual(tipo,f'selector_{tabla}')
@@ -1801,35 +1790,27 @@ def _panel_registros_inicio(tipo):
         st.markdown('<span class="toolbar-marker"></span>',unsafe_allow_html=True)
         with st.popover('Filtros',use_container_width=True):
             if not fechas.empty:
-                mn,mx=fechas.min().date(),fechas.max().date(); a,b=st.columns(2)
-                desde=a.date_input('Fecha inicial',mn,min_value=mn,max_value=mx,key=f'desde_{tabla}'); hasta=b.date_input('Fecha final',mx,min_value=mn,max_value=mx,key=f'hasta_{tabla}')
+                mn,mx=fechas.min().date(),fechas.max().date(); a,b=st.columns(2); desde=a.date_input('Fecha inicial',mn,min_value=mn,max_value=mx,key=f'desde_{tabla}'); hasta=b.date_input('Fecha final',mx,min_value=mn,max_value=mx,key=f'hasta_{tabla}')
             else: desde=hasta=None
-            sl=st.multiselect('Línea/Sector',lineas,key=f'lineas_{tabla}'); sn=st.multiselect('Nave',naves,key=f'naves_{tabla}'); sa=st.multiselect('Analista / usuario',analistas,key=f'analistas_{tabla}')
+            sl=st.multiselect('Línea/Sector',lineas,key=f'lineas_{tabla}'); sn=st.multiselect('Nave',naves,key=f'naves_{tabla}'); sa=st.multiselect('Analista',analistas,key=f'analistas_{tabla}')
     x=d.copy()
     if desde and hasta:
         if desde>hasta: st.error('La fecha inicial no puede ser posterior a la fecha final.'); return
         x=x[(x[fecha].dt.date>=desde)&(x[fecha].dt.date<=hasta)]
-    if sl:x=x[x[c_linea].isin(sl)]
+    if sl:x=x[x.linea_sector.isin(sl)]
     if sn:x=x[x.nave.isin(sn)]
     if sa:x=x[x[c_analista].isin(sa)]
-    total=len(x); ln=x.get(c_linea,pd.Series(dtype=str)).replace('',pd.NA).nunique(); dn=x.get(defecto,pd.Series(dtype=str)).replace('',pd.NA).nunique(); meses=x[fecha].dropna().dt.to_period('M').nunique()
+    total=len(x); ln=x.get('linea_sector',pd.Series(dtype=str)).replace('',pd.NA).nunique(); dn=x.get(defecto,pd.Series(dtype=str)).replace('',pd.NA).nunique(); meses=x[fecha].dropna().dt.to_period('M').nunique()
     if tipo=='PNC':
-        e=x.get(c_estado,pd.Series('',index=x.index)).fillna('').astype(str).str.strip().str.upper(); ce=int(e.eq('CERRADO').sum()); ab=int(e.eq('ABIERTO').sum()); cantidad=pd.to_numeric(x.get(c_cantidad,pd.Series(0,index=x.index)),errors='coerce').fillna(0).sum()
-        cards=[('Total de PNC',f'{total:,}','Número de registros totales','#00A884'),('% de cierre',f'{(ce/total*100 if total else 0):.1f}%','PNC cerrados respecto al total','#5850EC'),('Kg totales de PNC',f'{cantidad:,.2f} kg','Cantidad total registrada','#3F7BFF'),('PNC abiertos',f'{ab:,}','Registros pendientes de cierre','#F59E0B')]
-    elif tipo in {'Reclamos','Devoluciones'}:
-        e=x.get(c_estado,pd.Series('',index=x.index)).fillna('').astype(str).str.strip().str.upper(); ce=int(e.eq('CERRADO').sum()); ab=int(e.eq('ABIERTO').sum()); cantidad=pd.to_numeric(x.get(c_cantidad,pd.Series(0,index=x.index)),errors='coerce').fillna(0).sum(); singular='Reclamos' if tipo=='Reclamos' else 'Devoluciones'
-        cards=[(f'Total de {tipo.lower()}',f'{total:,}','Número de registros totales','#00A884'),('% de cierre',f'{(ce/total*100 if total else 0):.1f}%',f'{singular} cerrados respecto al total','#5850EC'),('Cantidad afectada',f'{cantidad:,.2f}','Suma de la cantidad registrada','#3F7BFF'),('Registros abiertos',f'{ab:,}','Pendientes de cierre','#F59E0B')]
-    else: cards=[('Registros',total,'Total filtrado','#00A884'),('Códigos / defectos',dn,'Tipos identificados','#5850EC'),('Líneas / sectores',ln,'Con registros','#3F7BFF'),('Meses',meses,'Periodos con actividad','#F59E0B')]
+        e=x.get('status',pd.Series('',index=x.index)).fillna('').astype(str).str.upper(); ce=int(e.eq('CERRADO').sum()); ab=int(e.eq('ABIERTO').sum()); kg=pd.to_numeric(x.get('cantidad_total_pnc',pd.Series(0,index=x.index)),errors='coerce').fillna(0).sum(); cards=[('Total de PNC',f'{total:,}','Número de registros totales','#00A884'),('% de cierre',f'{(ce/total*100 if total else 0):.1f}%','PNC cerrados respecto al total','#5850EC'),('Kg totales de PNC',f'{kg:,.2f} kg','Cantidad total registrada','#3F7BFF'),('PNC abiertos',f'{ab:,}','Registros pendientes de cierre','#F59E0B')]
+    else: cards=[('Registros',total,'Total filtrado','#00A884'),('Defectos',dn,'Tipos identificados','#5850EC'),('Líneas / sectores',ln,'Con registros','#3F7BFF'),('Meses',meses,'Periodos con actividad','#F59E0B')]
     cols=st.columns(4,gap='large')
     for c,(la,va,pi,co) in zip(cols,cards):
         with c: st.markdown(f'<div class="kpi" style="--c:{co}"><div class="kpi-label">{la}</div><div class="kpi-value">{va}</div><div class="kpi-foot">{pi}</div></div>',unsafe_allow_html=True)
     a,b=st.columns(2)
-    with a:
-        st.markdown('<span class="chart-marker"></span>',unsafe_allow_html=True)
-        especial=tipo in {'Materia extraña','Producto segregado por detector de metales y RX'}
-        _grafica_conteo(x,defecto,'Distribución por código y defecto' if especial else 'Distribución de defectos','Código / Defecto' if especial else 'Defecto',f'def_{tabla}','#00A884')
-    with b: _grafica_conteo(x,c_linea,'Registros por línea o sector','Línea/Sector',f'lin_{tabla}','#3F7BFF')
-    _grafica_mes(x,fecha,'Evolución mensual de registros',f'mes_{tabla}')
+    with a: st.markdown('<span class="chart-marker"></span>',unsafe_allow_html=True); _grafica_conteo(x,defecto,f'Defectos vs Número de registros de {"PNC" if tipo=="PNC" else titulo}','Defecto',f'def_{tabla}')
+    with b: _grafica_conteo(x,'linea_sector',f'Línea/Sector vs Número de registros de {"PNC" if tipo=="PNC" else titulo}','Línea/Sector',f'lin_{tabla}')
+    _grafica_mes(x,fecha,f'Mes vs Número de registros de {"PNC" if tipo=="PNC" else titulo}',f'mes_{tabla}')
 
 def page_inicio():
     st.markdown('<div class="home-hero"><div class="home-hero-title">Panel Calidad Mundo Dulce</div></div>',unsafe_allow_html=True)
@@ -1851,28 +1832,27 @@ def page_registro():
         st.rerun()
     def selector():
         st.markdown("""<div class="registro-landing-hero"><div class="registro-landing-title">Nuevo registro</div><div class="registro-landing-subtitle">Selecciona el tipo de registro que deseas capturar.</div></div>""",unsafe_allow_html=True)
-        tarjetas=[
-            ('PNC','📝  **PNC´s**\n\nCaptura y seguimiento de producto no conforme.\n\n*Abrir registro*','card_pnc'),
-            ('ME','🧲  **Materia Extraña**\n\nRegistro de hallazgos y acciones de contención.\n\n*Abrir registro*','card_me'),
-            ('DDM_RX','📦  **Detector de metales y RX**\n\nControl de producto segregado por detección.\n\n*Abrir registro*','card_ddm'),
-            ('RECLAMOS','📣  **Reclamos**\n\nRegistro, investigación y seguimiento de reclamos.\n\n*Abrir registro*','card_reclamos'),
-            ('DEVOLUCIONES','↩️  **Devoluciones**\n\nRegistro y seguimiento de producto devuelto.\n\n*Abrir registro*','card_devoluciones')
-        ]
-        # Misma estructura visual de Muestras de retención: hasta tres tarjetas
-        # por fila, con ancho y separación uniformes.
-        for inicio in range(0,len(tarjetas),3):
-            lote=tarjetas[inicio:inicio+3]
-            if len(lote)==2:
-                columnas=st.columns([.5,1,1,.5],gap='large')[1:3]
-            else:
-                columnas=st.columns(3,gap='large')
-            for columna,(valor,texto,clave) in zip(columnas,lote):
-                with columna:
-                    st.markdown('<span class="registro-card-slot"></span>',unsafe_allow_html=True)
-                    if st.button(texto,key=clave):
-                        st.session_state.registro_tipo=valor
-                        st.rerun()
-
+        a,b,c,d,e=st.columns(5,gap='large')
+        with a:
+            st.markdown('<span class="registro-card-slot"></span>',unsafe_allow_html=True)
+            if st.button("📝  **PNC´s**\n\nCaptura y seguimiento de producto no conforme.\n\n*Abrir registro*",key='card_pnc'):
+                st.session_state.registro_tipo='PNC'; st.rerun()
+        with b:
+            st.markdown('<span class="registro-card-slot"></span>',unsafe_allow_html=True)
+            if st.button("🧲  **Materia Extraña**\n\nRegistro de hallazgos y acciones de contención.\n\n*Abrir registro*",key='card_me'):
+                st.session_state.registro_tipo='ME'; st.rerun()
+        with c:
+            st.markdown('<span class="registro-card-slot"></span>',unsafe_allow_html=True)
+            if st.button("📦  **Detector de metales y RX**\n\nControl de producto segregado por detección.\n\n*Abrir registro*",key='card_ddm'):
+                st.session_state.registro_tipo='DDM_RX'; st.rerun()
+        with d:
+            st.markdown('<span class="registro-card-slot"></span>',unsafe_allow_html=True)
+            if st.button("📣  **Reclamos**\n\nRegistro, investigación y seguimiento de reclamos.\n\n*Abrir registro*",key='card_reclamos'):
+                st.session_state.registro_tipo='RECLAMOS'; st.rerun()
+        with e:
+            st.markdown('<span class="registro-card-slot"></span>',unsafe_allow_html=True)
+            if st.button("↩️  **Devoluciones**\n\nRegistro y seguimiento de producto devuelto.\n\n*Abrir registro*",key='card_devoluciones'):
+                st.session_state.registro_tipo='DEVOLUCIONES'; st.rerun()
     def form_hallazgo(tabla,titulo,audit_action):
         nonce=st.session_state.form_nonce
         st.markdown(f"""<div class="registro-full-panel"><div class="registro-pill">Nuevo registro</div><div class="registro-full-title">{titulo}</div><div class="registro-full-subtitle">Los campos marcados con * son obligatorios.</div>""",unsafe_allow_html=True)
@@ -2652,7 +2632,7 @@ def page_entrega_turno():
         for ai,(grupo,linea,tipo_analisis) in enumerate(analisis):
             cc=st.columns([1.2,2,1.5,1,2]);cc[0].text_input('Grupo',grupo,disabled=True,key=f'et23_ag_{nave}_{ai}_{n}',label_visibility='collapsed');cc[1].text_input('Línea',linea,disabled=True,key=f'et23_al_{nave}_{ai}_{n}',label_visibility='collapsed');cc[2].text_input('Análisis',tipo_analisis,disabled=True,key=f'et23_at_{nave}_{ai}_{n}',label_visibility='collapsed');resultado=cc[3].text_input('Resultado',key=f'et23_ar_{nave}_{ai}_{n}',label_visibility='collapsed');obs=cc[4].text_input('Observaciones',key=f'et23_ao_{nave}_{ai}_{n}',label_visibility='collapsed');contador=st.number_input(f'Cantidad de análisis - {linea} - {tipo_analisis}',min_value=0.0,step=1.0,format='%.2f',key=f'et23_cnt_{nave}_{ai}_{n}');resultados.append((grupo,linea,tipo_analisis,resultado,obs,float(contador)))
         seguimientos=[];st.markdown('### Seguimientos')
-        for bi,bloque in enumerate(['Seguimiento a Contaminaciones','Seguimiento a PNC´S','Limpiezas','Seguimiento a ORDENES DE FALLO','GIRO / JUNTA DE EQUIPO']):
+        for bi,bloque in enumerate(formato_seguimientos()):
             with st.expander(bloque,expanded=bi<2):
                 base=pd.DataFrame([{'Registro #':'','Hoja física':'','Carga electrónica':'','Correo':'','Descripción del seguimiento':''} for _ in range(3)])
                 ed=st.data_editor(base,num_rows='dynamic',use_container_width=True,hide_index=True,key=f'et23_s_{nave}_{bi}_{n}',column_config={'Hoja física':st.column_config.SelectboxColumn(options=['','Sí','No','N/A']),'Carga electrónica':st.column_config.SelectboxColumn(options=['','Sí','No','N/A']),'Correo':st.column_config.SelectboxColumn(options=['','Sí','No','N/A'])});seguimientos.append((bloque,ed))
@@ -2698,7 +2678,7 @@ def page_entrega_turno():
             filas.append((grupo,linea,producto,float(horas),float(carga),obs,len(filas)))
         st.markdown('<div style="height:.7rem"></div>',unsafe_allow_html=True)
     seguimientos=[]; st.markdown('### Seguimientos')
-    for bi,bloque in enumerate(['Seguimiento a Contaminaciones','Seguimiento a PNC´S','Limpiezas','Seguimiento a ORDENES DE FALLO','GIRO / JUNTA DE EQUIPO']):
+    for bi,bloque in enumerate(formato_seguimientos()):
         with st.expander(bloque,expanded=bi<2):
             base=pd.DataFrame([{'Registro #':'','Hoja física':'','Carga electrónica':'','Correo':'','Descripción del seguimiento':''} for _ in range(3)])
             ed=st.data_editor(base,num_rows='dynamic',use_container_width=True,hide_index=True,key=f'et_s_{bi}_{n}',column_config={'Hoja física':st.column_config.SelectboxColumn(options=['','Sí','No','N/A']),'Carga electrónica':st.column_config.SelectboxColumn(options=['','Sí','No','N/A']),'Correo':st.column_config.SelectboxColumn(options=['','Sí','No','N/A'])}); seguimientos.append((bloque,ed))
@@ -2728,45 +2708,6 @@ def admin_required():
 
 
 def page_catalogos():
-    # El rol usuario dispone únicamente del catálogo de Productos y solo puede
-    # consultar/agregar. La edición, eliminación y los demás catálogos continúan
-    # reservados al rol desarrollador.
-    if not is_dev():
-        st.title('Catálogo de Productos')
-        st.caption('Consulta los productos disponibles y agrega nuevos elementos al catálogo.')
-        productos=read_df('SELECT id,item,descripcion,cliente,familia FROM productos WHERE activo=1 ORDER BY descripcion')
-        vista=productos.rename(columns={'id':'ID','item':'ITEM','descripcion':'Descripción','cliente':'Cliente','familia':'Familia'})
-        if vista.empty:
-            st.info('Todavía no hay productos activos en el catálogo.')
-        else:
-            st.dataframe(vista,use_container_width=True,hide_index=True)
-        with st.expander('Agregar producto',expanded=True):
-            with st.form('usuario_agregar_producto',clear_on_submit=True):
-                a,b=st.columns(2)
-                item=a.text_input('ITEM *')
-                descripcion=b.text_input('Descripción *')
-                c,d=st.columns(2)
-                cliente=c.text_input('Cliente *')
-                familia=d.text_input('Familia *')
-                agregar=st.form_submit_button('Agregar producto',type='primary')
-            if agregar:
-                valores=[item.strip(),descripcion.strip(),cliente.strip(),familia.strip()]
-                etiquetas=['ITEM','Descripción','Cliente','Familia']
-                faltantes=[etiquetas[i] for i,v in enumerate(valores) if not v]
-                existente=read_df('SELECT id,activo FROM productos WHERE item=?',(valores[0],)) if valores[0] else pd.DataFrame()
-                if faltantes:
-                    st.error('Completa los campos obligatorios: '+', '.join(faltantes)+'.')
-                elif not existente.empty and int(existente.iloc[0].get('activo',1) or 0)==1:
-                    st.error('No fue posible agregar el producto porque el ITEM ya existe.')
-                elif not existente.empty:
-                    exec_sql('UPDATE productos SET descripcion=?,cliente=?,familia=?,activo=1 WHERE id=?',(valores[1],valores[2],valores[3],int(existente.iloc[0].id)))
-                    audit(st.session_state.auth['usuario'],'REACTIVAR_PRODUCTO',f'ITEM {valores[0]}')
-                    st.success('Producto agregado correctamente.'); st.rerun()
-                else:
-                    exec_sql('INSERT INTO productos(item,descripcion,cliente,familia,activo) VALUES(?,?,?,?,1)',tuple(valores))
-                    audit(st.session_state.auth['usuario'],'AGREGAR_PRODUCTO',f'ITEM {valores[0]}')
-                    st.success('Producto agregado correctamente.'); st.rerun()
-        return
     st.title('Catálogos'); st.caption('Datos precargados desde el Excel adjunto. El administrador puede agregar o eliminar elementos.')
     tab1,tab2,tab3,tab4,tab5=st.tabs(['Productos','Defectos','Datos generales','Naves, líneas y sectores','Formatos entrega de turno'])
     def catalogo_seleccionable(tabla, consulta, columnas_vista, clave, titulo_singular, campos, insertar_sql, actualizar_sql, duplicado_sql, valores_opciones=None):
@@ -3017,6 +2958,54 @@ def page_catalogos():
                         x,y=st.columns(2)
                         if x.button('Sí, eliminar',key=f'fmt_ok_{rid}'):exec_sql('UPDATE catalogo_formatos_entrega SET activo=0 WHERE id=?',(rid,));audit(st.session_state.auth['usuario'],'ELIMINAR_FORMATO_ENTREGA',f'ID {rid}');st.session_state.pop('fmt_confirm',None);st.session_state.fmt_nonce=nonce+1;st.rerun()
                         if y.button('Cancelar',key=f'fmt_cancel_{rid}'):st.session_state.pop('fmt_confirm',None);st.session_state.fmt_nonce=nonce+1;st.rerun()
+
+        st.markdown('---')
+        st.subheader('Seguimientos generales de entrega de turno')
+        st.caption('Este catálogo es único para Nave 1, Nave 2 y Nave 3. Los cambios se reflejan automáticamente en los tres formatos de entrega de turno. Los registros históricos conservan la información capturada.')
+        df_seg=read_df('SELECT id,nombre,orden FROM catalogo_seguimientos_entrega WHERE activo=1 ORDER BY orden,id')
+        vista_seg=df_seg.rename(columns={'id':'ID','nombre':'Seguimiento','orden':'Orden'})
+        nonce_seg=st.session_state.get('seg_fmt_nonce',0)
+        evento_seg=st.dataframe(vista_seg,use_container_width=True,hide_index=True,on_select='rerun',selection_mode='single-row',key=f'seg_fmt_tabla_{nonce_seg}') if not vista_seg.empty else None
+        filas_seg=getattr(evento_seg,'selection',{}).get('rows',[]) if evento_seg is not None else []
+        valido_seg=bool(filas_seg) and isinstance(filas_seg[0],int) and 0<=filas_seg[0]<len(vista_seg)
+        id_seg=int(vista_seg.iloc[filas_seg[0]]['ID']) if valido_seg else None
+        with st.expander('Agregar seguimiento',expanded=False):
+            with st.form('seg_fmt_agregar',clear_on_submit=True):
+                a,b=st.columns([3,1]); nombre_seg=a.text_input('Nombre del seguimiento *'); orden_seg=b.number_input('Orden',min_value=0,step=1,value=int(df_seg['orden'].max()+1) if not df_seg.empty else 0)
+                agregar_seg=st.form_submit_button('Agregar seguimiento',type='primary')
+            if agregar_seg:
+                nombre=nombre_seg.strip()
+                existente=read_df('SELECT id,activo FROM catalogo_seguimientos_entrega WHERE UPPER(TRIM(nombre))=UPPER(TRIM(?))',(nombre,)) if nombre else pd.DataFrame()
+                if not nombre: st.error('Ingresa el nombre del seguimiento.')
+                elif not existente.empty and int(existente.iloc[0].activo or 0)==1: st.error('El seguimiento ya existe en el catálogo.')
+                elif not existente.empty:
+                    exec_sql('UPDATE catalogo_seguimientos_entrega SET nombre=?,orden=?,activo=1 WHERE id=?',(nombre,int(orden_seg),int(existente.iloc[0].id)))
+                    audit(st.session_state.auth['usuario'],'REACTIVAR_SEGUIMIENTO_ENTREGA',f'ID {int(existente.iloc[0].id)} | {nombre}')
+                    st.session_state.seg_fmt_nonce=nonce_seg+1;st.rerun()
+                else:
+                    exec_sql('INSERT INTO catalogo_seguimientos_entrega(nombre,orden,activo) VALUES(?,?,1)',(nombre,int(orden_seg)))
+                    audit(st.session_state.auth['usuario'],'AGREGAR_SEGUIMIENTO_ENTREGA',nombre)
+                    st.session_state.seg_fmt_nonce=nonce_seg+1;st.rerun()
+        if id_seg:
+            actual_seg=read_df('SELECT * FROM catalogo_seguimientos_entrega WHERE id=? AND activo=1',(id_seg,))
+            if not actual_seg.empty:
+                rseg=actual_seg.iloc[0]
+                with st.expander('Editar seguimiento seleccionado',expanded=True):
+                    with st.form(f'seg_fmt_editar_{id_seg}'):
+                        a,b=st.columns([3,1]); nombre_e=a.text_input('Nombre del seguimiento *',str(rseg.nombre)); orden_e=b.number_input('Orden',min_value=0,step=1,value=int(rseg.orden or 0)); guardar_e=st.form_submit_button('Guardar cambios',type='primary')
+                    if guardar_e:
+                        nombre=nombre_e.strip(); duplicado=read_df('SELECT id FROM catalogo_seguimientos_entrega WHERE UPPER(TRIM(nombre))=UPPER(TRIM(?)) AND id<>? AND activo=1',(nombre,id_seg)) if nombre else pd.DataFrame()
+                        if not nombre: st.error('Ingresa el nombre del seguimiento.')
+                        elif not duplicado.empty: st.error('Ya existe otro seguimiento activo con el mismo nombre.')
+                        else:
+                            exec_sql('UPDATE catalogo_seguimientos_entrega SET nombre=?,orden=? WHERE id=?',(nombre,int(orden_e),id_seg));audit(st.session_state.auth['usuario'],'EDITAR_SEGUIMIENTO_ENTREGA',f'ID {id_seg} | {nombre}');st.session_state.seg_fmt_nonce=nonce_seg+1;st.rerun()
+                if st.button('Eliminar seguimiento',key=f'seg_fmt_eliminar_{id_seg}'): st.session_state.seg_fmt_confirmar=id_seg
+                if st.session_state.get('seg_fmt_confirmar')==id_seg:
+                    st.warning('El seguimiento dejará de aparecer en los nuevos formatos de las tres naves. La información histórica ya registrada se conservará y continuará disponible en sus PDF.')
+                    x,y=st.columns(2)
+                    if x.button('Confirmar eliminación',key=f'seg_fmt_ok_{id_seg}'):
+                        exec_sql('UPDATE catalogo_seguimientos_entrega SET activo=0 WHERE id=?',(id_seg,));audit(st.session_state.auth['usuario'],'ELIMINAR_SEGUIMIENTO_ENTREGA',f'ID {id_seg}');st.session_state.pop('seg_fmt_confirmar',None);st.session_state.seg_fmt_nonce=nonce_seg+1;st.rerun()
+                    if y.button('Cancelar',key=f'seg_fmt_cancelar_{id_seg}'): st.session_state.pop('seg_fmt_confirmar',None);st.session_state.seg_fmt_nonce=nonce_seg+1;st.rerun()
 
 def page_usuarios():
     if not is_dev():
