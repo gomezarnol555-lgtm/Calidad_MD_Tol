@@ -251,10 +251,10 @@ def pdf_pnc_fisico(rid):
     def fecha_es(x):
         try: return pd.to_datetime(x).strftime('%d/%m/%Y')
         except Exception: return str(x or '')
-    def t(c,texto,x,y,tam=8,negrita=False):
+    def t(c,texto,x,y,tam=10,negrita=False):
         c.setFont('Helvetica-Bold' if negrita else 'Helvetica',tam)
         c.drawString(x,y,str(texto or ''))
-    def fit(c,texto,x,y,ancho,tam=8,negrita=False,centrado=False):
+    def fit(c,texto,x,y,ancho,tam=10,negrita=False,centrado=False):
         texto=str(texto or '').replace('\n',' / ')
         fuente='Helvetica-Bold' if negrita else 'Helvetica'; actual=tam
         while actual>5.5 and stringWidth(texto,fuente,actual)>ancho: actual-=.25
@@ -268,28 +268,28 @@ def pdf_pnc_fisico(rid):
         try:
             data=BytesIO(base64.b64decode(LOGO_MUNDO_DULCE_BASE64))
             c.drawImage(ImageReader(data),x,y,width=w,height=h,preserveAspectRatio=True,anchor='c',mask='auto')
-        except Exception: fit(c,'Mundo Dulce',x,y+h/2,w,9,True,True)
+        except Exception: fit(c,'Mundo Dulce',x,y+h/2,w,11,True,True)
     def encabezado(c,reverso=False):
         x0,x1,x2,x3=38,132,494,557; top,bot=805,756
         c.setLineWidth(.8); c.rect(x0,bot,x3-x0,top-bot)
         c.line(x1,bot,x1,top); c.line(x2,bot,x2,top)
         logo(c,x0+6,bot+5,x1-x0-12,top-bot-10)
-        fit(c,'Anexo 1. Registro de Productos No Conformes',x1+3,top-17,278,8,False,True)
-        fit(c,'Rev. 2',412,top-17,72,8,False,True)
-        fit(c,'PG-CAL01-2301-01760-2007',x1+4,bot+7,x2-x1-8,7.5,False,True)
-        fit(c,'Reverso' if reverso else 'NUMERO',x2+2,top-28,x3-x2-4,8,False,True)
+        fit(c,'Anexo 1. Registro de Productos No Conformes',x1+3,top-17,278,10,False,True)
+        fit(c,'Rev. 2',412,top-17,72,10,False,True)
+        fit(c,'PG-CAL01-2301-01760-2007',x1+4,bot+7,x2-x1-8,9.5,False,True)
+        fit(c,'Reverso' if reverso else 'NUMERO',x2+2,top-28,x3-x2-4,10,False,True)
     b=BytesIO(); c=canvas.Canvas(b,pagesize=A4); W,H=A4
     c.setTitle('Registro Fisico de Producto No Conforme')
     # Pagina 1: formato A4 fiel a la referencia.
     encabezado(c)
     try: anio=str(pd.to_datetime(v('fecha_apertura')).year)
     except Exception: anio=str(datetime.now().year)
-    fit(c,f'{rid}/{anio}',496,765,59,8,True,True)
-    t(c,'Sector:',39,733,8); c.line(79,731,404,731); fit(c,v('linea_sector'),82,734,319,8)
+    fit(c,f'{rid}/{anio}',496,765,59,10,True,True)
+    t(c,'Sector:',39,733,10); c.line(79,731,404,731); fit(c,v('linea_sector'),82,734,319,10)
     # Identificacion
     x0,x3=38,557; top_id,bot_id=711,498
     c.setLineWidth(.8); c.rect(x0,bot_id,x3-x0,top_id-bot_id)
-    c.rect(x0,top_id-18,x3-x0,18); c.setFont('Helvetica-Bold',8); c.drawCentredString((x0+x3)/2,top_id-13,'IDENTIFICACION')
+    c.rect(x0,top_id-18,x3-x0,18); c.setFont('Helvetica-Bold',10); c.drawCentredString((x0+x3)/2,top_id-13,'IDENTIFICACION')
     codigo='_'.join(x for x in [v('etapa'),v('codigo_defecto')] if x)
     cantidad=''
     if v('cantidad_observada'):
@@ -298,47 +298,65 @@ def pdf_pnc_fisico(rid):
     # ITEM y producto comparten una fila como en el formato fisico.
     campos=[('Codigo:',codigo,681),('Fecha:',fecha_es(v('fecha_apertura')),648),('ITEM:',v('item'),615),('Lote:',v('lote'),582),('Cantidad observada:',cantidad,549),('Responsable / Persona que detecta:',' / '.join(x for x in [v('supervisor'),v('analista')] if x),516)]
     for etiqueta,valor,y in campos:
-        t(c,etiqueta,40,y,7.6); fit(c,valor,173,y,360,7.6)
-    t(c,'Producto o Semielaborado:',300,615,7.6); fit(c,v('descripcion_producto'),430,615,121,7.2)
+        tam_campo=9.6
+        t(c,etiqueta,40,y,tam_campo)
+        valor_x=40+stringWidth(etiqueta,'Helvetica',tam_campo)+9
+        fit(c,valor,valor_x,y,x3-valor_x-6,tam_campo)
+    etiqueta_producto='Producto o Semielaborado:'
+    t(c,etiqueta_producto,300,615,9.6)
+    producto_x=300+stringWidth(etiqueta_producto,'Helvetica',9.6)+9
+    fit(c,v('descripcion_producto'),producto_x,615,x3-producto_x-6,9.2)
     # Disposicion
     top_d,bot_d=482,350; medio=300
     c.rect(x0,bot_d,x3-x0,top_d-bot_d); c.rect(x0,top_d-18,x3-x0,18)
-    c.setFont('Helvetica-Bold',8); c.drawCentredString((x0+x3)/2,top_d-13,'DISPOSICION')
+    c.setFont('Helvetica-Bold',10); c.drawCentredString((x0+x3)/2,top_d-13,'DISPOSICION')
     c.line(medio,bot_d,medio,top_d-18)
-    t(c,'Marque con una X el recuadro correspondiente:',40,451,7.3)
-    t(c,'Fecha, nombre y firma de responsable de disposicion:',304,451,7.1)
+    t(c,'Marque con una X el recuadro correspondiente:',40,451,9.3)
+    t(c,'Fecha, nombre y firma de responsable de disposicion:',304,451,9.1)
     opciones=['Reproceso','Retrabajo','Decomiso','Inspeccion','Aprobado en segunda instancia','Otro']
     actual=v('disposicion').lower()
     for i,op in enumerate(opciones):
         y=430-i*16
-        c.rect(40,y-3,82,16); t(c,op+':',124,y+1,7.3)
+        c.rect(40,y-3,82,16); t(c,op+':',124,y+1,9.3)
         normal_op=op.lower().replace('inspeccion','inspección')
         if normal_op==actual or op.lower()==actual:
-            c.setFont('Helvetica-Bold',10); c.drawCentredString(81,y, 'X')
+            c.setFont('Helvetica-Bold',12); c.drawCentredString(81,y, 'X')
     # Fecha arriba y nombre del analista abajo. Sin firma autogenerada.
-    fit(c,fecha_es(v('fecha_apertura')),307,430,242,8,False,True)
-    fit(c,v('analista'),307,365,242,8,False,True)
+    fit(c,fecha_es(v('fecha_apertura')),307,430,242,10,False,True)
+    fit(c,v('analista'),307,365,242,10,False,True)
     # Tratamiento: estructura vacia.
     top_t,bot_t=334,216
     c.rect(x0,bot_t,x3-x0,top_t-bot_t); c.rect(x0,top_t-18,x3-x0,18)
-    c.setFont('Helvetica-Bold',8); c.drawCentredString((x0+x3)/2,top_t-13,'TRATAMIENTO')
-    cortes=[x0+94,x0+188,x0+282,x0+376]
-    for xx in cortes: c.line(xx,bot_t,xx,top_t-18)
-    c.line(x0,top_t-67,x3,top_t-67)
-    titulos=[('Kg Aprobados en\nsegunda instancia',x0+2,top_t-31),('Kg Decomiso',x0+190,top_t-43),('Kg Reproceso',x0+378,top_t-43),('Fecha comienzo del tratamiento',x0+2,top_t-82),('Fecha final de tratamiento',x0+190,top_t-82),('Nombre y firma del responsable del\ntratamiento:',x0+378,top_t-82)]
+    c.setFont('Helvetica-Bold',10); c.drawCentredString((x0+x3)/2,top_t-13,'TRATAMIENTO')
+    ancho_t=x3-x0
+    col1=x0+ancho_t/3
+    col2=x0+(ancho_t*2/3)
+    for xx in (col1,col2):
+        c.line(xx,bot_t,xx,top_t-18)
+    separador_y=top_t-67
+    c.line(x0,separador_y,x3,separador_y)
+    titulos=[
+        ('Kg Aprobados en\nsegunda instancia',x0+3,top_t-31),
+        ('Kg Decomiso',col1+3,top_t-31),
+        ('Kg Reproceso',col2+3,top_t-31),
+        ('Fecha comienzo del tratamiento',x0+3,separador_y-15),
+        ('Fecha final de tratamiento',col1+3,separador_y-15),
+        ('Nombre y firma del responsable del\ntratamiento:',col2+3,separador_y-15)
+    ]
     for texto,x,y in titulos:
-        for j,linea in enumerate(texto.split('\n')): t(c,linea,x,y-j*10,6.9)
+        for j,linea in enumerate(texto.split('\n')):
+            t(c,linea,x,y-j*11,8.9)
     # Consideraciones: estructura vacia.
     top_c,bot_c=198,76
     c.rect(x0,bot_c,x3-x0,top_c-bot_c); c.rect(x0,top_c-18,x3-x0,18)
-    c.setFont('Helvetica-Bold',8); c.drawCentredString((x0+x3)/2,top_c-13,'CONSIDERACIONES DE TRABAJO')
+    c.setFont('Helvetica-Bold',10); c.drawCentredString((x0+x3)/2,top_c-13,'CONSIDERACIONES DE TRABAJO')
     filas=[('Dias de retrabajo:',top_c-34),('No. de personas:',top_c-52),('Materiales:',top_c-70),('Otro:',top_c-88)]
-    for etiqueta,y in filas: t(c,etiqueta,x0+2,y,7); c.line(x0,y-5,x3,y-5)
-    c.line(300,bot_c,300,top_c-93); t(c,'Fecha:',x0+2,bot_c+7,7); t(c,'Nombre y firma:',302,bot_c+7,7)
+    for etiqueta,y in filas: t(c,etiqueta,x0+2,y,9); c.line(x0,y-5,x3,y-5)
+    c.line(300,bot_c,300,top_c-93); t(c,'Fecha:',x0+2,bot_c+7,9); t(c,'Nombre y firma:',302,bot_c+7,9)
     c.showPage()
     # Pagina 2: reverso informativo del formato.
     encabezado(c,True)
-    t(c,'Instrucciones para el uso del Registro de Productos No Conformes:',40,727,8.5)
+    t(c,'Instrucciones para el uso del Registro de Productos No Conformes:',40,727,10.5)
     secciones=[
       ('ENCABEZADO:',['En el cuadro superior derecho se coloca el numero consecutivo del registro que se genera. La','numeracion se compone de la siguiente manera:','NNN / AA','donde:','  - NNN es el numero consecutivo','  - AA son los dos ultimos digitos del ano en curso.']),
       ('IDENTIFICACION:',['- Codigo: se coloca el codigo de retencion de acuerdo con la codificacion aplicable.','- Fecha en la que se produjo el Producto No Conforme.','- ITEM de Semielaborado o Producto Terminado.','- Producto o Semielaborado: descripcion.','- Lote(s) del producto.','- Cantidad observada: producto que potencialmente no cumple con las especificaciones.']),
@@ -347,8 +365,8 @@ def pdf_pnc_fisico(rid):
       ('CONSIDERACIONES DE TRABAJO:',['Registrar la informacion necesaria para determinar el costo de la no calidad: personas, materiales y','tiempo de retrabajo, ademas de fecha y firma de validacion. Este apartado solo puede ser completado','por personal del area de Calidad.'])]
     yy=694
     for titulo,lineas in secciones:
-        t(c,titulo,40,yy,8,True); yy-=16
-        for linea in lineas: t(c,linea,53,yy,7.6); yy-=12
+        t(c,titulo,40,yy,10,True); yy-=16
+        for linea in lineas: t(c,linea,53,yy,9.6); yy-=12
         yy-=12
     c.showPage(); c.save(); return b.getvalue()
 
