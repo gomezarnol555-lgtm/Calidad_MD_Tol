@@ -275,7 +275,7 @@ def pdf_pnc_fisico(rid):
         c.line(x1,bot,x1,top); c.line(x2,bot,x2,top)
         logo(c,x0+6,bot+5,x1-x0-12,top-bot-10)
         fit(c,'Anexo 1. Registro de Productos No Conformes',x1+3,top-17,278,10,False,True)
-        fit(c,'Rev. 2',412,top-17,72,10,False,True)
+        fit(c,'Rev. 3',412,top-17,72,10,False,True)
         fit(c,'PG-CAL01-2301-01760-2007',x1+4,bot+7,x2-x1-8,9.5,False,True)
         fit(c,'Reverso' if reverso else 'NUMERO',x2+2,top-28,x3-x2-4,10,False,True)
     b=BytesIO(); c=canvas.Canvas(b,pagesize=A4); W,H=A4
@@ -296,7 +296,7 @@ def pdf_pnc_fisico(rid):
         try: cantidad=f"{float(v('cantidad_observada')):.2f} kg"
         except Exception: cantidad=v('cantidad_observada')
     # ITEM y producto comparten una fila como en el formato fisico.
-    campos=[('Codigo:',codigo,681),('Fecha:',fecha_es(v('fecha_apertura')),648),('ITEM:',v('item'),615),('Lote:',v('lote'),582),('Cantidad observada:',cantidad,549),('Responsable / Persona que detecta:',' / '.join(x for x in [v('supervisor'),v('analista')] if x),516)]
+    campos=[('Código:',codigo,681),('Fecha:',fecha_es(v('fecha_apertura')),648),('ITEM:',v('item'),615),('Lote:',v('lote'),582),('Cantidad observada:',cantidad,549),('Responsable / Persona que detecta:',' / '.join(x for x in [v('supervisor'),v('analista')] if x),516)]
     for etiqueta,valor,y in campos:
         tam_campo=9.6
         t(c,etiqueta,40,y,tam_campo)
@@ -312,9 +312,9 @@ def pdf_pnc_fisico(rid):
     c.setFont('Helvetica-Bold',10); c.drawCentredString((x0+x3)/2,top_d-13,'DISPOSICION')
     c.line(medio,bot_d,medio,top_d-18)
     t(c,'Marque con una X el recuadro correspondiente:',40,451,9.3)
-    t(c,'Fecha, nombre y firma de responsable de disposicion:',304,451,9.1)
+    t(c,'Fecha, nombre y firma de responsable de disposición:',304,451,9.1)
     opciones=['Reproceso','Retrabajo','Decomiso','Inspeccion','Aprobado en segunda instancia','Otro']
-    actual=v('disposicion').lower()
+    actual=v('disposición').lower()
     for i,op in enumerate(opciones):
         y=430-i*16
         c.rect(40,y-3,82,16); t(c,op+':',124,y+1,9.3)
@@ -354,20 +354,57 @@ def pdf_pnc_fisico(rid):
     for etiqueta,y in filas: t(c,etiqueta,x0+2,y,9); c.line(x0,y-5,x3,y-5)
     c.line(300,bot_c,300,top_c-93); t(c,'Fecha:',x0+2,bot_c+7,9); t(c,'Nombre y firma:',302,bot_c+7,9)
     c.showPage()
-    # Pagina 2: reverso informativo del formato.
+    # Pagina 2: reverso informativo Rev. 3, distribuido conforme al formato autorizado.
     encabezado(c,True)
     t(c,'Instrucciones para el uso del Registro de Productos No Conformes:',40,727,10.5)
-    secciones=[
-      ('ENCABEZADO:',['En el cuadro superior derecho se coloca el numero consecutivo del registro que se genera. La','numeracion se compone de la siguiente manera:','NNN / AA','donde:','  - NNN es el numero consecutivo','  - AA son los dos ultimos digitos del ano en curso.']),
-      ('IDENTIFICACION:',['- Codigo: se coloca el codigo de retencion de acuerdo con la codificacion aplicable.','- Fecha en la que se produjo el Producto No Conforme.','- ITEM de Semielaborado o Producto Terminado.','- Producto o Semielaborado: descripcion.','- Lote(s) del producto.','- Cantidad observada: producto que potencialmente no cumple con las especificaciones.']),
-      ('DISPOSICION:',['En el casillero de disposicion marcar con una X y colocar fecha, nombre y firma del responsable.']),
-      ('TRATAMIENTO:',['Registrar las fechas de comienzo y final del tratamiento, la firma de la persona responsable y','los kilogramos aprobados en segunda instancia, decomisados o reprocesados.']),
-      ('CONSIDERACIONES DE TRABAJO:',['Registrar la informacion necesaria para determinar el costo de la no calidad: personas, materiales y','tiempo de retrabajo, ademas de fecha y firma de validacion. Este apartado solo puede ser completado','por personal del area de Calidad.'])]
-    yy=694
-    for titulo,lineas in secciones:
-        t(c,titulo,40,yy,10,True); yy-=16
-        for linea in lineas: t(c,linea,53,yy,9.6); yy-=12
-        yy-=12
+
+    def linea_reverso(texto,x,y,tam=9.2,negrita=False):
+        t(c,texto,x,y,tam,negrita)
+        return y-13
+
+    yy=690
+    t(c,'ENCABEZADO:',40,yy,10,True); yy-=16
+    yy=linea_reverso('En el cuadro superior derecho se coloca el número consecutivo del registro que se genera. La',62,yy)
+    yy=linea_reverso('numeración se compone de la siguiente manera:',40,yy)
+    c.setFont('Helvetica-Bold',9.5); c.drawCentredString((38+557)/2,yy,'NNN / AA'); yy-=18
+    yy=linea_reverso('dónde:',40,yy)
+    yy=linea_reverso('- NNN es el número consecutivo',54,yy)
+    yy=linea_reverso('- AA son los dos últimos dígitos del año en curso.',54,yy)
+    yy-=8
+
+    t(c,'IDENTIFICACIÓN:',40,yy,10,True); yy-=16
+    identificacion=[
+        '- Código: se coloca el código de retención de acuerdo con el Anexo 4. Codificación de retención',
+        '- Fecha en la que se produjo el Producto No Conforme',
+        '- ITEM de Semielaborado o Producto Terminado',
+        '- Lote(s) del producto',
+        '- Categoría de retención inicial',
+        '- Cantidad observada: Producto que potencialmente o no cumple con las especificaciones'
+    ]
+    for texto_info in identificacion:
+        yy=linea_reverso(texto_info,54,yy,8.9)
+    yy-=8
+
+    t(c,'DISPOSICIÓN:',40,yy,10,True); yy-=16
+    yy=linea_reverso('En el casillero de disposición marcar con una X acorde a la definición y colocar fecha, nombre y firma',62,yy,8.9)
+    yy=linea_reverso('de dicha disposición.',40,yy,8.9)
+    yy-=8
+
+    t(c,'TRATAMIENTO:',40,yy,10,True); yy-=16
+    yy=linea_reverso('En el casillero la fecha del comienzo y final del tratamiento, firma de la persona que llevó a cabo el',62,yy,8.9)
+    yy=linea_reverso('tratamiento del producto.',40,yy,8.9)
+    yy=linea_reverso('Detallar Kg aprobados en segunda instancia, Kg decomiso y kg reproceso acorde con el tratamiento',62,yy,8.9)
+    yy=linea_reverso('realizado.',40,yy,8.9)
+    yy-=6
+    texto_categoria='Categoría final: Después del tratamiento a que categoría pasó'
+    t(c,texto_categoria,40,yy,9.2)
+    c.line(40,yy-3,338,yy-3); yy-=30
+
+    t(c,'CONSIDERACIONES DE TRABAJO:',40,yy,10,True); yy-=16
+    yy=linea_reverso('Colocar la información que para determinar el costo de la NO Calidad (Personas, materiales y tiempo',62,yy,8.8)
+    yy=linea_reverso('del retrabajo) más la fecha y la firma de la persona que tuvo a cargo de validar dicha tarea. En caso de que el',40,yy,8.8)
+    yy=linea_reverso('retrabajo se realice en diferentes días o turnos detallar información.',40,yy,8.8)
+    yy=linea_reverso('Este casillero solo lo puede completar personal del área de calidad.',40,yy,8.8)
     c.showPage(); c.save(); return b.getvalue()
 
 def _pdf_hallazgo_base(tabla,rid,tipo_formato):
