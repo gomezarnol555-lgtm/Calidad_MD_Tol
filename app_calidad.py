@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 import altair as alt
-import sqlite3, hashlib, os, base64
+import sqlite3, hashlib, os, base64, json
 from io import BytesIO
 from openpyxl.styles import Font, PatternFill
 from datetime import datetime, date, timedelta
@@ -354,57 +354,59 @@ def pdf_pnc_fisico(rid):
     for etiqueta,y in filas: t(c,etiqueta,x0+2,y,9); c.line(x0,y-5,x3,y-5)
     c.line(300,bot_c,300,top_c-93); t(c,'Fecha:',x0+2,bot_c+7,9); t(c,'Nombre y firma:',302,bot_c+7,9)
     c.showPage()
-    # Pagina 2: reverso informativo Rev. 3, distribuido conforme al formato autorizado.
+    # Pagina 2: todo el reverso usa el mismo tamaño de 10.5 pt y el ancho completo del encabezado.
     encabezado(c,True)
-    t(c,'Instrucciones para el uso del Registro de Productos No Conformes:',40,727,10.5)
+    TAM_REVERSO=10.5
+    X_REVERSO=38
+    ANCHO_REVERSO=519
 
-    def linea_reverso(texto,x,y,tam=9.2,negrita=False):
-        t(c,texto,x,y,tam,negrita)
-        return y-13
+    def lineas_reverso(texto, sangria=0, negrita=False, espacio_despues=0):
+        nonlocal yy
+        fuente='Helvetica-Bold' if negrita else 'Helvetica'
+        palabras=str(texto or '').split()
+        linea=''
+        ancho=ANCHO_REVERSO-sangria
+        for palabra in palabras:
+            prueba=(linea+' '+palabra).strip()
+            if stringWidth(prueba,fuente,TAM_REVERSO)<=ancho:
+                linea=prueba
+            else:
+                c.setFont(fuente,TAM_REVERSO); c.drawString(X_REVERSO+sangria,yy,linea)
+                yy-=15; linea=palabra
+        if linea:
+            c.setFont(fuente,TAM_REVERSO); c.drawString(X_REVERSO+sangria,yy,linea)
+            yy-=15
+        yy-=espacio_despues
 
-    yy=690
-    t(c,'ENCABEZADO:',40,yy,10,True); yy-=16
-    yy=linea_reverso('En el cuadro superior derecho se coloca el número consecutivo del registro que se genera. La',62,yy)
-    yy=linea_reverso('numeración se compone de la siguiente manera:',40,yy)
-    c.setFont('Helvetica-Bold',9.5); c.drawCentredString((38+557)/2,yy,'NNN / AA'); yy-=18
-    yy=linea_reverso('dónde:',40,yy)
-    yy=linea_reverso('- NNN es el número consecutivo',54,yy)
-    yy=linea_reverso('- AA son los dos últimos dígitos del año en curso.',54,yy)
-    yy-=8
-
-    t(c,'IDENTIFICACIÓN:',40,yy,10,True); yy-=16
-    identificacion=[
+    yy=727
+    lineas_reverso('Instrucciones para el uso del Registro de Productos No Conformes:',espacio_despues=21)
+    lineas_reverso('ENCABEZADO:',negrita=True,espacio_despues=3)
+    lineas_reverso('En el cuadro superior derecho se coloca el número consecutivo del registro que se genera. La numeración se compone de la siguiente manera:',sangria=22)
+    c.setFont('Helvetica-Bold',TAM_REVERSO); c.drawCentredString((38+557)/2,yy,'NNN / AA'); yy-=21
+    lineas_reverso('dónde:',espacio_despues=0)
+    lineas_reverso('- NNN es el número consecutivo',sangria=16)
+    lineas_reverso('- AA son los dos últimos dígitos del año en curso.',sangria=16,espacio_despues=8)
+    lineas_reverso('IDENTIFICACIÓN:',negrita=True,espacio_despues=3)
+    for texto_info in [
         '- Código: se coloca el código de retención de acuerdo con el Anexo 4. Codificación de retención',
         '- Fecha en la que se produjo el Producto No Conforme',
         '- ITEM de Semielaborado o Producto Terminado',
         '- Lote(s) del producto',
         '- Categoría de retención inicial',
-        '- Cantidad observada: Producto que potencialmente o no cumple con las especificaciones'
-    ]
-    for texto_info in identificacion:
-        yy=linea_reverso(texto_info,54,yy,8.9)
+        '- Cantidad observada: Producto que potencialmente o no cumple con las especificaciones']:
+        lineas_reverso(texto_info,sangria=16)
     yy-=8
-
-    t(c,'DISPOSICIÓN:',40,yy,10,True); yy-=16
-    yy=linea_reverso('En el casillero de disposición marcar con una X acorde a la definición y colocar fecha, nombre y firma',62,yy,8.9)
-    yy=linea_reverso('de dicha disposición.',40,yy,8.9)
-    yy-=8
-
-    t(c,'TRATAMIENTO:',40,yy,10,True); yy-=16
-    yy=linea_reverso('En el casillero la fecha del comienzo y final del tratamiento, firma de la persona que llevó a cabo el',62,yy,8.9)
-    yy=linea_reverso('tratamiento del producto.',40,yy,8.9)
-    yy=linea_reverso('Detallar Kg aprobados en segunda instancia, Kg decomiso y kg reproceso acorde con el tratamiento',62,yy,8.9)
-    yy=linea_reverso('realizado.',40,yy,8.9)
-    yy-=6
-    texto_categoria='Categoría final: Después del tratamiento a que categoría pasó'
-    t(c,texto_categoria,40,yy,9.2)
-    c.line(40,yy-3,338,yy-3); yy-=30
-
-    t(c,'CONSIDERACIONES DE TRABAJO:',40,yy,10,True); yy-=16
-    yy=linea_reverso('Colocar la información que para determinar el costo de la NO Calidad (Personas, materiales y tiempo',62,yy,8.8)
-    yy=linea_reverso('del retrabajo) más la fecha y la firma de la persona que tuvo a cargo de validar dicha tarea. En caso de que el',40,yy,8.8)
-    yy=linea_reverso('retrabajo se realice en diferentes días o turnos detallar información.',40,yy,8.8)
-    yy=linea_reverso('Este casillero solo lo puede completar personal del área de calidad.',40,yy,8.8)
+    lineas_reverso('DISPOSICIÓN:',negrita=True,espacio_despues=3)
+    lineas_reverso('En el casillero de disposición marcar con una X acorde a la definición y colocar fecha, nombre y firma de dicha disposición.',sangria=22,espacio_despues=8)
+    lineas_reverso('TRATAMIENTO:',negrita=True,espacio_despues=3)
+    lineas_reverso('En el casillero la fecha del comienzo y final del tratamiento, firma de la persona que llevó a cabo el tratamiento del producto.',sangria=22)
+    lineas_reverso('Detallar Kg aprobados en segunda instancia, Kg decomiso y kg reproceso acorde con el tratamiento realizado.',sangria=22,espacio_despues=4)
+    linea_categoria_y=yy
+    lineas_reverso('Categoría final: Después del tratamiento a qué categoría pasó')
+    c.line(X_REVERSO,linea_categoria_y-3,X_REVERSO+390,linea_categoria_y-3); yy-=10
+    lineas_reverso('CONSIDERACIONES DE TRABAJO:',negrita=True,espacio_despues=3)
+    lineas_reverso('Colocar la información que para determinar el costo de la NO Calidad (Personas, materiales y tiempo del retrabajo) más la fecha y la firma de la persona que tuvo a cargo de validar dicha tarea. En caso de que el retrabajo se realice en diferentes días o turnos detallar información.',sangria=22)
+    lineas_reverso('Este casillero solo lo puede completar personal del área de calidad.')
     c.showPage(); c.save(); return b.getvalue()
 
 def _pdf_hallazgo_base(tabla,rid,tipo_formato):
@@ -908,6 +910,34 @@ def formato_seguimientos():
     df=read_df('SELECT nombre FROM catalogo_seguimientos_entrega WHERE activo=1 ORDER BY orden,id')
     return df['nombre'].dropna().astype(str).str.strip().loc[lambda x:x.ne('')].tolist() if not df.empty else []
 
+def configuracion_seguimientos():
+    bloques=read_df('SELECT id,nombre FROM catalogo_seguimientos_entrega WHERE activo=1 ORDER BY orden,id')
+    resultado=[]
+    for bloque in bloques.itertuples():
+        campos=read_df('SELECT id,nombre,tipo_campo,opciones,obligatorio,orden FROM catalogo_seguimientos_campos WHERE seguimiento_id=? AND activo=1 ORDER BY orden,id',(int(bloque.id),))
+        definiciones=[]
+        for campo in campos.itertuples():
+            opciones=[x.strip() for x in str(campo.opciones or '').split('|') if x.strip()]
+            definiciones.append({'id':int(campo.id),'nombre':str(campo.nombre),'tipo':str(campo.tipo_campo or 'Texto'),'opciones':opciones,'obligatorio':bool(campo.obligatorio)})
+        resultado.append({'id':int(bloque.id),'nombre':str(bloque.nombre),'campos':definiciones})
+    return resultado
+
+def editor_seguimiento_dinamico(bloque,key):
+    campos=bloque.get('campos',[])
+    if not campos:
+        st.info('Este seguimiento no tiene campos activos. Un administrador puede configurarlos desde Catálogos.')
+        return pd.DataFrame(),{}
+    base=pd.DataFrame([{c['nombre']:'' for c in campos} for _ in range(3)])
+    config={}
+    for c in campos:
+        nombre=c['nombre']; tipo=c['tipo']; opciones=c.get('opciones',[])
+        if tipo=='Lista desplegable': config[nombre]=st.column_config.SelectboxColumn(nombre,options=['']+opciones,required=c['obligatorio'])
+        elif tipo=='Número': config[nombre]=st.column_config.NumberColumn(nombre,min_value=0.0,step=1.0,required=c['obligatorio'])
+        elif tipo=='Sí / No / N/A': config[nombre]=st.column_config.SelectboxColumn(nombre,options=['','Sí','No','N/A'],required=c['obligatorio'])
+        elif tipo=='Fecha': config[nombre]=st.column_config.DateColumn(nombre,required=c['obligatorio'])
+        else: config[nombre]=st.column_config.TextColumn(nombre,required=c['obligatorio'])
+    return st.data_editor(base,num_rows='dynamic',use_container_width=True,hide_index=True,key=key,column_config=config),{c['nombre']:c for c in campos}
+
 def migrar_catalogo_formatos_entrega(cur):
     """Migra cualquier versión anterior sin perder los formatos existentes."""
     fila=cur.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='catalogo_formatos_entrega'").fetchone()
@@ -1081,9 +1111,15 @@ def init_db():
     cur.execute("CREATE TABLE IF NOT EXISTS app_config(clave TEXT PRIMARY KEY,valor TEXT,actualizado_en TEXT)")
     cur.execute("CREATE TABLE IF NOT EXISTS catalogo_formatos_entrega(id INTEGER PRIMARY KEY AUTOINCREMENT,formato_nave TEXT NOT NULL,tipo TEXT NOT NULL,linea TEXT NOT NULL,sector TEXT NOT NULL,tipo_analisis TEXT DEFAULT '',orden_linea INTEGER DEFAULT 0,orden_sector INTEGER DEFAULT 0,activo INTEGER DEFAULT 1,UNIQUE(formato_nave,tipo,linea,sector,tipo_analisis))")
     cur.execute("CREATE TABLE IF NOT EXISTS catalogo_seguimientos_entrega(id INTEGER PRIMARY KEY AUTOINCREMENT,nombre TEXT NOT NULL,orden INTEGER DEFAULT 0,activo INTEGER DEFAULT 1,UNIQUE(nombre))")
+    cur.execute("CREATE TABLE IF NOT EXISTS catalogo_seguimientos_campos(id INTEGER PRIMARY KEY AUTOINCREMENT,seguimiento_id INTEGER NOT NULL,nombre TEXT NOT NULL,tipo_campo TEXT NOT NULL DEFAULT 'Texto',opciones TEXT DEFAULT '',obligatorio INTEGER DEFAULT 0,orden INTEGER DEFAULT 0,activo INTEGER DEFAULT 1,UNIQUE(seguimiento_id,nombre))")
     seguimientos_base=['Seguimiento a Contaminaciones','Seguimiento a PNC´S','Limpiezas','Seguimiento a ORDENES DE FALLO','GIRO / JUNTA DE EQUIPO']
     if cur.execute('SELECT COUNT(*) FROM catalogo_seguimientos_entrega').fetchone()[0]==0:
         for orden,nombre in enumerate(seguimientos_base): cur.execute('INSERT OR IGNORE INTO catalogo_seguimientos_entrega(nombre,orden,activo) VALUES(?,?,1)',(nombre,orden))
+    campos_seguimiento_base=[('Registro #','Texto',''),('Hoja física','Sí / No / N/A','Sí|No|N/A'),('Carga electrónica','Sí / No / N/A','Sí|No|N/A'),('Correo','Sí / No / N/A','Sí|No|N/A'),('Descripción del seguimiento','Texto largo','')]
+    for seguimiento_id, in cur.execute('SELECT id FROM catalogo_seguimientos_entrega').fetchall():
+        if cur.execute('SELECT COUNT(*) FROM catalogo_seguimientos_campos WHERE seguimiento_id=?',(seguimiento_id,)).fetchone()[0]==0:
+            for orden,(nombre,tipo,opciones) in enumerate(campos_seguimiento_base):
+                cur.execute('INSERT OR IGNORE INTO catalogo_seguimientos_campos(seguimiento_id,nombre,tipo_campo,opciones,obligatorio,orden,activo) VALUES(?,?,?,?,0,?,1)',(seguimiento_id,nombre,tipo,opciones,orden))
     migrar_catalogo_formatos_entrega(cur)
     cur.execute("CREATE TABLE IF NOT EXISTS catalogos(id INTEGER PRIMARY KEY AUTOINCREMENT, categoria TEXT, valor TEXT, activo INTEGER DEFAULT 1, UNIQUE(categoria,valor))")
     cur.execute("CREATE TABLE IF NOT EXISTS productos(id INTEGER PRIMARY KEY AUTOINCREMENT, item TEXT UNIQUE, descripcion TEXT, cliente TEXT, familia TEXT, activo INTEGER DEFAULT 1)")
@@ -1292,11 +1328,11 @@ def init_db():
     migrar_matriz_fecha_analista(cur)
     cur.execute("CREATE TABLE IF NOT EXISTS entregas_turno(id INTEGER PRIMARY KEY AUTOINCREMENT, nave TEXT, fecha TEXT, analista TEXT, turno TEXT, referencia TEXT, total_carga_datos REAL DEFAULT 0, total_horas_trabajadas REAL DEFAULT 0, creado_por TEXT, creado_en TEXT)")
     cur.execute("CREATE TABLE IF NOT EXISTS entregas_turno_lineas(id INTEGER PRIMARY KEY AUTOINCREMENT, entrega_id INTEGER, grupo TEXT, linea TEXT, producto_descripcion TEXT, horas_trabajadas REAL DEFAULT 0, carga_spac REAL DEFAULT 0, observaciones TEXT, orden_fila INTEGER DEFAULT 0)")
-    cur.execute("CREATE TABLE IF NOT EXISTS entregas_turno_seguimientos(id INTEGER PRIMARY KEY AUTOINCREMENT, entrega_id INTEGER, bloque TEXT, registro_numero TEXT, hoja_fisica TEXT, carga_electronica TEXT, correo TEXT, descripcion_seguimiento TEXT, orden_fila INTEGER DEFAULT 0)")
+    cur.execute("CREATE TABLE IF NOT EXISTS entregas_turno_seguimientos(id INTEGER PRIMARY KEY AUTOINCREMENT, entrega_id INTEGER, bloque TEXT, registro_numero TEXT, hoja_fisica TEXT, carga_electronica TEXT, correo TEXT, descripcion_seguimiento TEXT, datos_json TEXT DEFAULT '', orden_fila INTEGER DEFAULT 0)")
     migraciones_entrega={
       'entregas_turno':{'nave':'TEXT','fecha':'TEXT','analista':'TEXT','turno':'TEXT','referencia':'TEXT','total_carga_datos':'REAL DEFAULT 0','total_horas_trabajadas':'REAL DEFAULT 0','creado_por':'TEXT','creado_en':'TEXT'},
       'entregas_turno_lineas':{'entrega_id':'INTEGER','grupo':'TEXT','linea':'TEXT','producto_descripcion':'TEXT','horas_trabajadas':'REAL DEFAULT 0','carga_spac':'REAL DEFAULT 0','observaciones':'TEXT','orden_fila':'INTEGER DEFAULT 0','nave_catalogo':'TEXT'},
-      'entregas_turno_seguimientos':{'entrega_id':'INTEGER','bloque':'TEXT','registro_numero':'TEXT','hoja_fisica':'TEXT','carga_electronica':'TEXT','correo':'TEXT','descripcion_seguimiento':'TEXT','orden_fila':'INTEGER DEFAULT 0'}}
+      'entregas_turno_seguimientos':{'entrega_id':'INTEGER','bloque':'TEXT','registro_numero':'TEXT','hoja_fisica':'TEXT','carga_electronica':'TEXT','correo':'TEXT','descripcion_seguimiento':'TEXT','datos_json':'TEXT DEFAULT \'\'','orden_fila':'INTEGER DEFAULT 0'}}
     for tabla,columnas in migraciones_entrega.items():
         existentes={r[1] for r in cur.execute(f'PRAGMA table_info({tabla})').fetchall()}
         for columna,tipo_sql in columnas.items():
@@ -2845,10 +2881,11 @@ def page_entrega_turno():
         for ai,(grupo,linea,tipo_analisis) in enumerate(analisis):
             cc=st.columns([1.2,2,1.5,1,2]);cc[0].text_input('Grupo',grupo,disabled=True,key=f'et23_ag_{nave}_{ai}_{n}',label_visibility='collapsed');cc[1].text_input('Línea',linea,disabled=True,key=f'et23_al_{nave}_{ai}_{n}',label_visibility='collapsed');cc[2].text_input('Análisis',tipo_analisis,disabled=True,key=f'et23_at_{nave}_{ai}_{n}',label_visibility='collapsed');resultado=cc[3].text_input('Resultado',key=f'et23_ar_{nave}_{ai}_{n}',label_visibility='collapsed');obs=cc[4].text_input('Observaciones',key=f'et23_ao_{nave}_{ai}_{n}',label_visibility='collapsed');contador=st.number_input(f'Cantidad de análisis - {linea} - {tipo_analisis}',min_value=0.0,step=1.0,format='%.2f',key=f'et23_cnt_{nave}_{ai}_{n}');resultados.append((grupo,linea,tipo_analisis,resultado,obs,float(contador)))
         seguimientos=[];st.markdown('### Seguimientos')
-        for bi,bloque in enumerate(formato_seguimientos()):
+        for bi,bloque_cfg in enumerate(configuracion_seguimientos()):
+            bloque=bloque_cfg['nombre']
             with st.expander(bloque,expanded=bi<2):
-                base=pd.DataFrame([{'Registro #':'','Hoja física':'','Carga electrónica':'','Correo':'','Descripción del seguimiento':''} for _ in range(3)])
-                ed=st.data_editor(base,num_rows='dynamic',use_container_width=True,hide_index=True,key=f'et23_s_{nave}_{bi}_{n}',column_config={'Hoja física':st.column_config.SelectboxColumn(options=['','Sí','No','N/A']),'Carga electrónica':st.column_config.SelectboxColumn(options=['','Sí','No','N/A']),'Correo':st.column_config.SelectboxColumn(options=['','Sí','No','N/A'])});seguimientos.append((bloque,ed))
+                ed,meta=editor_seguimiento_dinamico(bloque_cfg,f'et23_s_{nave}_{bi}_{n}')
+                seguimientos.append((bloque,ed,meta))
         totales_nave,filas_clasificadas=clasificar_filas(filas);total_h=sum(totales_nave.values());total_c=sum(x[4] for x in filas)+sum(x[5] for x in resultados)
         m1,m2=st.columns(2);m1.metric('TOTAL DE CARGA DE DATOS',f'{total_c:.2f}');m2.metric('TOTAL GENERAL DE HORAS',f'{total_h:.2f}');q1,q2,q3=st.columns(3);q1.metric('HORAS NAVE 1',f"{totales_nave['Nave 1']:.2f}");q2.metric('HORAS NAVE 2',f"{totales_nave['Nave 2']:.2f}");q3.metric('HORAS NAVE 3',f"{totales_nave['Nave 3']:.2f}")
         if st.button('Guardar entrega de turno',type='primary',key=f'et23_g_{nave}_{n}'):
@@ -2865,10 +2902,14 @@ def page_entrega_turno():
                 base_orden=len(filas)
                 for j,(grupo,linea,tipo_analisis,resultado,obs,contador) in enumerate(resultados):
                     if resultado.strip() or obs.strip():exec_sql('INSERT INTO entregas_turno_lineas(entrega_id,grupo,linea,producto_descripcion,horas_trabajadas,carga_spac,observaciones,orden_fila) VALUES(?,?,?,?,?,?,?,?)',(eid,'ANÁLISIS '+grupo,linea,tipo_analisis,0,contador,(resultado+' | '+obs).strip(' |'),base_orden+j))
-                for bloque,df in seguimientos:
+                for bloque,df,meta in seguimientos:
                     for orden,row in df.iterrows():
-                        vals=[str(row.get(c,'') or '') for c in ['Registro #','Hoja física','Carga electrónica','Correo','Descripción del seguimiento']]
-                        if any(v.strip() for v in vals):exec_sql('INSERT INTO entregas_turno_seguimientos(entrega_id,bloque,registro_numero,hoja_fisica,carga_electronica,correo,descripcion_seguimiento,orden_fila) VALUES(?,?,?,?,?,?,?,?)',(eid,bloque,*vals,int(orden)))
+                        datos={str(col):('' if pd.isna(val) else str(val)) for col,val in row.to_dict().items()}
+                        if any(v.strip() for v in datos.values()):
+                            obligatorios=[nombre for nombre,cfg in meta.items() if cfg.get('obligatorio') and not datos.get(nombre,'').strip()]
+                            if obligatorios: st.warning(f'Seguimiento {bloque}: faltan campos obligatorios: '+', '.join(obligatorios)); continue
+                            legado=[datos.get(c,'') for c in ['Registro #','Hoja física','Carga electrónica','Correo','Descripción del seguimiento']]
+                            exec_sql('INSERT INTO entregas_turno_seguimientos(entrega_id,bloque,registro_numero,hoja_fisica,carga_electronica,correo,descripcion_seguimiento,datos_json,orden_fila) VALUES(?,?,?,?,?,?,?,?,?)',(eid,bloque,*legado,json.dumps(datos,ensure_ascii=False),int(orden)))
                 guardar_matriz(eid,fecha.isoformat(),analista,total_c,totales_nave);audit(st.session_state.auth['usuario'],'CREAR_ENTREGA_TURNO',f'{nave} | ID {eid}');st.session_state.entrega_nonce+=1;st.success(f'Entrega de turno guardada correctamente. Número {eid}');st.rerun()
         st.markdown('</div>',unsafe_allow_html=True)
         return
@@ -2891,10 +2932,11 @@ def page_entrega_turno():
             filas.append((grupo,linea,producto,float(horas),float(carga),obs,len(filas)))
         st.markdown('<div style="height:.7rem"></div>',unsafe_allow_html=True)
     seguimientos=[]; st.markdown('### Seguimientos')
-    for bi,bloque in enumerate(formato_seguimientos()):
+    for bi,bloque_cfg in enumerate(configuracion_seguimientos()):
+        bloque=bloque_cfg['nombre']
         with st.expander(bloque,expanded=bi<2):
-            base=pd.DataFrame([{'Registro #':'','Hoja física':'','Carga electrónica':'','Correo':'','Descripción del seguimiento':''} for _ in range(3)])
-            ed=st.data_editor(base,num_rows='dynamic',use_container_width=True,hide_index=True,key=f'et_s_{bi}_{n}',column_config={'Hoja física':st.column_config.SelectboxColumn(options=['','Sí','No','N/A']),'Carga electrónica':st.column_config.SelectboxColumn(options=['','Sí','No','N/A']),'Correo':st.column_config.SelectboxColumn(options=['','Sí','No','N/A'])}); seguimientos.append((bloque,ed))
+            ed,meta=editor_seguimiento_dinamico(bloque_cfg,f'et_s_{bi}_{n}')
+            seguimientos.append((bloque,ed,meta))
     totales_nave,filas_clasificadas=clasificar_filas(filas);total_h=sum(totales_nave.values());total_c=sum(x[4] for x in filas)
     m1,m2=st.columns(2);m1.metric('TOTAL DE CARGA DE DATOS',f'{total_c:.2f}');m2.metric('TOTAL GENERAL DE HORAS',f'{total_h:.2f}');q1,q2,q3=st.columns(3);q1.metric('HORAS NAVE 1',f"{totales_nave['Nave 1']:.2f}");q2.metric('HORAS NAVE 2',f"{totales_nave['Nave 2']:.2f}");q3.metric('HORAS NAVE 3',f"{totales_nave['Nave 3']:.2f}")
     if st.button('Guardar entrega de turno',type='primary',key=f'et_g_{n}'):
@@ -2908,10 +2950,14 @@ def page_entrega_turno():
             eid=exec_sql('INSERT INTO entregas_turno(nave,fecha,analista,turno,referencia,total_carga_datos,total_horas_trabajadas,creado_por,creado_en) VALUES(?,?,?,?,?,?,?,?,?)',(nave,fecha.isoformat(),analista,turno,referencia,total_c,total_h,st.session_state.auth['usuario'],now_iso()))
             for grupo,linea,producto,horas,carga,obs,orden,nvcat in filas_clasificadas:
                 if producto.strip() or horas or carga or obs.strip(): exec_sql('INSERT INTO entregas_turno_lineas(entrega_id,grupo,linea,producto_descripcion,horas_trabajadas,carga_spac,observaciones,orden_fila,nave_catalogo) VALUES(?,?,?,?,?,?,?,?,?)',(eid,grupo,linea,producto.strip(),horas,carga,obs.strip(),orden,nvcat))
-            for bloque,df in seguimientos:
+            for bloque,df,meta in seguimientos:
                 for orden,row in df.iterrows():
-                    vals=[str(row.get(c,'') or '') for c in ['Registro #','Hoja física','Carga electrónica','Correo','Descripción del seguimiento']]
-                    if any(v.strip() for v in vals): exec_sql('INSERT INTO entregas_turno_seguimientos(entrega_id,bloque,registro_numero,hoja_fisica,carga_electronica,correo,descripcion_seguimiento,orden_fila) VALUES(?,?,?,?,?,?,?,?)',(eid,bloque,*vals,int(orden)))
+                    datos={str(col):('' if pd.isna(val) else str(val)) for col,val in row.to_dict().items()}
+                    if any(v.strip() for v in datos.values()):
+                        obligatorios=[nombre for nombre,cfg in meta.items() if cfg.get('obligatorio') and not datos.get(nombre,'').strip()]
+                        if obligatorios: st.warning(f'Seguimiento {bloque}: faltan campos obligatorios: '+', '.join(obligatorios)); continue
+                        legado=[datos.get(c,'') for c in ['Registro #','Hoja física','Carga electrónica','Correo','Descripción del seguimiento']]
+                        exec_sql('INSERT INTO entregas_turno_seguimientos(entrega_id,bloque,registro_numero,hoja_fisica,carga_electronica,correo,descripcion_seguimiento,datos_json,orden_fila) VALUES(?,?,?,?,?,?,?,?,?)',(eid,bloque,*legado,json.dumps(datos,ensure_ascii=False),int(orden)))
             guardar_matriz(eid,fecha.isoformat(),analista,total_c,totales_nave);audit(st.session_state.auth['usuario'],'CREAR_ENTREGA_TURNO',f'Nave 1 | ID {eid}');st.session_state.entrega_nonce+=1;st.success(f'Entrega de turno guardada correctamente. Número {eid}');st.rerun()
     st.markdown('</div>',unsafe_allow_html=True)
 
@@ -3227,6 +3273,37 @@ def page_catalogos():
                 else: exec_sql('INSERT INTO catalogo_seguimientos_entrega(nombre,orden,activo) VALUES(?,?,1)',(nombre,int(orden)));audit(st.session_state.auth['usuario'],'AGREGAR_SEGUIMIENTO_ENTREGA',nombre);st.session_state.seg_nonce=ns+1;st.rerun()
         if sid:
             rr=read_df('SELECT * FROM catalogo_seguimientos_entrega WHERE id=?',(sid,)).iloc[0]
+            st.markdown('#### Campos configurables del seguimiento')
+            st.caption('Define el nombre del campo, el tipo de captura y sus opciones. Solo administradores pueden modificar esta configuración.')
+            campos_seg=read_df('SELECT id,nombre,tipo_campo,opciones,obligatorio,orden FROM catalogo_seguimientos_campos WHERE seguimiento_id=? AND activo=1 ORDER BY orden,id',(sid,))
+            vista_campos=campos_seg.rename(columns={'id':'ID','nombre':'Nombre del campo','tipo_campo':'Tipo','opciones':'Opciones','obligatorio':'Obligatorio','orden':'Orden'})
+            nc=st.session_state.get('seg_campos_nonce',0)
+            ec=st.dataframe(vista_campos,use_container_width=True,hide_index=True,on_select='rerun',selection_mode='single-row',key=f'seg_campos_{sid}_{nc}') if not vista_campos.empty else None
+            rc=getattr(ec,'selection',{}).get('rows',[]) if ec is not None else []
+            cid=int(vista_campos.iloc[rc[0]].ID) if rc and isinstance(rc[0],int) and 0<=rc[0]<len(vista_campos) else None
+            tipos_campo=['Texto','Texto largo','Número','Fecha','Lista desplegable','Sí / No / N/A']
+            with st.expander('Agregar campo al seguimiento'):
+                with st.form(f'seg_campo_add_{sid}',clear_on_submit=True):
+                    a,b,c,d=st.columns([2,1.4,2,1]); cn=a.text_input('Nombre del campo *'); ct=b.selectbox('Tipo de campo *',tipos_campo); co=c.text_input('Opciones',help='Para lista desplegable, separa las opciones con |'); cob=d.checkbox('Obligatorio'); cord=st.number_input('Orden del campo',0,step=1); ca=st.form_submit_button('Agregar campo',type='primary')
+                if ca:
+                    nombre_campo=cn.strip(); opciones_campo=co.strip() if ct=='Lista desplegable' else ('Sí|No|N/A' if ct=='Sí / No / N/A' else '')
+                    if not nombre_campo: st.error('Ingresa el nombre del campo.')
+                    elif ct=='Lista desplegable' and not opciones_campo: st.error('Captura al menos una opción para la lista desplegable.')
+                    else:
+                        exec_sql('INSERT INTO catalogo_seguimientos_campos(seguimiento_id,nombre,tipo_campo,opciones,obligatorio,orden,activo) VALUES(?,?,?,?,?,?,1) ON CONFLICT(seguimiento_id,nombre) DO UPDATE SET tipo_campo=excluded.tipo_campo,opciones=excluded.opciones,obligatorio=excluded.obligatorio,orden=excluded.orden,activo=1',(sid,nombre_campo,ct,opciones_campo,int(cob),int(cord)))
+                        audit(st.session_state.auth['usuario'],'AGREGAR_CAMPO_SEGUIMIENTO',f'Seguimiento {sid} | {nombre_campo}'); st.session_state.seg_campos_nonce=nc+1; st.rerun()
+            if cid:
+                cr=campos_seg[campos_seg.id==cid].iloc[0]
+                with st.expander('Editar campo seleccionado',expanded=True):
+                    with st.form(f'seg_campo_edit_{cid}'):
+                        a,b,c,d=st.columns([2,1.4,2,1]); cen=a.text_input('Nombre del campo *',str(cr.nombre)); cet=b.selectbox('Tipo de campo *',tipos_campo,index=idx_or_zero(tipos_campo,str(cr.tipo_campo))); ceo=c.text_input('Opciones',str(cr.opciones or ''),help='Separa las opciones con |'); ceob=d.checkbox('Obligatorio',value=bool(cr.obligatorio)); ceord=st.number_input('Orden del campo',0,value=int(cr.orden or 0),step=1); ceg=st.form_submit_button('Guardar campo',type='primary')
+                    if ceg:
+                        opciones_edit=ceo.strip() if cet=='Lista desplegable' else ('Sí|No|N/A' if cet=='Sí / No / N/A' else '')
+                        if not cen.strip(): st.error('Ingresa el nombre del campo.')
+                        elif cet=='Lista desplegable' and not opciones_edit: st.error('Captura las opciones de la lista desplegable.')
+                        else: exec_sql('UPDATE catalogo_seguimientos_campos SET nombre=?,tipo_campo=?,opciones=?,obligatorio=?,orden=? WHERE id=?',(cen.strip(),cet,opciones_edit,int(ceob),int(ceord),cid)); audit(st.session_state.auth['usuario'],'EDITAR_CAMPO_SEGUIMIENTO',f'ID {cid}'); st.session_state.seg_campos_nonce=nc+1; st.rerun()
+                if st.button('Eliminar campo seleccionado',key=f'seg_campo_del_{cid}'):
+                    exec_sql('UPDATE catalogo_seguimientos_campos SET activo=0 WHERE id=?',(cid,)); audit(st.session_state.auth['usuario'],'ELIMINAR_CAMPO_SEGUIMIENTO',f'ID {cid}'); st.session_state.seg_campos_nonce=nc+1; st.rerun()
             with st.expander('Editar seguimiento seleccionado',expanded=True):
                 with st.form(f'seg_editar_{sid}'):
                     a,b=st.columns([3,1]); ne=a.text_input('Seguimiento *',str(rr.nombre)); oe=b.number_input('Orden',0,value=int(rr.orden or 0),step=1); guardar=st.form_submit_button('Guardar cambios',type='primary')
