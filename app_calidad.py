@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 import altair as alt
-import sqlite3, hashlib, os, base64, json
+import sqlite3, hashlib, os, base64, json, re
 from io import BytesIO
 from openpyxl.styles import Font, PatternFill
 from datetime import datetime, date, timedelta
@@ -75,6 +75,74 @@ def check_password(p, stored):
     try:
         raw=base64.b64decode(str(stored).encode()); return hashlib.pbkdf2_hmac("sha256",p.encode(),raw[:16],120000)==raw[16:]
     except Exception: return False
+
+# Seguridad de entradas: bloquea URLs, dominios y etiquetas HTML/script en campos capturados.
+_PATRON_ENTRADA_PELIGROSA = re.compile(
+    r"(?is)(?:https?\s*:\s*/\s*/|www\s*\.|<\s*/?\s*[a-z][^>]*>|(?:javascript|data|vbscript)\s*:|"
+    r"\b(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+(?:com|net|org|mx|io|co|gov|edu|info|biz|app|dev|tech|online|site|xyz|me|tv|cloud)\b)"
+)
+
+
+def detectar_entrada_peligrosa(valor):
+    if valor is None or not isinstance(valor,str):
+        return None
+    texto=valor.strip()
+    if not texto:
+        return None
+    coincidencia=_PATRON_ENTRADA_PELIGROSA.search(texto)
+    return coincidencia.group(0) if coincidencia else None
+
+
+def entrada_segura(valor, campo='Campo'):
+    """Retorna (ok, texto). No transforma silenciosamente contenidos peligrosos."""
+    texto='' if valor is None else str(valor)
+    return (False,texto) if detectar_entrada_peligrosa(texto) else (True,texto)
+
+
+def _instalar_filtro_entradas_streamlit():
+    """Aplica el filtro a entradas libres sin cambiar selectores, fechas ni contraseñas."""
+    if getattr(st,'_filtro_seguridad_instalado',False):
+        return
+    original_text_input=st.text_input
+    original_text_area=st.text_area
+    original_data_editor=st.data_editor
+
+    def text_input_seguro(label,*args,**kwargs):
+        valor=original_text_input(label,*args,**kwargs)
+        if kwargs.get('type')=='password':
+            return valor
+        if detectar_entrada_peligrosa(valor):
+            st.error(f'{label}: no se permiten enlaces, dominios ni etiquetas HTML/script.')
+            return ''
+        return valor
+
+    def text_area_segura(label,*args,**kwargs):
+        valor=original_text_area(label,*args,**kwargs)
+        if detectar_entrada_peligrosa(valor):
+            st.error(f'{label}: no se permiten enlaces, dominios ni etiquetas HTML/script.')
+            return ''
+        return valor
+
+    def data_editor_seguro(data,*args,**kwargs):
+        resultado=original_data_editor(data,*args,**kwargs)
+        if isinstance(resultado,pd.DataFrame):
+            peligros=[]
+            for columna in resultado.columns:
+                for indice,valor in resultado[columna].items():
+                    if isinstance(valor,str) and detectar_entrada_peligrosa(valor):
+                        peligros.append(f'{columna}, fila {indice+1 if isinstance(indice,int) else indice}')
+                        resultado.at[indice,columna]=''
+            if peligros:
+                st.error('Se bloquearon enlaces o etiquetas HTML/script en: '+', '.join(peligros[:8])+'.')
+        return resultado
+
+    st.text_input=text_input_seguro
+    st.text_area=text_area_segura
+    st.data_editor=data_editor_seguro
+    st._filtro_seguridad_instalado=True
+
+
+_instalar_filtro_entradas_streamlit()
 
 def conn():
     preparar_sqlite()
@@ -1111,7 +1179,13 @@ def normalizar_estructura_formatos_entrega(cur):
 def init_db():
     UPLOAD_DIR.mkdir(exist_ok=True)
     c=conn(); cur=c.cursor()
-    cur.execute("CREATE TABLE IF NOT EXISTS usuarios(id INTEGER PRIMARY KEY AUTOINCREMENT, usuario TEXT UNIQUE, nombre TEXT, password_hash TEXT, rol TEXT, activo INTEGER DEFAULT 1, creado_en TEXT)")
+    cur.execute("CREATE TABLE IF NOT EXISTS usuarios(id INTEGER PRIMARY KEY AUTOINCREMENT, usuario TEXT UNIQUE, nombre TEXT, password_hash TEXT, rol TEXT, activo INTEGER DEFAULT 1, intentos_fallidos INTEGER DEFAULT 0, requiere_cambio_pass INTEGER DEFAULT 0, creado_en TEXT)")
+    columnas_usuarios={r[1] for r in cur.execute('PRAGMA table_info(usuarios)').fetchall()}
+    for columna,tipo_sql in {'intentos_fallidos':'INTEGER DEFAULT 0','requiere_cambio_pass':'INTEGER DEFAULT 0'}.items():
+        if columna not in columnas_usuarios:
+            cur.execute(f'ALTER TABLE usuarios ADD COLUMN {columna} {tipo_sql}')
+    cur.execute('UPDATE usuarios SET intentos_fallidos=0 WHERE intentos_fallidos IS NULL')
+    cur.execute('UPDATE usuarios SET requiere_cambio_pass=0 WHERE requiere_cambio_pass IS NULL')
     cur.execute("CREATE TABLE IF NOT EXISTS app_config(clave TEXT PRIMARY KEY,valor TEXT,actualizado_en TEXT)")
     cur.execute("CREATE TABLE IF NOT EXISTS catalogo_formatos_entrega(id INTEGER PRIMARY KEY AUTOINCREMENT,formato_nave TEXT NOT NULL,tipo TEXT NOT NULL,linea TEXT NOT NULL,sector TEXT NOT NULL,tipo_analisis TEXT DEFAULT '',orden_linea INTEGER DEFAULT 0,orden_sector INTEGER DEFAULT 0,activo INTEGER DEFAULT 1,UNIQUE(formato_nave,tipo,linea,sector,tipo_analisis))")
     cur.execute("CREATE TABLE IF NOT EXISTS catalogo_seguimientos_entrega(id INTEGER PRIMARY KEY AUTOINCREMENT,nombre TEXT NOT NULL,orden INTEGER DEFAULT 0,activo INTEGER DEFAULT 1,UNIQUE(nombre))")
@@ -1369,15 +1443,63 @@ def init_db():
 
 def reset_admin():
     pw=hash_password(ADMIN_PASS); c=conn(); cur=c.cursor(); cur.execute("SELECT id FROM usuarios WHERE usuario=?",(ADMIN_USER,)); exists=cur.fetchone()
-    if exists: cur.execute("UPDATE usuarios SET nombre=?, password_hash=?, rol=?, activo=1 WHERE usuario=?",("Administrador del sistema",pw,"desarrollador",ADMIN_USER))
-    else: cur.execute("INSERT INTO usuarios(usuario,nombre,password_hash,rol,activo,creado_en) VALUES(?,?,?,?,1,?)",(ADMIN_USER,"Administrador del sistema",pw,"desarrollador",now_iso()))
+    if exists: cur.execute("UPDATE usuarios SET nombre=?, password_hash=?, rol=?, activo=1, intentos_fallidos=0, requiere_cambio_pass=0 WHERE usuario=?",("Administrador del sistema",pw,"desarrollador",ADMIN_USER))
+    else: cur.execute("INSERT INTO usuarios(usuario,nombre,password_hash,rol,activo,intentos_fallidos,requiere_cambio_pass,creado_en) VALUES(?,?,?,?,1,0,0,?)",(ADMIN_USER,"Administrador del sistema",pw,"desarrollador",now_iso()))
     c.commit(); c.close()
 
 def auth_user(u,p):
-    c=conn(); cur=c.cursor(); cur.execute("SELECT usuario,nombre,password_hash,rol,activo FROM usuarios WHERE usuario=?",(u,)); row=cur.fetchone(); c.close()
-    if not row: return None
-    user,nombre,pw,rol,activo=row
-    return {"usuario":user,"nombre":nombre,"rol":rol} if activo==1 and check_password(p,pw) else None
+    """Autentica y controla 8 fallos: 5 base, 3 advertencias finales y bloqueo."""
+    usuario=str(u or '').strip()
+    c=conn(); cur=c.cursor()
+    cur.execute("SELECT id,usuario,nombre,password_hash,rol,activo,COALESCE(intentos_fallidos,0),COALESCE(requiere_cambio_pass,0) FROM usuarios WHERE usuario=?",(usuario,))
+    row=cur.fetchone()
+    if not row:
+        c.close()
+        return {'estado':'credenciales_invalidas','intentos':None,'restantes':None}
+    uid,user,nombre,pw,rol,activo,intentos,requiere=row
+    intentos=int(intentos or 0)
+    if int(activo or 0)!=1:
+        c.close()
+        return {'estado':'bloqueado','usuario':user}
+    if check_password(p,pw):
+        cur.execute('UPDATE usuarios SET intentos_fallidos=0 WHERE id=?',(uid,)); c.commit(); c.close()
+        return {'estado':'ok','usuario':user,'nombre':nombre,'rol':rol,'requiere_cambio_pass':int(requiere or 0)}
+    nuevos=intentos+1
+    bloqueado=nuevos>=8
+    cur.execute('UPDATE usuarios SET intentos_fallidos=?, activo=? WHERE id=?',(min(nuevos,8),0 if bloqueado else 1,uid))
+    c.commit(); c.close()
+    if bloqueado:
+        return {'estado':'bloqueado_por_intentos','usuario':user,'intentos':8,'restantes':0}
+    return {'estado':'advertencia' if nuevos>=6 else 'credenciales_invalidas','usuario':user,'intentos':nuevos,'restantes':8-nuevos}
+
+
+def cambiar_password_obligatoria():
+    auth=st.session_state.get('auth') or {}
+    if not auth or not int(auth.get('requiere_cambio_pass',0) or 0):
+        return
+    styles(False)
+    st.markdown('<div class="login-card"><div class="login-title">Cambio de contraseña obligatorio</div></div>',unsafe_allow_html=True)
+    st.warning('Debes actualizar la contraseña inicial antes de acceder al sistema.')
+    with st.form('cambio_password_obligatorio'):
+        nueva=st.text_input('Nueva contraseña',type='password')
+        confirmar=st.text_input('Confirmar nueva contraseña',type='password')
+        guardar=st.form_submit_button('Actualizar contraseña',type='primary')
+    if guardar:
+        errores=[]
+        if len(nueva)<8: errores.append('mínimo 8 caracteres')
+        if not re.search(r'[A-ZÁÉÍÓÚÑ]',nueva): errores.append('una mayúscula')
+        if not re.search(r'[a-záéíóúñ]',nueva): errores.append('una minúscula')
+        if not re.search(r'\d',nueva): errores.append('un número')
+        if nueva!=confirmar: errores.append('las contraseñas deben coincidir')
+        if errores:
+            st.error('La contraseña requiere: '+', '.join(errores)+'.')
+        else:
+            exec_sql('UPDATE usuarios SET password_hash=?,requiere_cambio_pass=0,intentos_fallidos=0 WHERE usuario=?',(hash_password(nueva),auth['usuario']))
+            audit(auth['usuario'],'CAMBIO_PASSWORD_OBLIGATORIO','Contraseña inicial actualizada')
+            st.session_state.auth['requiere_cambio_pass']=0
+            st.success('Contraseña actualizada correctamente.')
+            st.rerun()
+    st.stop()
 
 def audit(u,a,d): exec_sql("INSERT INTO auditoria(usuario,accion,detalle,fecha_hora) VALUES(?,?,?,?)",(u,a,d,now_iso()))
 def normalizar_nave(valor):
@@ -1858,9 +1980,23 @@ def login():
         with st.form('login_form'):
             u=st.text_input('Usuario'); p=st.text_input('Contraseña',type='password'); ok=st.form_submit_button('Ingresar')
     if ok:
-        au=auth_user(u.strip(),p.strip())
-        if au: st.session_state.auth=au; audit(au['usuario'],'LOGIN','Ingreso correcto'); st.rerun()
-        else: st.error('Usuario o contraseña incorrectos.')
+        au=auth_user(u.strip(),p)
+        estado=au.get('estado') if au else 'credenciales_invalidas'
+        if estado=='ok':
+            st.session_state.auth={k:au[k] for k in ('usuario','nombre','rol','requiere_cambio_pass')}
+            audit(au['usuario'],'LOGIN','Ingreso correcto')
+            st.rerun()
+        elif estado=='bloqueado_por_intentos':
+            audit(au.get('usuario') or u.strip(),'BLOQUEO_LOGIN','Cuenta bloqueada al alcanzar 8 intentos fallidos')
+            st.error('Cuenta bloqueada por alcanzar 8 intentos fallidos. Solicita la reactivación a un desarrollador.')
+        elif estado=='bloqueado':
+            st.error('La cuenta está bloqueada o inhabilitada. Solicita la reactivación a un desarrollador.')
+        elif estado=='advertencia':
+            st.warning(f"Advertencia final: intento {au['intentos']} de 8. Quedan {au['restantes']} intento(s) antes del bloqueo.")
+        else:
+            restantes=au.get('restantes')
+            detalle=f" Quedan {restantes} intento(s)." if restantes is not None else ''
+            st.error('Usuario o contraseña incorrectos.'+detalle)
     st.stop()
 
 def topbar(user):
@@ -3363,6 +3499,22 @@ def page_usuarios():
     st.title('Administración de usuarios')
     st.caption('Selecciona directamente un registro de la tabla para editar, habilitar, inhabilitar o eliminar la cuenta.')
     if 'usuarios_nonce' not in st.session_state: st.session_state.usuarios_nonce=0
+    bloqueados=read_df("SELECT id,usuario,nombre,rol,COALESCE(intentos_fallidos,0) AS intentos_fallidos FROM usuarios WHERE activo=0 ORDER BY intentos_fallidos DESC,usuario")
+    with st.expander(f'🔓 Habilitación de cuentas bloqueadas ({len(bloqueados)})',expanded=not bloqueados.empty):
+        if bloqueados.empty:
+            st.info('No hay usuarios bloqueados.')
+        else:
+            st.dataframe(bloqueados.rename(columns={'id':'ID','usuario':'Usuario','nombre':'Nombre','rol':'Rol','intentos_fallidos':'Intentos fallidos'}),use_container_width=True,hide_index=True)
+            opciones_bloqueados={f"{r.usuario} | {r.nombre}":int(r.id) for r in bloqueados.itertuples()}
+            seleccion_bloqueado=st.selectbox('Cuenta bloqueada',list(opciones_bloqueados),key='usuario_bloqueado_reactivar')
+            if st.button('Reactivar cuenta y reiniciar intentos',type='primary',key='reactivar_usuario_bloqueado'):
+                bid=opciones_bloqueados[seleccion_bloqueado]
+                usuario_bloqueado=str(bloqueados[bloqueados.id==bid].iloc[0].usuario)
+                exec_sql('UPDATE usuarios SET activo=1,intentos_fallidos=0 WHERE id=?',(bid,))
+                audit(st.session_state.auth['usuario'],'REACTIVAR_USUARIO_BLOQUEADO',f'ID {bid} | {usuario_bloqueado}')
+                st.session_state.usuarios_nonce+=1
+                st.success('Cuenta reactivada correctamente. Los intentos fallidos se reiniciaron.')
+                st.rerun()
     st.subheader('Crear usuario')
     with st.expander('Agregar nuevo usuario',expanded=False):
         with st.form('crear_usuario_form',clear_on_submit=True):
@@ -3382,14 +3534,14 @@ def page_usuarios():
             if faltan: st.error('Completa los campos obligatorios: '+', '.join(faltan)+'.')
             elif not read_df('SELECT id FROM usuarios WHERE usuario=?',(usuario,)).empty: st.error('No fue posible crear la cuenta porque el nombre de usuario ya está registrado.')
             else:
-                exec_sql('INSERT INTO usuarios(usuario,nombre,password_hash,rol,activo,creado_en) VALUES(?,?,?,?,1,?)',(usuario,nombre,hash_password(password),nuevo_rol,now_iso()))
+                exec_sql('INSERT INTO usuarios(usuario,nombre,password_hash,rol,activo,intentos_fallidos,requiere_cambio_pass,creado_en) VALUES(?,?,?,?,1,0,1,?)',(usuario,nombre,hash_password(password),nuevo_rol,now_iso()))
                 audit(st.session_state.auth['usuario'],'CREAR_USUARIO',f'Usuario {usuario} | Rol {nuevo_rol}')
                 st.session_state.usuarios_nonce+=1; st.success('Usuario creado correctamente.'); st.rerun()
     st.subheader('Usuarios registrados')
-    usuarios=read_df("""SELECT id,usuario,nombre,rol,CASE WHEN activo=1 THEN 'Habilitado' ELSE 'Inhabilitado' END AS estado,creado_en FROM usuarios ORDER BY id""")
+    usuarios=read_df("""SELECT id,usuario,nombre,rol,COALESCE(intentos_fallidos,0) AS intentos_fallidos,COALESCE(requiere_cambio_pass,0) AS requiere_cambio_pass,CASE WHEN activo=1 THEN 'Habilitado' ELSE 'Bloqueado / Inhabilitado' END AS estado,creado_en FROM usuarios ORDER BY id""")
     if usuarios.empty:
         st.info('No se encontraron usuarios registrados.'); return
-    vista=usuarios.rename(columns={'id':'ID','usuario':'Usuario','nombre':'Nombre completo','rol':'Rol','estado':'Estado','creado_en':'Fecha de creación'})
+    vista=usuarios.rename(columns={'id':'ID','usuario':'Usuario','nombre':'Nombre completo','rol':'Rol','intentos_fallidos':'Intentos fallidos','requiere_cambio_pass':'Cambio de contraseña pendiente','estado':'Estado','creado_en':'Fecha de creación'})
     evento=st.dataframe(vista,use_container_width=True,hide_index=True,on_select='rerun',selection_mode='single-row',key=f'usuarios_tabla_{st.session_state.usuarios_nonce}')
     filas=getattr(evento,'selection',{}).get('rows',[]) if evento is not None else []
     valido=bool(filas) and isinstance(filas[0],int) and 0<=filas[0]<len(vista)
@@ -3419,7 +3571,7 @@ def page_usuarios():
             elif str(r['usuario'])==ADMIN_USER and rol_editado!='desarrollador': st.error('La cuenta administradora principal debe conservar el rol de administrador/desarrollador.')
             else:
                 if nueva:
-                    exec_sql('UPDATE usuarios SET usuario=?,nombre=?,rol=?,password_hash=? WHERE id=?',(usuario,nombre,rol_editado,hash_password(nueva),rid))
+                    exec_sql('UPDATE usuarios SET usuario=?,nombre=?,rol=?,password_hash=?,requiere_cambio_pass=1,intentos_fallidos=0 WHERE id=?',(usuario,nombre,rol_editado,hash_password(nueva),rid))
                 else:
                     exec_sql('UPDATE usuarios SET usuario=?,nombre=?,rol=? WHERE id=?',(usuario,nombre,rol_editado,rid))
                 audit(st.session_state.auth['usuario'],'EDITAR_USUARIO',f'ID {rid} | Usuario {usuario} | Rol {rol_editado}')
@@ -3441,7 +3593,7 @@ def page_usuarios():
         else:
             exec_sql('UPDATE usuarios SET activo=0 WHERE id=?',(rid,)); audit(st.session_state.auth['usuario'],'INHABILITAR_USUARIO',f'ID {rid} | {r["usuario"]}'); st.session_state.usuarios_nonce+=1; st.success('Usuario inhabilitado correctamente.'); st.rerun()
     if habilitar:
-        exec_sql('UPDATE usuarios SET activo=1 WHERE id=?',(rid,)); audit(st.session_state.auth['usuario'],'HABILITAR_USUARIO',f'ID {rid} | {r["usuario"]}'); st.session_state.usuarios_nonce+=1; st.success('Usuario habilitado correctamente.'); st.rerun()
+        exec_sql('UPDATE usuarios SET activo=1,intentos_fallidos=0 WHERE id=?',(rid,)); audit(st.session_state.auth['usuario'],'HABILITAR_USUARIO',f'ID {rid} | {r["usuario"]}'); st.session_state.usuarios_nonce+=1; st.success('Usuario habilitado correctamente.'); st.rerun()
     if eliminar: st.session_state.usuario_confirmar_eliminacion=rid
     if st.session_state.get('usuario_confirmar_eliminacion')==rid:
         st.warning('La cuenta se eliminará de forma permanente. Los registros históricos y de auditoría asociados conservarán el nombre de usuario.')
@@ -3461,6 +3613,7 @@ def main():
     if FORCE_RESET_ADMIN and ADMIN_PASS:
         reset_admin()
     user=login()
+    cambiar_password_obligatoria()
     styles(False)
     left_col, right_col = st.columns([0.19, 0.81], gap='large')
     with left_col:
