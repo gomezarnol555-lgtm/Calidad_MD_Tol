@@ -1,8 +1,6 @@
-streamlit
-pandas
-openpyxl
-reportlab
-pypdf
-PyMuPDF
-psycopg[binary]
-supabase
+streamlit>=1.41
+pandas>=2.2
+altair>=5.4
+openpyxl>=3.1
+reportlab>=4.2
+supabase>=2.20
