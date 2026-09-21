@@ -54,8 +54,8 @@ def preparar_sqlite():
             prueba.execute('CREATE TABLE IF NOT EXISTS __verificacion_sqlite(id INTEGER)')
             prueba.execute('DROP TABLE IF EXISTS __verificacion_sqlite'); prueba.commit()
     _DB_READY=True
-# Seguridad: el administrador inicial solo se crea cuando se proporcionan variables de entorno.
-# Nunca se restablece una contraseña en cada arranque.
+#Para crear el administrador inicial unicamente con las variables de entorno.
+#Para conservar la contraseña actual en cada reinicio.
 FORCE_RESET_ADMIN = os.getenv("CALIDAD_FORCE_RESET_ADMIN", "0").strip() == "1"
 ADMIN_USER = os.getenv("CALIDAD_ADMIN_USER", "admin").strip() or "admin"
 ADMIN_PASS = os.getenv("CALIDAD_ADMIN_PASS", "").strip()
@@ -76,7 +76,7 @@ def check_password(p, stored):
         raw=base64.b64decode(str(stored).encode()); return hashlib.pbkdf2_hmac("sha256",p.encode(),raw[:16],120000)==raw[16:]
     except Exception: return False
 
-# Seguridad de entradas: bloquea URLs, dominios y etiquetas HTML/script en campos capturados.
+#Para bloquear enlaces, dominios y etiquetas HTML o script en los campos de captura.
 _PATRON_ENTRADA_PELIGROSA = re.compile(
     r"(?is)(?:https?\s*:\s*/\s*/|www\s*\.|<\s*/?\s*[a-z][^>]*>|(?:javascript|data|vbscript)\s*:|"
     r"\b(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+(?:com|net|org|mx|io|co|gov|edu|info|biz|app|dev|tech|online|site|xyz|me|tv|cloud)\b)"
@@ -251,11 +251,11 @@ def pdf_pnc(rid):
     c.setTitle('Informe de Producto No Conforme')
     c.setLineWidth(1.1); c.rect(10,10,W-20,H-20)
     izq=58; der=W-58; ancho=der-izq
-    # Encabezado
+    #Para generar el encabezado del formato.
     sup=742; alto=52; logo=132; revision=58
     c.setLineWidth(.7); c.rect(izq,sup-alto,ancho,alto)
     c.line(izq+logo,sup-alto,izq+logo,sup); c.line(der-revision,sup-alto,der-revision,sup)
-    # Logotipo corporativo integrado directamente en el codigo mediante Base64.
+    #Para integrar el logotipo corporativo directamente desde Base64.
     try:
         logo_bytes=BytesIO(base64.b64decode(LOGO_MUNDO_DULCE_BASE64))
         c.drawImage(ImageReader(logo_bytes),izq+8,sup-alto+7,width=logo-16,height=alto-14,preserveAspectRatio=True,anchor='c',mask='auto')
@@ -265,13 +265,13 @@ def pdf_pnc(rid):
     c.setFont('Helvetica',8.3); c.drawCentredString((centro_izq+centro_der)/2,sup-19,'Anexo 5. Informe de Producto No Conforme')
     c.drawCentredString((centro_izq+centro_der)/2,sup-39,'PG-CAL01-2301-01760-2007')
     c.drawCentredString(der-revision/2,sup-31,'Rev. 0')
-    # Folio
+    #Para mostrar el folio del registro.
     y=665; texto(c,'PNC No.',der-100,y+5,8.5); c.rect(der-58,y,58,18)
     fecha_pnc=valor('fecha_apertura')
     try: anio_pnc=str(pd.to_datetime(fecha_pnc).year)
     except Exception: anio_pnc=str(datetime.now().year)
     ajustar(c,f'{rid}/{anio_pnc}',der-55,y+5,52,8,True)
-    # Datos registrados
+    #Para mostrar la informacion registrada.
     producto=' - '.join(x for x in [valor('item'),valor('descripcion_producto')] if x)
     cantidad=valor('cantidad_observada')
     try: cantidad=f"{float(cantidad):.2f} kg"
@@ -285,15 +285,15 @@ def pdf_pnc(rid):
         limite=arriba-i*fila_alto
         if i: c.line(izq,limite,der,limite)
         texto(c,nombre,izq+2,limite-fila_alto+6,7.8); ajustar(c,dato,izq+etiqueta+3,limite-fila_alto+6,ancho-etiqueta-6,7.8)
-    # Acciones inmediatas
+    #Para mostrar las acciones inmediatas.
     acciones_sup=495; acciones_alto=112
     c.rect(izq,acciones_sup-acciones_alto,ancho,acciones_alto); c.line(izq,acciones_sup-18,der,acciones_sup-18)
     c.setFont('Helvetica',8.5); c.drawCentredString(izq+ancho/2,acciones_sup-13,'Acciones inmediatas')
     parrafo(c,valor('acciones_inmediatas'),izq+6,acciones_sup-32,ancho-12)
-    # Responsable
+    #Para mostrar al responsable del registro.
     responsable_y=348; c.rect(izq,responsable_y,ancho,18)
     ajustar(c,'Responsable: '+(valor('analista') or valor('supervisor')),izq+3,responsable_y+5,ancho-6,8)
-    # Observaciones
+    #Para mostrar las observaciones registradas.
     obs_sup=331; obs_alto=115
     c.rect(izq,obs_sup-obs_alto,ancho,obs_alto); c.line(izq,obs_sup-18,der,obs_sup-18)
     c.setFont('Helvetica',8.5); c.drawCentredString(izq+ancho/2,obs_sup-13,'Observaciones')
@@ -350,13 +350,13 @@ def pdf_pnc_fisico(rid):
         fit(c,'Reverso' if reverso else 'NUMERO',x2+2,top-28,x3-x2-4,10,False,True)
     b=BytesIO(); c=canvas.Canvas(b,pagesize=A4); W,H=A4
     c.setTitle('Registro Fisico de Producto No Conforme')
-    # Pagina 1: formato A4 fiel a la referencia.
+    #Para conservar el formato de la primera pagina en tamaño A4.
     encabezado(c)
     try: anio=str(pd.to_datetime(v('fecha_apertura')).year)
     except Exception: anio=str(datetime.now().year)
     fit(c,f'{rid:03d}/{anio[-2:]}',496,765,59,10,True,True)
     t(c,'Sector:',39,733,10); c.line(79,731,404,731); fit(c,v('linea_sector'),82,734,319,10)
-    # Identificacion
+    #Para mostrar la informacion de identificacion.
     x0,x3=38,557; top_id,bot_id=711,498
     c.setLineWidth(.8); c.rect(x0,bot_id,x3-x0,top_id-bot_id)
     c.rect(x0,top_id-18,x3-x0,18); c.setFont('Helvetica-Bold',10); c.drawCentredString((x0+x3)/2,top_id-13,'IDENTIFICACION')
@@ -365,7 +365,7 @@ def pdf_pnc_fisico(rid):
     if v('cantidad_observada'):
         try: cantidad=f"{float(v('cantidad_observada')):.2f} kg"
         except Exception: cantidad=v('cantidad_observada')
-    # ITEM y producto comparten una fila como en el formato fisico.
+    #Para mostrar el ITEM y el producto en la misma fila del formato fisico.
     campos=[('Código:',codigo,681),('Fecha:',fecha_es(v('fecha_apertura')),648),('ITEM:',v('item'),615),('Lote:',v('lote'),582),('Cantidad observada:',cantidad,549),('Responsable / Persona que detecta:',' / '.join(x for x in [v('supervisor'),v('analista')] if x),516)]
     for etiqueta,valor,y in campos:
         tam_campo=9.6
@@ -376,7 +376,7 @@ def pdf_pnc_fisico(rid):
     t(c,etiqueta_producto,300,615,9.6)
     producto_x=300+stringWidth(etiqueta_producto,'Helvetica',9.6)+9
     fit(c,v('descripcion_producto'),producto_x,615,x3-producto_x-6,9.2)
-    # Disposicion
+    #Para mostrar la disposicion seleccionada.
     top_d,bot_d=482,350; medio=300
     c.rect(x0,bot_d,x3-x0,top_d-bot_d); c.rect(x0,top_d-18,x3-x0,18)
     c.setFont('Helvetica-Bold',10); c.drawCentredString((x0+x3)/2,top_d-13,'DISPOSICION')
@@ -391,10 +391,10 @@ def pdf_pnc_fisico(rid):
         normal_op=op.lower().replace('inspeccion','inspección')
         if normal_op==actual or op.lower()==actual:
             c.setFont('Helvetica-Bold',12); c.drawCentredString(81,y, 'X')
-    # Fecha arriba y nombre del analista abajo. Sin firma autogenerada.
+    #Para mostrar la fecha en la parte superior y el nombre del analista abajo, sin generar firma.
     fit(c,fecha_es(v('fecha_apertura')),307,430,242,10,False,True)
     fit(c,v('analista'),307,365,242,10,False,True)
-    # Tratamiento: estructura vacia.
+    #Para conservar disponible la seccion de tratamiento.
     top_t,bot_t=334,216
     c.rect(x0,bot_t,x3-x0,top_t-bot_t); c.rect(x0,top_t-18,x3-x0,18)
     c.setFont('Helvetica-Bold',10); c.drawCentredString((x0+x3)/2,top_t-13,'TRATAMIENTO')
@@ -416,7 +416,7 @@ def pdf_pnc_fisico(rid):
     for texto,x,y in titulos:
         for j,linea in enumerate(texto.split('\n')):
             t(c,linea,x,y-j*11,8.9)
-    # Consideraciones: estructura vacia.
+    #Para conservar disponible la seccion de consideraciones.
     top_c,bot_c=198,76
     c.rect(x0,bot_c,x3-x0,top_c-bot_c); c.rect(x0,top_c-18,x3-x0,18)
     c.setFont('Helvetica-Bold',10); c.drawCentredString((x0+x3)/2,top_c-13,'CONSIDERACIONES DE TRABAJO')
@@ -424,7 +424,7 @@ def pdf_pnc_fisico(rid):
     for etiqueta,y in filas: t(c,etiqueta,x0+2,y,9); c.line(x0,y-5,x3,y-5)
     c.line(300,bot_c,300,top_c-93); t(c,'Fecha:',x0+2,bot_c+7,9); t(c,'Nombre y firma:',302,bot_c+7,9)
     c.showPage()
-    # Pagina 2: todo el reverso usa el mismo tamaño de 10.5 pt y el ancho completo del encabezado.
+    #Para mantener el reverso en 10.5 puntos y utilizar todo el ancho del encabezado.
     encabezado(c,True)
     TAM_REVERSO=10.5
     X_REVERSO=38
@@ -531,7 +531,7 @@ def _pdf_hallazgo_base(tabla,rid,tipo_formato):
     c.setLineWidth(.8)
     if tipo_formato=='ME':
         c.setTitle('Reporte de Hallazgos de Materia Extraña')
-        # Encabezado de la primera imagen
+        #Para generar el encabezado del formato. de la primera imagen
         x0=45; x1=198; x2=508; x3=558; top=800; bot=758
         c.rect(x0,bot,x3-x0,top-bot); c.line(x1,bot,x1,top); c.line(x2,bot,x2,top)
         logo(c,x0+15,bot+6,x1-x0-30,top-bot-12)
@@ -547,7 +547,7 @@ def _pdf_hallazgo_base(tabla,rid,tipo_formato):
         t(c,'Descripción de material hallado:',46,596,7.5)
         c.line(222,594,557,594); c.line(45,579,557,579); c.line(45,564,557,564)
         wrap(c,v('descripcion_hallazgo'),225,596,329,7.5,14,3)
-        # Cuadro de muestra
+        #Para mostrar el espacio destinado a la muestra.
         c.rect(45,339,512,210); t(c,'Muestra Hallazgo de Materia Extraña:',48,537,7.2)
         detalle='Tipo: '+v('tipo')+' | Partículas halladas: '+v('particulas_halladas')
         fit(c,detalle,48,522,500,7)
@@ -555,15 +555,15 @@ def _pdf_hallazgo_base(tabla,rid,tipo_formato):
         wrap(c,v('accion_contingente') or v('acciones_inmediatas'),48,299,506,7.5,14,2)
         t(c,'Investigación del origen:',46,254,7.5); c.line(45,238,557,238); c.line(45,223,557,223); c.line(45,208,557,208)
         wrap(c,v('investigacion_origen'),48,241,506,7.5,14,3)
-        # Firmas
+        #Para mostrar los espacios correspondientes a las firmas.
         for cx,titulo in [(165,'Calidad'),(306,'Producción'),(448,'Mantenimiento')]:
             c.line(cx-57,142,cx+57,142); c.setFont('Helvetica',7); c.drawCentredString(cx,129,titulo); c.drawCentredString(cx,117,'(Nombre y Firma)')
     else:
         c.setTitle('Registro de Materiales Segregados por Detector de Metales')
-        # Encabezado de la segunda imagen
-        # A4 mide 595.28 pt de ancho. El formato anterior terminaba en x=609,
-        # por lo que el borde derecho y varios campos quedaban fuera de la pagina.
-        # Se conserva la estructura y la logica, ajustando solo la geometria horizontal.
+        #Para generar el encabezado del formato. de la segunda imagen
+        #Para ajustar el formato al ancho disponible de una hoja A4.
+        #Para evitar que el borde derecho y los campos salgan de la pagina.
+        #Para conservar la estructura actual y ajustar unicamente la distribucion horizontal.
         x0=27; x1=187; x2=506; x3=568; top=805; mid=772; bot=720
         c.rect(x0,bot,x3-x0,top-bot); c.line(x1,bot,x1,top); c.line(x2,bot,x2,top); c.line(x1,mid,x2,mid)
         logo(c,x0+18,bot+16,x1-x0-36,top-bot-30)
@@ -576,7 +576,7 @@ def _pdf_hallazgo_base(tabla,rid,tipo_formato):
         t(c,'FECHA:',28,602,8,True); fit(c,fecha_registro(),119,602,180,8)
         t(c,'LINEA DE ELABORACIÓN / EQUIPO:',28,547,8,True); c.line(270,545,x3,545); fit(c,v('linea_sector')+' / '+v('equipo_hallazgo'),273,547,x3-276,7.8)
         t(c,'SECTOR DEL HALLAZGO:',28,520,8,True)
-        # Las opciones se marcan por coincidencia con la descripción, cuando existe.
+        #Para marcar la opcion que coincida con la descripcion registrada.
         ubic=(v('descripcion_hallazgo')+' '+v('equipo_hallazgo')).upper()
         sector_explicito=normalizar_catalogo(v('sector_hallazgo'))
         ubicacion_explicita=normalizar_catalogo(v('ubicacion_material'))
@@ -593,7 +593,7 @@ def _pdf_hallazgo_base(tabla,rid,tipo_formato):
             t(c,nombre,label_x,303,7.0); c.rect(box_x,295,30,15)
             if normalizar_catalogo(nombre)==ubicacion_explicita or (not ubicacion_explicita and nombre in ubic): c.setFont('Helvetica-Bold',11); c.drawCentredString(box_x+15,297,'X')
         t(c,'ADJUNTAR AQUÍ MUESTRA DEL MATERIAL HALLADO',28,267,8,True)
-        # Área amplia para colocar muestra física
+        #Para dejar espacio suficiente para colocar la muestra fisica.
         c.rect(x0,143,x3-x0,105)
         t(c,'ACCIÓN INMEDIATA:',28,112,8,True); c.line(187,110,x3,110)
         fit(c,v('acciones_inmediatas') or v('accion_contingente'),190,112,x3-194,7.5)
@@ -687,8 +687,8 @@ def tabla_diaria_editable(tabla,tipo_entidad,columna_entidad,key):
         st.dataframe(estilo_faltantes_matriz(vista),use_container_width=True,hide_index=True)
         return
 
-    # Streamlit no conserva el color de fondo en celdas numericas editables.
-    # Para no duplicar la tabla, los vacios se muestran como un marcador rojo editable.
+    #Para que los espacios vacios se muestren con un marcador rojo y sean editables solo por desarrolladores.
+    #Para mantener una sola tabla y sustituir el marcador rojo por el valor correspondiente.
     editable=vista.copy()
     columnas_valor=[c for c in editable.columns if c!=columna_entidad]
     for c in columnas_valor:
@@ -1023,7 +1023,7 @@ def migrar_catalogo_formatos_entrega(cur):
     cur.execute('ALTER TABLE catalogo_formatos_entrega RENAME TO catalogo_formatos_entrega_anterior')
     cur.execute("CREATE TABLE catalogo_formatos_entrega(id INTEGER PRIMARY KEY AUTOINCREMENT,formato_nave TEXT NOT NULL,tipo TEXT NOT NULL,linea TEXT NOT NULL,sector TEXT NOT NULL,tipo_analisis TEXT DEFAULT '',orden_linea INTEGER DEFAULT 0,orden_sector INTEGER DEFAULT 0,activo INTEGER DEFAULT 1,UNIQUE(formato_nave,tipo,linea,sector,tipo_analisis))")
     anteriores={r[1] for r in cur.execute('PRAGMA table_info(catalogo_formatos_entrega_anterior)').fetchall()}
-    # Versión antigua: grupo representaba Línea y linea representaba Sector.
+    #Para interpretar correctamente los campos Linea y Sector de versiones anteriores.
     if 'grupo' in anteriores:
         expr_linea="CASE WHEN TRIM(COALESCE(grupo,''))='MD - Car. Duros - FABRIMA' THEN 'FABRIMA' WHEN TRIM(COALESCE(grupo,''))='CAVE1000 / MOLDEO' THEN 'CV1000' ELSE TRIM(COALESCE(grupo,'')) END"
         expr_sector="TRIM(COALESCE(linea,''))"
@@ -1046,7 +1046,7 @@ def migrar_catalogo_formatos_entrega(cur):
         FROM catalogo_formatos_entrega_anterior
         WHERE {expr_nave}<>'' AND {expr_linea}<>'' AND {expr_sector}<>''""")
     cur.execute('DROP TABLE catalogo_formatos_entrega_anterior')
-    # Fuerza la revisión de semillas para completar formatos faltantes sin duplicar los existentes.
+    #Para completar los formatos faltantes sin duplicar los registros existentes.
     cur.execute("DELETE FROM app_config WHERE clave='formatos_entrega_linea_sector_v2'")
 
 def asegurar_columnas_catalogos(cur):
@@ -1082,14 +1082,14 @@ def asegurar_columnas_catalogos(cur):
                     try:
                         cur.execute(f'ALTER TABLE "{tabla}" ADD COLUMN "{columna}" {tipo_sql}')
                     except sqlite3.OperationalError:
-                        # Otra ejecución o una estructura antigua pudo agregarla previamente.
+                        #Para continuar si la columna ya fue agregada en una ejecucion anterior.
                         pass
         except sqlite3.OperationalError:
-            # La migración de un catálogo no debe bloquear el resto de la aplicación.
+            #Para evitar que una migracion de catalogo detenga el inicio de la aplicacion.
             continue
 
-    # Normalizaciones opcionales y protegidas. Primero se vuelve a consultar el
-    # esquema real, porque CREATE TABLE IF NOT EXISTS no modifica tablas antiguas.
+    #Para aplicar las normalizaciones solo despues de consultar
+    #el esquema real de las tablas existentes.
     for tabla in ('productos','defectos','catalogos','catalogo_naves_lineas'):
         try:
             existe=cur.execute(
@@ -1130,7 +1130,7 @@ def normalizar_estructura_formatos_entrega(cur):
         'Flow Pack Bosch','Yamato de Poosh','Encajillado GD´s','MBP 700'
     ]
     for nave in ('Nave 2','Nave 3'):
-        # Traslada al encabezado ENVASADO los sectores que estaban bajo TROQUEL DE POOSH.
+        #Para mover a ENVASADO los sectores que antes estaban dentro de TROQUEL DE POOSH.
         filas=cur.execute("""SELECT id,sector,orden_linea,orden_sector
             FROM catalogo_formatos_entrega
             WHERE formato_nave=? AND tipo='PROCESO' AND activo=1
@@ -1153,7 +1153,7 @@ def normalizar_estructura_formatos_entrega(cur):
                 cur.execute("""UPDATE catalogo_formatos_entrega
                     SET linea='ENVASADO',sector=?,orden_linea=8,orden_sector=? WHERE id=?""",
                     (destino,int(orden_sector or 0),rid))
-        # Garantiza un único valor para TROQUEL DE POOSH.
+        #Para conservar un solo valor activo de TROQUEL DE POOSH.
         propio=cur.execute("""SELECT id FROM catalogo_formatos_entrega
             WHERE formato_nave=? AND tipo='PROCESO'
               AND UPPER(TRIM(linea))='TROQUEL DE POOSH'
@@ -1164,7 +1164,7 @@ def normalizar_estructura_formatos_entrega(cur):
             cur.execute("""INSERT OR IGNORE INTO catalogo_formatos_entrega
                 (formato_nave,tipo,linea,sector,tipo_analisis,orden_linea,orden_sector,activo)
                 VALUES(?,?,?,?,?,?,?,1)""",(nave,'PROCESO','TROQUEL DE POOSH','TROQUEL DE POOSH','',7,0))
-        # Completa ENVASADO sin duplicar y solo para esta migración inicial.
+        #Para completar ENVASADO sin generar duplicados durante la migracion inicial.
         for pos,sector in enumerate(sectores_envasado):
             existe=cur.execute("""SELECT id FROM catalogo_formatos_entrega
                 WHERE formato_nave=? AND tipo='PROCESO'
@@ -1222,8 +1222,8 @@ def init_db():
         clasificacion_defecto TEXT NOT NULL, red_social TEXT NOT NULL,
         creado_por TEXT, creado_en TEXT, actualizado_por TEXT, actualizado_en TEXT
     )""")
-    # Migración compatible para instalaciones que ya tenían una versión anterior de Reclamos.
-    # CREATE TABLE IF NOT EXISTS no agrega columnas nuevas a una tabla existente.
+    #Para conservar la compatibilidad con versiones anteriores del modulo Reclamos.
+    #Para agregar las columnas que no se crean automaticamente en tablas existentes.
     columnas_reclamos = {
         'fecha':'TEXT', 'codigo_defecto':'TEXT', 'descripcion_defecto':'TEXT',
         'fuente':'TEXT', 'mercado':'TEXT', 'pais_estado':'TEXT', 'numero_caso':'TEXT',
@@ -1242,7 +1242,7 @@ def init_db():
         if columna not in columnas_actuales:
             cur.execute(f'ALTER TABLE reclamos_registros ADD COLUMN "{columna}" {tipo_sql}')
     columnas_actuales = {fila[1] for fila in cur.execute("PRAGMA table_info(reclamos_registros)").fetchall()}
-    # Conserva información capturada con la estructura anterior.
+    #Para conservar la informacion registrada con la estructura anterior.
     if 'linea' in columnas_actuales:
         cur.execute("UPDATE reclamos_registros SET familia=COALESCE(NULLIF(TRIM(familia),''), linea) WHERE familia IS NULL OR TRIM(familia)='' ")
     if 'acciones_contingentes' in columnas_actuales or 'acciones_correctivas' in columnas_actuales:
@@ -1251,9 +1251,9 @@ def init_db():
         if 'acciones_correctivas' in columnas_actuales: partes.append("NULLIF(TRIM(acciones_correctivas),'')")
         expresion="COALESCE(" + ", ".join(partes + ["''"]) + ")"
         cur.execute(f"UPDATE reclamos_registros SET acciones_correctivas_contingentes={expresion} WHERE acciones_correctivas_contingentes IS NULL OR TRIM(acciones_correctivas_contingentes)='' ")
-    # Reconstrucción canónica de Reclamos. Se copian los datos fila por fila con
-    # parámetros SQLite, evitando generar un SELECT dinámico incompatible con
-    # esquemas heredados, nombres de columnas o tipos de datos antiguos.
+    #Para reconstruir la tabla de Reclamos y copiar cada registro con
+    #parametros de SQLite sin crear consultas dinamicas incompatibles con
+    #columnas o tipos de datos de versiones anteriores.
     columnas_info=cur.execute("PRAGMA table_info(reclamos_registros)").fetchall()
     columnas_existentes=[fila[1] for fila in columnas_info]
     conjunto_existentes=set(columnas_existentes)
@@ -1273,8 +1273,8 @@ def init_db():
         or any(fila[3] for fila in columnas_info if fila[1] in columnas_heredadas)
     )
     if requiere_reconstruccion:
-        # Lee primero todos los registros. sqlite3.Row permite migrar por nombre
-        # sin construir expresiones SQL que dependan del esquema anterior.
+        #Para leer todos los registros y migrarlos por nombre de columna
+        #sin depender de la estructura anterior de la tabla.
         cur.row_factory=sqlite3.Row
         filas_anteriores=cur.execute('SELECT * FROM reclamos_registros').fetchall()
         cur.row_factory=None
@@ -1329,14 +1329,14 @@ def init_db():
             try:
                 cur.execute(insertar,valores)
             except sqlite3.IntegrityError:
-                # Solo un ID heredado inválido puede colisionar. Se conserva la
-                # fila dejando que SQLite asigne un ID nuevo.
+                #Para conservar el registro cuando un ID anterior genere conflicto,
+                #permitiendo que SQLite asigne un ID nuevo.
                 valores=list(valores); valores[0]=None
                 cur.execute(insertar,tuple(valores))
         cur.execute('DROP TABLE reclamos_registros')
         cur.execute('ALTER TABLE reclamos_registros_nueva RENAME TO reclamos_registros')
-    # La aplicación valida duplicados antes de guardar. Un índice no único evita
-    # que datos históricos repetidos bloqueen init_db y mantiene búsquedas rápidas.
+    #Para validar duplicados antes de guardar y evitar que
+    #los registros historicos repetidos bloqueen el inicio de la aplicacion.
     cur.execute('DROP INDEX IF EXISTS ux_reclamos_numero_caso')
     cur.execute("CREATE INDEX IF NOT EXISTS ix_reclamos_numero_caso ON reclamos_registros(UPPER(TRIM(numero_caso)))")
     cur.execute("""CREATE TABLE IF NOT EXISTS devoluciones_registros(
@@ -1382,7 +1382,7 @@ def init_db():
         for col, tipo_sql in columnas_nuevas.items():
             try: cur.execute(f'ALTER TABLE {tbl} ADD COLUMN {col} {tipo_sql}')
             except sqlite3.OperationalError: pass
-    # Campos de auditoría homogéneos para PNC, Materia Extraña y DDM/RX.
+    #Para mantener los mismos campos de auditoria en PNC, Materia Extraña y DDM/RX.
     for tbl in ['pnc_registros','me_registros','ddm_rx_registros']:
         for col in ['actualizado_por','actualizado_en']:
             try: cur.execute(f'ALTER TABLE {tbl} ADD COLUMN {col} TEXT')
@@ -1392,7 +1392,7 @@ def init_db():
     for col in ['categoria_inicial_pnc','categoria_final_pnc']:
         try: cur.execute(f'ALTER TABLE pnc_registros ADD COLUMN {col} TEXT')
         except sqlite3.OperationalError: pass
-    # Tablas independientes para cada periodo de muestras de retención.
+    #Para separar los registros de muestras de retencion por periodo.
     cur.execute("CREATE TABLE IF NOT EXISTS muestras_10_meses(id INTEGER PRIMARY KEY AUTOINCREMENT, item TEXT NOT NULL, descripcion TEXT NOT NULL, lote TEXT NOT NULL, destino TEXT NOT NULL, numero_muestras REAL NOT NULL DEFAULT 0, numero_corrugado REAL NOT NULL DEFAULT 0, responsable TEXT NOT NULL, observaciones TEXT, creado_por TEXT, creado_en TEXT, actualizado_por TEXT, actualizado_en TEXT)")
     cur.execute("CREATE TABLE IF NOT EXISTS muestras_12_meses_alergeno(id INTEGER PRIMARY KEY AUTOINCREMENT, item TEXT NOT NULL, descripcion TEXT NOT NULL, lote TEXT NOT NULL, destino TEXT NOT NULL, numero_muestras REAL NOT NULL DEFAULT 0, numero_corrugado REAL NOT NULL DEFAULT 0, responsable TEXT NOT NULL, observaciones TEXT, creado_por TEXT, creado_en TEXT, actualizado_por TEXT, actualizado_en TEXT)")
     cur.execute("CREATE TABLE IF NOT EXISTS muestras_12_meses_duvalin(id INTEGER PRIMARY KEY AUTOINCREMENT, item TEXT NOT NULL, descripcion TEXT NOT NULL, lote TEXT NOT NULL, destino TEXT NOT NULL, numero_muestras REAL NOT NULL DEFAULT 0, numero_corrugado REAL NOT NULL DEFAULT 0, responsable TEXT NOT NULL, observaciones TEXT, creado_por TEXT, creado_en TEXT, actualizado_por TEXT, actualizado_en TEXT)")
@@ -1418,7 +1418,7 @@ def init_db():
             if columna not in existentes: cur.execute(f'ALTER TABLE {tabla} ADD COLUMN {columna} {tipo_sql}')
     cur.execute("CREATE TABLE IF NOT EXISTS adjuntos(id INTEGER PRIMARY KEY AUTOINCREMENT, registro_id INTEGER, folio TEXT, nombre_original TEXT, ruta_archivo TEXT, tipo_archivo TEXT, subido_por TEXT, subido_en TEXT)")
     cur.execute("CREATE TABLE IF NOT EXISTS auditoria(id INTEGER PRIMARY KEY AUTOINCREMENT, usuario TEXT, accion TEXT, detalle TEXT, fecha_hora TEXT)")
-    # Los catálogos base se cargan una sola vez. Las ediciones y eliminaciones posteriores no se revierten.
+    #Para cargar los catalogos base una sola vez y conservar los cambios posteriores.
     if not cur.execute("SELECT 1 FROM app_config WHERE clave='catalogos_base_inicializados_v3'").fetchone():
         if cur.execute('SELECT COUNT(*) FROM productos').fetchone()[0]==0:
             for item,desc,cliente,familia in SEED_PRODUCTS:
@@ -1511,7 +1511,7 @@ def catalog(cat):
     df=read_df("SELECT valor FROM catalogos WHERE categoria=? AND activo=1 ORDER BY valor",(cat,))
     valores=df['valor'].tolist() if not df.empty else []
     if cat=='nave':
-        # Evita que 1 y Nave 1 se presenten como entidades distintas.
+        #Para mostrar 1 y Nave 1 como una misma entidad.
         return list(dict.fromkeys(normalizar_nave(v) for v in valores if normalizar_nave(v)))
     return valores
 def is_dev(): return st.session_state.get('auth',{}).get('rol')=='desarrollador'
@@ -2021,8 +2021,8 @@ def left_menu():
     menu_button('Consulta y descarga','📊 Consulta y descarga','📊')
     menu_button('Muestras de retención','🧪 Muestras de retención','🧪')
     menu_button('Entrega de turno','🔄 Entrega de turno','🔄')
-    # Todos los usuarios pueden abrir Catálogos. El contenido se limita por rol
-    # dentro de page_catalogos, sin exponer administración sensible.
+    #Para permitir el acceso a Catalogos y limitar las opciones de acuerdo con el rol
+    #sin mostrar funciones administrativas a usuarios no autorizados.
     menu_button('Catálogos','🧩 Catálogos','🧩')
     if is_dev():
         menu_button('Usuarios','👤 Usuarios','👤')
@@ -2075,7 +2075,7 @@ def _grafica_mes(data,campo,titulo,key):
     st.altair_chart(grafica,use_container_width=True,key=key)
 
 def panel_indicadores_spac_inicio(indicador='SPAC'):
-    # Mantiene SPAC seleccionado cuando cambian sus filtros internos.
+    #Para mantener seleccionado SPAC al cambiar sus filtros.
     st.session_state.inicio_indicador='SPAC'
     registros=read_df("SELECT m.fecha,m.analista,m.total_carga_datos,m.horas_nave1,m.horas_nave2,m.horas_nave3,COALESCE(e.nave,'') AS nave FROM matriz_entrega m LEFT JOIN entregas_turno e ON e.id=m.entrega_id")
     h,sel,fil=st.columns([7.1,1.4,1.5],vertical_alignment='center')
@@ -2129,7 +2129,7 @@ def panel_indicadores_spac_inicio(indicador='SPAC'):
     gc=datos_grafica_cumplimiento('CALIDAD_NAVE',tipo)
     gp=datos_grafica_cumplimiento('NAVE',tipo)
 
-    # Presenta todo el histórico disponible hasta el periodo actual.
+    #Para mostrar el historial disponible hasta el periodo actual.
     periodo_actual=clave_periodo(date.today(),tipo)
     if not ga.empty:
         ga=ga[ga['Periodo'].astype(str)<=periodo_actual]
@@ -2235,8 +2235,8 @@ def page_registro():
             ('RECLAMOS','📣  **Reclamos**\n\nRegistro, investigación y seguimiento de reclamos.\n\n*Abrir registro*','card_reclamos'),
             ('DEVOLUCIONES','↩️  **Devoluciones**\n\nRegistro y seguimiento de producto devuelto.\n\n*Abrir registro*','card_devoluciones')
         ]
-        # Misma estructura visual de Muestras de retención: hasta tres tarjetas
-        # por fila, con ancho y separación uniformes.
+        #Para mostrar las opciones con la misma estructura de Muestras de retencion, usando hasta tres tarjetas
+        #por fila y una distribucion uniforme.
         for inicio in range(0,len(tarjetas),3):
             lote=tarjetas[inicio:inicio+3]
             if len(lote)==2:
@@ -3144,9 +3144,9 @@ def admin_required():
 
 
 def page_catalogos():
-    # El rol usuario dispone únicamente del catálogo de Productos y solo puede
-    # consultar/agregar. La edición, eliminación y los demás catálogos continúan
-    # reservados al rol desarrollador.
+    #Para que el rol usuario tenga acceso unicamente al catalogo de Productos y pueda
+    #consultar o agregar registros, dejando la edicion, eliminacion y los demas catalogos
+    #disponibles solo para el rol desarrollador.
     if not is_dev():
         st.title('Catálogo de Productos')
         st.caption('Consulta los productos disponibles y agrega nuevos elementos al catálogo.')
