@@ -4,3 +4,5 @@ openpyxl
 reportlab
 pypdf
 PyMuPDF
+psycopg[binary]
+supabase
