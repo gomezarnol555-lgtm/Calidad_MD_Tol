@@ -16,6 +16,6 @@ def _configuracion_secreta(nombre, predeterminado=""):
     return str(valor or "").strip()
 
 
-FORCE_RESET_ADMIN = _configuracion_secreta("CALIDAD_FORCE_RESET_ADMIN", "0") == "1"
+FORCE_RESET_ADMIN = _configuracion_secreta("CALIDAD_FORCE_RESET_ADMIN", "0") == "0"
 ADMIN_USER = _configuracion_secreta("CALIDAD_ADMIN_USER", "admin") or "admin"
 ADMIN_PASS = _configuracion_secreta("CALIDAD_ADMIN_PASS", "")
