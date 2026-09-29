@@ -1,5 +1,3 @@
-"""Interfaz principal de Calidad MD. Contiene navegación, indicadores, formularios, consultas y módulos administrativos."""
-
 from estilos import ESTILOS_APP
 import streamlit as st
 import pandas as pd
@@ -16,12 +14,7 @@ from seguridad import *
 from servicios import *
 from reportes import *
 
-
-# =============================================================================
-# Autenticación y sesión de usuario
-# =============================================================================
 def cambiar_password_obligatoria():
-    """Muestra y procesa el cambio obligatorio de contraseña."""
     auth = st.session_state.get('auth') or {}
     if not auth or not int(auth.get('requiere_cambio_pass', 0) or 0):
         return
@@ -55,15 +48,9 @@ def cambiar_password_obligatoria():
     st.stop()
 
 def styles(compact=False):
-    """Aplica estilos generales y de autenticación."""
     st.markdown(ESTILOS_APP, unsafe_allow_html=True)
 
-
-# =============================================================================
-# Estado inicial de la interfaz
-# =============================================================================
 def init_state():
-    """Inicializa las variables de sesión utilizadas por la interfaz."""
     if 'auth' not in st.session_state:
         st.session_state.auth = None
     if 'page' not in st.session_state:
@@ -72,7 +59,6 @@ def init_state():
         st.session_state.inicio_indicador = 'PNC'
 
 def login():
-    """Muestra el acceso y conserva la sesión del usuario autenticado."""
     if st.session_state.auth:
         return st.session_state.auth
     styles(False)
@@ -103,17 +89,11 @@ def login():
             st.error('Usuario o contraseña incorrectos.' + detalle)
     st.stop()
 
-
-# =============================================================================
-# Navegación y componentes generales
-# =============================================================================
 def topbar(user):
-    """Muestra la barra superior con información de la sesión."""
     initials = ''.join([x[0] for x in user['nombre'].split()[:2]]).upper() or 'AD'
     st.markdown(f"""<div class="topbar"><div class="topbar-title">Sistema de Calidad MD</div><div class="topbar-user"><span>🔔</span><span>{user['nombre'].upper()}</span><span class="avatar">{initials}</span></div></div>""", unsafe_allow_html=True)
 
 def menu_button(page, full, icon):
-    """Crea un botón de navegación en el menú lateral."""
     label = full
     if st.session_state.page == page:
         st.markdown(f'<div class="menu-active"><span>{label}</span></div>', unsafe_allow_html=True)
@@ -122,7 +102,6 @@ def menu_button(page, full, icon):
         st.rerun()
 
 def left_menu():
-    """Muestra la navegación principal y las opciones autorizadas."""
     st.markdown('<div class="left-menu-bg"></div><span class="left-menu-marker"></span>', unsafe_allow_html=True)
     st.markdown('<div class="menu-brand"><span>◆</span><span class="menu-brand-text">CALIDAD MD</span></div><div class="menu-section">MENÚ PRINCIPAL</div>', unsafe_allow_html=True)
     menu_button('Inicio', '🏠 Inicio', '🏠')
@@ -140,12 +119,7 @@ def left_menu():
         st.session_state.auth = None
         st.rerun()
 
-
-# =============================================================================
-# Indicadores de calidad y cumplimiento
-# =============================================================================
 def _selector_indicador_actual(indicador, key):
-    """Permite cambiar el indicador mostrado en la página de inicio."""
     opciones = ['PNC', 'Materia extraña', 'Producto segregado por detector de metales y RX', 'Reclamos', 'Devoluciones', 'SPAC']
     with st.popover('Indicador', use_container_width=True):
         nuevo = st.radio('Seleccionar indicador', opciones, index=opciones.index(indicador), key=key, label_visibility='collapsed')
@@ -154,7 +128,6 @@ def _selector_indicador_actual(indicador, key):
             st.rerun()
 
 def _grafica_conteo(data, campo, titulo, etiqueta, key, color='#00A884'):
-    """Genera una gráfica de conteos por categoría."""
     if data.empty or campo not in data.columns:
         st.info('No hay información disponible para generar esta gráfica.')
         return
@@ -172,7 +145,6 @@ def _grafica_conteo(data, campo, titulo, etiqueta, key, color='#00A884'):
     st.altair_chart(grafica, use_container_width=True, key=key)
 
 def _grafica_mes(data, campo, titulo, key):
-    """Genera la evolución mensual de registros."""
     fechas = pd.to_datetime(data[campo], errors='coerce').dropna() if campo in data.columns else pd.Series(dtype='datetime64[ns]')
     if fechas.empty:
         st.info('No hay fechas válidas para generar esta gráfica.')
@@ -199,7 +171,6 @@ def grafica_lineas_con_valores(df, titulo, key):
     st.altair_chart((linea + etiquetas + regla).properties(title=titulo, height=330), use_container_width=True, key=key)
 
 def panel_indicadores_spac_inicio(indicador='SPAC'):
-    """Muestra indicadores y gráficas de cumplimiento SPAC."""
     st.session_state.inicio_indicador = 'SPAC'
     registros = consultar_vista('vista_spac_matriz_nave')
     h, sel, fil = st.columns([7.1, 1.4, 1.5], vertical_alignment='center')
@@ -252,7 +223,6 @@ def panel_indicadores_spac_inicio(indicador='SPAC'):
         grafica_lineas_con_valores(gp, 'Indicador SPAC Producción', 'inicio_chart_produccion')
 
 def _panel_registros_inicio(tipo):
-    """Muestra indicadores de PNC, hallazgos, reclamos y devoluciones."""
     cfg = {
         'PNC': ('pnc_registros', 'fecha_apertura', 'defecto', 'Producto No Conforme', 'analista', 'linea_sector', 'status', 'cantidad_total_pnc', 'supervisor'),
         'Materia extraña': ('me_registros', '_fecha', '_codigo_defecto_panel', 'Materia extraña', 'analista_detecta', 'linea_sector', None, None, 'supervisor_responsable'),
@@ -351,27 +321,17 @@ def _panel_registros_inicio(tipo):
         _grafica_conteo(x, c_linea, 'Registros por línea o sector', 'Línea/Sector', f'lin_{tabla}', '#3F7BFF')
     _grafica_mes(x, fecha, 'Evolución mensual de registros', f'mes_{tabla}')
 
-
-# =============================================================================
-# Página de inicio
-# =============================================================================
 def page_inicio():
-    """Muestra el panel principal de Calidad MD."""
     st.markdown('<div class="home-hero"><div class="home-hero-title">Panel Calidad Mundo Dulce</div></div>', unsafe_allow_html=True)
     indicador = st.session_state.get('inicio_indicador', 'PNC')
     panel_indicadores_spac_inicio(indicador) if indicador == 'SPAC' else _panel_registros_inicio(indicador)
 
 def estilo_faltantes_matriz(df, primeras_columnas=1):
 
-    """Resalta celdas faltantes en la matriz de entrega."""
     def pintar(valor):
         return 'background-color:#FECACA;color:#991B1B;font-weight:800;border:1px solid #EF4444' if pd.isna(valor) or str(valor).strip() == '' else ''
     return df.style.map(pintar, subset=list(df.columns[primeras_columnas:])).format(na_rep='')
 
-
-# =============================================================================
-# Edición de metas e indicadores SPAC
-# =============================================================================
 def editor_metas_cumplimiento(tipo_entidad, entidades, teoricos, periodo_tipo, periodo_clave, key):
     """Guardo datos cargados usando la clave funcional completa de SPAC."""
     guardados = consultar(tabla='metas_carga_spac', columnas=['entidad', 'meta'], filtros={'tipo_entidad': tipo_entidad, 'periodo_tipo': periodo_tipo, 'periodo_clave': periodo_clave})
@@ -455,12 +415,7 @@ def tabla_diaria_editable(tabla, tipo_entidad, columna_entidad, key):
             st.success('Ajustes diarios guardados correctamente.')
             st.rerun()
 
-
-# =============================================================================
-# Seguimientos configurables de entrega
-# =============================================================================
 def editor_seguimiento_dinamico(bloque, key):
-    """Construye los campos configurables de un seguimiento."""
     campos = bloque.get('campos', [])
     if not campos:
         st.info('Este seguimiento no tiene campos activos. Un administrador puede configurarlos desde Catálogos.')
@@ -496,12 +451,7 @@ def numero_visible_entrega(entrega_id):
     except ValueError:
         return None
 
-
-# =============================================================================
-# Matriz histórica de entregas de turno
-# =============================================================================
 def matriz_entregas():
-    """Muestra y administra la matriz histórica de entregas."""
     st.markdown('## Entregas de turno y matriz histórica')
     st.caption('Consulta los registros de las tres naves. Selecciona un registro para descargar su reporte en PDF.')
     df = consultar_vista('vista_matriz_entregas')
@@ -652,12 +602,7 @@ def matriz_entregas():
     st.markdown('### Indicador SPAC Calidad')
     editor_metas_cumplimiento('CALIDAD_NAVE', ['Nave 1', 'Nave 2', 'Nave 3'], teoricos_calidad, pt, pc, f'meta_calidad_{pt}_{pc}')
 
-
-# =============================================================================
-# Módulos de captura operativa
-# =============================================================================
 def page_registro():
-    """Muestra la captura de PNC, Materia Extraña, DDM/RX, reclamos y devoluciones."""
     if 'registro_tipo' not in st.session_state:
         st.session_state.registro_tipo = None
     if 'form_nonce' not in st.session_state:
@@ -991,12 +936,7 @@ def page_registro():
     elif st.session_state.registro_tipo == 'DEVOLUCIONES':
         form_devoluciones()
 
-
-# =============================================================================
-# Consulta, edición y descarga de registros
-# =============================================================================
 def page_consulta():
-    """Muestra consultas, edición, eliminación y descargas de registros."""
     if 'consulta_tipo' not in st.session_state:
         st.session_state.consulta_tipo = None
     if st.session_state.consulta_tipo is None:
@@ -1069,7 +1009,7 @@ def page_consulta():
             with c1:
                 if st.button('Confirmar eliminación', key=f'ok_del_{key}_{selected}'):
                     eliminar(f'{table_name}', {'id': selected})
-                    reset_autoincrement(table_name)
+                    reiniciar_consecutivo(table_name)
                     audit(st.session_state.auth['usuario'], audit_name, f'ID {selected}')
                     st.session_state.pop(f'confirm_del_{key}', None)
                     st.session_state[f'table_nonce_{key}'] = st.session_state.get(f'table_nonce_{key}', 0) + 1
@@ -1483,12 +1423,7 @@ def page_consulta():
             if is_dev():
                 delete_confirm('devoluciones_registros', 'devoluciones', 'ELIMINAR_DEVOLUCION', selected)
 
-
-# =============================================================================
-# Módulo de muestras de retención
-# =============================================================================
 def page_muestras_retencion():
-    """Muestra la captura de muestras de retención."""
     periodos = [('muestras_10_meses', '10 Meses', '🗓️'), ('muestras_12_meses_alergeno', '12 Meses Alérgeno', '⚠️'), ('muestras_12_meses_duvalin', '12 Meses Duvalin', '🍫'), ('muestras_12_meses_nave2', '12 Meses Nave 2', '🏭'), ('muestras_15_meses', '15 Meses', '📦'), ('muestras_18_meses', '18 Meses', '🧪'), ('muestras_24_meses', '24 Meses', '✅')]
     if 'muestra_tipo' not in st.session_state:
         st.session_state.muestra_tipo = None
@@ -1547,7 +1482,6 @@ def page_muestras_retencion():
     st.markdown('</div>', unsafe_allow_html=True)
 
 def consulta_muestras_retencion():
-    """Muestra la consulta y seguimiento de muestras de retención."""
     configuracion = [('muestras_10_meses', '10 Meses'), ('muestras_12_meses_alergeno', '12 Meses Alérgeno'), ('muestras_12_meses_duvalin', '12 Meses Duvalin'), ('muestras_12_meses_nave2', '12 Meses Nave 2'), ('muestras_15_meses', '15 Meses'), ('muestras_18_meses', '18 Meses'), ('muestras_24_meses', '24 Meses')]
     st.markdown('## Muestras de retención')
     tabs = st.tabs([n for _, n in configuracion])
@@ -1628,7 +1562,7 @@ def consulta_muestras_retencion():
                     d1, d2 = st.columns(2)
                     if d1.button('Confirmar eliminación', key=f'ok_{tabla}_{rid}'):
                         eliminar(f'{tabla}', {'id': rid})
-                        reset_autoincrement(tabla)
+                        reiniciar_consecutivo(tabla)
                         audit(st.session_state.auth['usuario'], 'ELIMINAR_MUESTRA_RETENCION', f'{nombre} | ID {rid}')
                         st.session_state.pop(f'confirm_{tabla}', None)
                         st.session_state[nonce_key] = st.session_state.get(nonce_key, 0) + 1
@@ -1638,12 +1572,7 @@ def consulta_muestras_retencion():
                         st.session_state[nonce_key] = st.session_state.get(nonce_key, 0) + 1
                         st.rerun()
 
-
-# =============================================================================
-# Módulo de entregas de turno
-# =============================================================================
 def page_entrega_turno():
-    """Muestra la captura y consulta de entregas de turno."""
     referencia = 'RE-CAL01-2301-00002-2013 Rev. 1'
     grupos = formato_entrega('Nave 1', 'PROCESO')
     if 'entrega_nave' not in st.session_state:
@@ -1859,18 +1788,12 @@ def page_entrega_turno():
     st.markdown('</div>', unsafe_allow_html=True)
 
 def admin_required():
-    """Detiene el acceso cuando el usuario no tiene permisos administrativos."""
     if not is_dev():
         st.warning('Solo el usuario administrador puede modificar catálogos.')
         return False
     return True
 
-
-# =============================================================================
-# Administración de catálogos
-# =============================================================================
 def page_catalogos():
-    """Muestra la administración de productos, defectos y catálogos configurables."""
     if not is_dev():
         st.title('Catálogo de Productos')
         st.caption('Consulta los productos disponibles y agrega nuevos elementos al catálogo.')
@@ -2343,12 +2266,7 @@ def page_catalogos():
                     st.session_state.pop('seg_confirm', None)
                     st.rerun()
 
-
-# =============================================================================
-# Administración de usuarios
-# =============================================================================
 def page_usuarios():
-    """Muestra la administración de usuarios, roles y estados de acceso."""
     if not is_dev():
         st.warning('Esta sección está disponible únicamente para administradores.')
         return
@@ -2500,7 +2418,7 @@ def page_usuarios():
             else:
                 audit(st.session_state.auth['usuario'], 'ELIMINAR_USUARIO', f"ID {rid} | {r['usuario']}")
                 eliminar('usuarios', {'id': rid})
-                reset_autoincrement('usuarios')
+                reiniciar_consecutivo('usuarios')
                 st.session_state.pop('usuario_confirmar_eliminacion', None)
                 st.session_state.usuarios_nonce += 1
                 st.success('Usuario eliminado correctamente.')
@@ -2510,11 +2428,6 @@ def page_usuarios():
             st.session_state.usuarios_nonce += 1
             st.rerun()
 
-
-# =============================================================================
-# Auditoría y trazabilidad
-# =============================================================================
 def page_auditoria():
-    """Muestra el historial de acciones registradas por la aplicación."""
     st.title('Auditoría')
     st.dataframe(consultar('auditoria', columnas='*', filtros={}, ordenar_por=[('id', 'desc')], limite=1000), use_container_width=True, hide_index=True)
